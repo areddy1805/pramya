@@ -5,6 +5,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from app.core.db import get_session
+from app.domain.errors import NotFoundError
 from app.main import create_app
 
 
@@ -53,10 +55,22 @@ def test_evidence_patch_contract(openapi: dict) -> None:
 
 async def test_error_envelope_shape() -> None:
     app = create_app()
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://test"
-    ) as c:
-        resp = await c.get("/api/v1/candidates/999999")
+
+    # Envelope shape is an HTTP/exception-handler contract, not a persistence
+    # concern: raise the same NotFoundError the route would raise after a DB
+    # lookup, without opening PostgreSQL. The real ASGI app, middleware, and
+    # pramya_error_handler are preserved via FastAPI's dependency-override seam.
+    async def _candidate_not_found() -> None:
+        raise NotFoundError("candidate profile not found")
+
+    app.dependency_overrides[get_session] = _candidate_not_found
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            resp = await c.get("/api/v1/candidates/999999")
+    finally:
+        app.dependency_overrides.clear()
     assert resp.status_code == 404
     body = resp.json()
     assert body["code"] == "not_found"
