@@ -58,7 +58,7 @@ class InterviewConfig(BaseModel):
 
     kind: InterviewKind = InterviewKind.GENERAL
     duration_minutes: int = Field(default=30, ge=5, le=120)
-    focus_competency_ids: list[int] = Field(default_factory=list)
+    focus_competency_ids: list[int] = Field(default_factory=lambda: [])
     mode: Literal["text", "voice"] = "text"
 
 
@@ -70,11 +70,11 @@ class EvaluationRecord(BaseModel):
     dimensions: EvaluationDimensions
     overall: float = Field(ge=0, le=10)
     confidence: float = Field(ge=0, le=1)
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
-    evidence_refs: list[EvidenceReference] = Field(default_factory=list)
-    missing_evidence: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=lambda: [])
+    weaknesses: list[str] = Field(default_factory=lambda: [])
+    evidence_refs: list[EvidenceReference] = Field(default_factory=lambda: [])
+    missing_evidence: list[str] = Field(default_factory=lambda: [])
     hints_used: int = 0
-    follow_ups: list[str] = Field(default_factory=list)
+    follow_ups: list[str] = Field(default_factory=lambda: [])
     evaluator_version: str
     created_at: datetime

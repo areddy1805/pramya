@@ -1,26 +1,63 @@
 """FastAPI application entrypoint.
 
-Creates the app with lifespan, middleware, and versioned API router.
+Creates the app with lifespan, middleware, exception handlers, and the
+versioned API router.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
-from app.core.logging import setup_logging
+from app.core.db import engine
+from app.core.logging import request_id_var, setup_logging
 from app.core.middleware import RequestIDMiddleware
+from app.domain.errors import ErrorEnvelope, PramyaError
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging()
-    # Future: DB engine startup, provider health checks, model lifecycle.
+    # Future: provider health checks, model lifecycle.
     yield
+    await engine.dispose()
+
+
+ExceptionHandler = Callable[[Request, Exception], Awaitable[Response]]
+
+
+def _envelope(exc: PramyaError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorEnvelope(
+            code=exc.code,
+            message=exc.message,
+            request_id=request_id_var.get(),
+            details=exc.details,
+        ).__dict__,
+    )
+
+
+async def pramya_error_handler(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, PramyaError)
+    return _envelope(exc)
+
+
+async def validation_error_handler(request: Request, exc: Exception) -> Response:
+    assert isinstance(exc, RequestValidationError)
+    envelope = ErrorEnvelope(
+        code="validation_failed",
+        message="request validation failed",
+        request_id=request_id_var.get(),
+        details={"errors": exc.errors()},
+    )
+    return JSONResponse(status_code=422, content=envelope.__dict__)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(api_router, prefix=settings.api_prefix)
     app.add_middleware(RequestIDMiddleware)
+    app.add_exception_handler(PramyaError, pramya_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
     return app
 
 

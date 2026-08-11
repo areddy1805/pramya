@@ -125,6 +125,31 @@ class AssessmentMode(StrEnum):
     VOICE = "voice"
 
 
+class QuestionType(StrEnum):
+    """Type of interview question (interview content, not session mode)."""
+
+    TECHNICAL = "technical"
+    BEHAVIORAL = "behavioral"
+    SYSTEM_DESIGN = "system_design"
+    CODING_REASONING = "coding_reasoning"
+    PROJECT_DEEP_DIVE = "project_deep_dive"
+    SITUATIONAL = "situational"
+    GENERAL = "general"
+    FOLLOW_UP = "follow_up"
+
+
+class PracticeKind(StrEnum):
+    """Kind of practice session (targeted exercise, mock, drill)."""
+
+    MOCK_INTERVIEW = "mock_interview"
+    TARGETED_EXERCISE = "targeted_exercise"
+    GENERAL = "general"
+    DEEP_DIVE = "deep_dive"
+    CODING_REASONING = "coding_reasoning"
+    BEHAVIORAL = "behavioral"
+    SYSTEM_DESIGN = "system_design"
+
+
 class EvaluationDimension(StrEnum):
     CORRECTNESS = "correctness"
     TECHNICAL_DEPTH = "technical_depth"

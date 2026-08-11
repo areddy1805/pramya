@@ -29,7 +29,7 @@ class ErrorEnvelope:
     code: str
     message: str
     request_id: str = ""
-    details: dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict[str, Any])
 
 
 class NotFoundError(PramyaError):
