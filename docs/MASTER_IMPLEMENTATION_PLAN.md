@@ -855,7 +855,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 ```
 PHASE STATUS
 Phase 0  Architecture + Scaffold     COMPLETE
-Phase 1  Core Domain + Persistence   NOT STARTED
+Phase 1  Core Domain + Persistence   COMPLETE
 Phase 2  Knowledge Layer             NOT STARTED
 Phase 3  Interview Engine (LangGraph)NOT STARTED
 Phase 4  Model Routing + Local       NOT STARTED
@@ -869,15 +869,15 @@ Phase 11 MCP/Observability/Security  NOT STARTED
 Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 ```
 
-- Current phase: Phase 0 COMPLETE (2026-08)
-- Current task: none (Phase 1 not started; awaiting user confirmation)
-- Blocked by: user confirmation to begin Phase 1
-- Next task: Phase 1.1 SQLAlchemy async models
-- Last verified commit: Phase 0 scaffold commit (see git log)
-- Tests: 16 unit tests passing (health, config, request-id, domain enums/schemas)
+- Current phase: Phase 1 COMPLETE (2026-08)
+- Current task: none (Phase 2 not started; awaiting user confirmation)
+- Blocked by: user confirmation to begin Phase 2
+- Next task: Phase 2.0 InferenceRouter + oMLX chat/embed provider (critical-path), then 2.1 parsing
+- Last verified commit: Phase 1 core domain + persistence (see git log)
+- Tests: 47 passing — 29 unit (health, config, request-id, domain enums/schemas, model metadata, upload validation, idempotency keys), 5 contract (OpenAPI surface, error envelope), 13 integration (migration up/down, pgvector extension, HNSW/GIN indexes, FTS generated column, CRUD, cascade delete, idempotency dedup, upload flow)
 - Evals: none yet
 - Known failures: none
-- Phase 0 acceptance verified: `make test` (16 passed), `make lint`, `make typecheck`, `docker compose config` valid, frontend production build green, CI workflow written.
+- Phase 1 acceptance verified: DB schema matches §7 (22 tables + idempotency_record); `alembic upgrade/downgrade` cycles clean; `alembic check` reports no drift; integration tests green on real pgvector (extension 0.8.6); upload flow accepts valid types, rejects invalid (mime/size/empty/duplicate); mypy + pyright + ruff green.
 
 ---
 
@@ -902,6 +902,7 @@ Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 |---|---|---|
 | 2026-08 | Model stack reconciliation (pre-Phase 1): Qwen3.5-4B = primary local workhorse (alias `pramya-4b`, thinking off, local-first, majority of workload); deepseek-v4-flash = escalation model (not default); Qwen3.5-9B DEFERRED (historical entry preserved, not required/fallback/routing target). Routing tables, fallback chains, ADR-004/009/011/013, AI/VOICE architecture, DEPLOYMENT setup, catalog, memory, README, decision log updated consistently. Local verification baseline defined (catalog §6). Phase 1+ has no 9B dependency. | Engineering session |
 | 2026-08 | Phase 0 scaffold: backend (uv/FastAPI/lifespan/health/request-id/logging), frontend (Vite 8 + React 19 + TS strict + router/query/zustand shell), compose + Makefile + CI, domain enums/schemas/errors, `.env.example` aligned. pgvector Python pin corrected to 0.5.x (client) — server ext 0.8.x in Docker image. Tests moved to repo-root `tests/` per §23 (plan §8 showed backend/app/tests; §23 target structure wins). | Implementation session |
+| 2026-08 | Phase 1 core domain + persistence: SQLAlchemy 2.0 async models for all §7 entities (vector(1024) + generated tsvector + HNSW/GIN), Alembic async env + initial migration (CREATE EXTENSION vector), repository layer + unit-of-work, user/candidate/document/evidence services, candidates/documents/evidence API routers with upload validation + content-hash + error envelope, idempotency records (task 1.6). 47 tests (unit/contract/integration on real pgvector), mypy/pyright/ruff green, `alembic check` no drift, CI integration job + test-contract target added. | Implementation session |
 
 (Coherent feature-level changes only. CHANGELOG.md tracks releases.)
 

@@ -7,10 +7,11 @@
 
 ## Current State
 
-- Project status: **Phase 0 (Architecture + Scaffold) COMPLETE** (2026-08).
-- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 1 (Core Domain + Persistence) is next.
-- Last verified commit: see `git log`; Phase 0 scaffold committed.
+- Project status: **Phase 1 (Core Domain + Persistence) COMPLETE** (2026-08).
+- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 2 (Knowledge Layer) is next.
+- Last verified commit: see `git log`; Phase 1 committed.
 - Local `.env` exists (copied from `.env.example`, gitignored).
+- DB: docker compose `db` (pgvector/pgvector:pg17) running locally; `alembic upgrade head` applied; `alembic check` clean.
 
 ## Verified Environment Facts (2026-08)
 
@@ -43,6 +44,16 @@
 - MCP SDK v2 (2026-07-28 protocol revision) = stateless request/response, `server/discover`; decide v2 vs pinned v1 at Phase 11.
 - Langfuse: metadata now dict[str,str] ≤200 chars; `start_span`/`start_generation` unified to `start_observation`; real-time ingestion needs Python SDK ≥4.7.
 - SSE vs WS: text events SSE; voice = WS (bidirectional + interrupt). AudioWorklet for low-latency playback; AbortController everywhere; rAF batching for token streams.
+
+## Phase 1 Facts (verified 2026-08)
+
+- SQLAlchemy 2.0.51 async + asyncpg 0.31 + alembic 1.19.1; pgvector Python client 0.5.x (`from pgvector.sqlalchemy import Vector`; type renders as `VECTOR(n)`, `.dim` holds dimension).
+- **Alembic gotcha**: env.py resolves URL from app Settings (DATABASE_URL) unless a test override injects `sqlalchemy.url`; `alembic check` needs model types to match migration exactly — use `postgresql.TIMESTAMP(timezone=True)` in models (not `DateTime(timezone=True)`) or autogenerate flags type drift; name indexes with the naming-convention labels (`ix_<table>_<column>`) or drift is reported.
+- `metadata` is a reserved attribute name in SQLAlchemy Declarative API — DocumentChunk stores metadata JSONB under attribute `meta` with explicit column name `"metadata"`.
+- pytest-asyncio event loops are function-scoped: session-scoped async fixtures (engine) must be avoided; create the engine in a function-scoped async fixture (integration conftest pattern). Alembic's env.py calls `asyncio.run`, so migration commands must run outside a live loop (sync fixture / `asyncio.to_thread`).
+- Pytest runs with `-c pyproject.toml` from `backend/` (asyncio_mode=auto, pythonpath includes repo root for `tests/` imports); running `pytest ../tests/unit` without `-c` misses the config and fails async tests.
+- 22 tables + `idempotency_record` (task 1.6 infra, not in §7 list) = 23 tables; document_chunk has HNSW (`vector_cosine_ops`, m=16, ef_construction=64) + GIN (fts) + unique (document_id, chunk_index); fts is a stored generated column `to_tsvector('english', content)`.
+- Integration tests: `TEST_DATABASE_URL` (default pramya_test on localhost); DB created/dropped per session; scratch DB `pramya_scratch` used for downgrade test; CI runs integration against pgvector service container.
 
 ## Architecture Decisions (durable)
 

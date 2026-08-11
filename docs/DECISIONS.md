@@ -220,6 +220,15 @@
 
 ---
 
+# Implementation Notes (Phase 1, 2026-08)
+
+- **Idempotency persistence**: master plan task 1.6 requires idempotency keys for answer submission; §7 table list has no dedicated table, so `idempotency_record` (scope, key, payload, created_at; unique (scope,key)) was added as persistence infrastructure, not a domain entity. Documented in plan change log + memory.
+- **`document_chunk.metadata` column**: `metadata` is reserved in the SQLAlchemy Declarative API; the column is named `metadata` in the DB and exposed as `meta` on the ORM model.
+- **Enum storage**: state columns use String(32) + service/domain validation rather than native PG enum types — keeps migrations simple and reversible; domain enums remain the single source of truth.
+- **QuestionType / PracticeKind enums**: added to `domain/enums.py` for `question.type` and `practice_session.kind` (plan §7 lists the columns but not their vocabularies); values mirror InterviewKind vocabulary.
+- **competency.level / candidate_competency.demonstrated_level**: modeled as Integer 1..5 (CheckConstraint) per plan's `level` semantics.
+- **ADR-007 file vs plan**: ADR-007 text mentions `knowledge_nodes` and PG 18; master plan §7/§17 (authoritative) uses `document_chunk` and PG 17. Implementation follows the plan; ADR-007 file is stale and should be reconciled in a docs pass.
+
 # Product-Level Decisions (inline)
 
 ## ADR-015 — Greenfield Project
