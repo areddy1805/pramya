@@ -162,9 +162,14 @@ async def upload_document(
     file: UploadFileDep,
 ) -> DocumentOut:
     settings = get_settings()
-    svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
+    svc = DocumentService(
+        session,
+        max_size_mb=settings.upload_max_mb,
+        max_pages=settings.document_max_pages,
+        parse_timeout_seconds=settings.document_parse_timeout_seconds,
+    )
     data = await file.read()
-    doc = await svc.upload(
+    doc, _parsed = await svc.upload(
         user_id=user_id,
         kind=kind,
         filename=file.filename or "unnamed",

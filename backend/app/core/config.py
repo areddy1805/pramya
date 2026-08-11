@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # Uploads
     upload_max_mb: int = 5
     upload_storage_dir: str = ".runtime/uploads"
+    # Document parsing guards (Phase 2.1): configurable conservative defaults.
+    # Page limit bounds PDF parsing resource use; timeout bounds total parse
+    # time at the service boundary (asyncio.wait_for over asyncio.to_thread).
+    document_max_pages: int = 50
+    document_parse_timeout_seconds: float = 30.0
 
     # Observability (Langfuse optional)
     # Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability platform.

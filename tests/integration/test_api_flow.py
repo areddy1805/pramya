@@ -27,7 +27,7 @@ async def test_upload_flow_accepts_valid_and_rejects_invalid(
 
     async with session_factory() as session:  # type: ignore[attr-defined]
         svc = DocumentService(session)
-        doc = await svc.upload(
+        doc, parsed = await svc.upload(
             user_id=api_user,
             kind=DocumentKind.RESUME,
             filename="resume.md",
@@ -35,7 +35,8 @@ async def test_upload_flow_accepts_valid_and_rejects_invalid(
             data=b"# Alex\nSenior engineer",
         )
         assert doc.id
-        assert doc.status.value == "pending"
+        assert doc.status.value == "parsed"
+        assert "Senior engineer" in parsed.content
 
         docs = await svc.list_documents(api_user, kind=DocumentKind.RESUME)
         assert len(docs) == 1

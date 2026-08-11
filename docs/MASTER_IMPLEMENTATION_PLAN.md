@@ -857,7 +857,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 PHASE STATUS
 Phase 0  Architecture + Scaffold     COMPLETE
 Phase 1  Core Domain + Persistence   COMPLETE
-Phase 2  Knowledge Layer             IN PROGRESS (2.0 done)
+Phase 2  Knowledge Layer             IN PROGRESS (2.0, 2.1 done)
 Phase 3  Interview Engine (LangGraph)NOT STARTED
 Phase 4  Model Routing + Local       NOT STARTED
 Phase 5  Evaluation + Readiness      NOT STARTED
@@ -870,15 +870,15 @@ Phase 11 MCP/Observability/Security  NOT STARTED
 Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 ```
 
-- Current phase: Phase 2 (Knowledge Layer) — task 2.0 COMPLETE (2026-08)
-- Current task: 2.1 document parsing (next after 2.0)
+- Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)
+- Current task: 2.2 ingestion (next after 2.1)
 - Blocked by: user confirmation to continue Phase 2
-- Next task: 2.1 parsing, then 2.2 ingestion
-- Last verified commit: Phase 2.0 InferenceRouter + provider foundation (see git log)
-- Tests: 87 passing — 43 unit (Phase 0/1 tests + AI policy, provider HTTP contracts, router/fallback, structured output), 5 contract (OpenAPI surface, error envelope, provider capability contracts), 13 integration (unchanged), 26 new AI-layer tests
+- Next task: 2.2 LlamaIndex IngestionPipeline (chunking + embedding + pgvector)
+- Last verified commit: Phase 2.1 document parsing (see git log)
+- Tests: 103 passing — 59 unit (Phase 0/1 + AI layer + parsing pdf/docx/md/txt + guards), 5 contract (OpenAPI surface, error envelope, provider capability contracts), 14 integration (unchanged 13 + upload FAILED-state/retry)
 - Evals: none yet
 - Known failures: none
-- Phase 2.0 acceptance verified: router policy matches AI_ARCHITECTURE §2 (pramya-4b local workhorse thinking-off; deepseek-v4-flash escalation-only; BGE-M3 embed; Qwen3-Reranker rerank; no 9B); httpx-based providers against verified oMLX endpoints (http://127.0.0.1:8000/v1, models `pramya-4b` / `bge-m3-mlx-4bit` / `Qwen3-Reranker-0.6B-4bit`); thinking-disabled assertion (`chat_template_kwargs.enable_thinking=false` on the wire); fallback chains (4B↔deepseek); structured output bounded retry; no OpenAI SDK dependency; mypy + pyright + ruff green.
+- Phase 2.1 acceptance verified: pdf/docx/md/txt parse to normalized ParsedDocument; upload flow runs PENDING→PARSING→PARSED/FAILED; guards (size, mime, page count, timeout, DOCX uncompressed cap, empty extraction); parsed text in-memory handoff to 2.2 (never persisted); DOCUMENT_MAX_PAGES / DOCUMENT_PARSE_TIMEOUT_SECONDS configurable; no new API endpoint; mypy + pyright + ruff green.
 
 ---
 

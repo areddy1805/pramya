@@ -1,14 +1,22 @@
-"""Document service: upload validation, content hashing, storage keys, status."""
+"""Document service: upload validation, content hashing, storage keys, status.
+
+Phase 2.1: upload establishes the document (PENDING), runs parsing
+(PARSING), and transitions to PARSED (with parsed_at) or FAILED. Parsed
+content is returned in-memory as a handoff to Phase 2.2 ingestion — never
+persisted (schema has no parsed_text column by design).
+"""
 
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.enums import DocumentKind, DocumentStatus
 from app.domain.errors import NotFoundError, ValidationFailedError
+from app.knowledge.parsing import ParsedDocument, parse_document_with_timeout
 from app.models.document import Document
 from app.repositories.document import DocumentRepository
 
@@ -44,11 +52,15 @@ class DocumentService:
         *,
         storage_dir: Path | None = None,
         max_size_mb: int = _MAX_SIZE_MB,
+        max_pages: int = 50,
+        parse_timeout_seconds: float = 30.0,
     ) -> None:
         self.session = session
         self.documents = DocumentRepository(session)
         self.storage_dir = storage_dir
         self.max_size_mb = max_size_mb
+        self.max_pages = max_pages
+        self.parse_timeout_seconds = parse_timeout_seconds
 
     async def upload(
         self,
@@ -58,12 +70,19 @@ class DocumentService:
         filename: str,
         mime: str,
         data: bytes,
-    ) -> Document:
+    ) -> tuple[Document, ParsedDocument]:
+        """Establish the document, parse it, and transition status.
+
+        Returns ``(document, parsed)`` on success; on parse failure the
+        document is left in FAILED state and ValidationFailedError is raised
+        with actionable details. Parsed text is the in-memory handoff to
+        Phase 2.2 ingestion.
+        """
         self.validate_upload(kind=kind, filename=filename, mime=mime, size=len(data))
         digest = content_hash(data)
 
         existing = await self.documents.get_by_hash(user_id, digest)
-        if existing:
+        if existing and existing.status != DocumentStatus.FAILED:
             raise ValidationFailedError(
                 "document with identical content already uploaded",
                 details={"document_id": existing.id},
@@ -84,7 +103,35 @@ class DocumentService:
             status=DocumentStatus.PENDING,
         )
         await self.documents.add(doc)
-        return doc
+
+        doc.status = DocumentStatus.PARSING
+        await self.documents.flush()
+        try:
+            parsed = await parse_document_with_timeout(
+                data=data,
+                kind=kind,
+                mime=mime,
+                filename=filename,
+                content_hash=digest,
+                max_pages=self.max_pages,
+                timeout_seconds=self.parse_timeout_seconds,
+            )
+        except ValidationFailedError:
+            doc.status = DocumentStatus.FAILED
+            await self.documents.flush()
+            raise
+        except TimeoutError as exc:
+            doc.status = DocumentStatus.FAILED
+            await self.documents.flush()
+            raise ValidationFailedError(
+                "document parsing timed out",
+                details={"filename": filename, "timeout_seconds": self.parse_timeout_seconds},
+            ) from exc
+
+        doc.status = DocumentStatus.PARSED
+        doc.parsed_at = datetime.now(UTC)
+        await self.documents.flush()
+        return doc, parsed
 
     def validate_upload(self, *, kind: DocumentKind, filename: str, mime: str, size: int) -> None:
         DocumentService._validate_upload(
