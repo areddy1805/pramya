@@ -1,0 +1,142 @@
+# -------------------------
+# OS
+# -------------------------
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# -------------------------
+# Environment / secrets
+# -------------------------
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# -------------------------
+# Python
+# -------------------------
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+.Python
+
+.venv/
+venv/
+env/
+ENV/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+.coverage
+.coverage.*
+htmlcov/
+
+dist/
+build/
+*.egg-info/
+
+# -------------------------
+# Node / frontend
+# -------------------------
+
+node_modules/
+.npm/
+.pnpm-store/
+
+dist/
+build/
+.next/
+.nuxt/
+.vite/
+
+*.tsbuildinfo
+
+coverage/
+
+# -------------------------
+# IDE
+# -------------------------
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# -------------------------
+# Logs
+# -------------------------
+
+*.log
+logs/
+
+# -------------------------
+# Temporary files
+# -------------------------
+
+tmp/
+temp/
+.tmp/
+
+# -------------------------
+# Local databases
+# -------------------------
+
+*.sqlite
+*.sqlite3
+*.db
+
+# -------------------------
+# AI / model artifacts
+# -------------------------
+
+models/
+model-cache/
+hf-cache/
+huggingface/
+.cache/huggingface/
+.cache/huggingface_hub/
+
+# MLX / local inference caches
+.cache/mlx/
+.cache/omlx/
+
+# Audio artifacts
+audio/
+recordings/
+transcripts-local/
+
+# -------------------------
+# Test artifacts
+# -------------------------
+
+test-results/
+playwright-report/
+blob-report/
+
+# -------------------------
+# Generated files
+# -------------------------
+
+*.generated.*
+generated/
+
+# -------------------------
+# Local runtime state
+# -------------------------
+
+.runtime/
+.local/
