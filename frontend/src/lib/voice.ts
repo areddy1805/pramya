@@ -1,18 +1,27 @@
-// Voice client for live spoken mock interviews (Phase 9).
+// Voice client for live spoken mock interviews (Phase 9 / H.5-H.9).
 //
 // Protocol (see backend/app/voice/engine.py):
 //   client -> server: JSON control (start_turn, end_turn, interrupt, pause,
 //                     resume, stop, cancel) + binary PCM16 16 kHz mic frames
-//   server -> client: JSON events (state, question, tts_start/stop,
-//                     partial_transcript, final_transcript, evaluation, error)
+//   server -> client: JSON events (state, question, tts_start{generation},
+//                     tts_stop{generation}, partial_transcript,
+//                     final_transcript, evaluation, answer_submitted, error)
 //                     + binary PCM16 24 kHz playback chunks
 //
-// Interruption is a correctness requirement: interrupt clears the playback
-// queue AND tells the server to cancel in-flight TTS; stale audio never
-// plays after an interrupt.
+// Correctness guarantees:
+//  - H.6 playback lifecycle: AudioContext created synchronously inside the
+//    user gesture (before any await); playback refuses to run unless the
+//    context is 'running'.
+//  - H.7 stale-generation protection: every TTS stream has a generation id;
+//    chunks are only accepted while state==='speaking' AND the generation
+//    matches the current one; interrupt/cancel invalidates the generation so
+//    stale audio is dropped, never played.
+//  - H.9 permission handling: getUserMedia failures map to actionable
+//    error codes (permission_denied / device_unavailable / mic_unavailable).
 
 export type VoiceState =
   | 'idle'
+  | 'starting'
   | 'listening'
   | 'processing'
   | 'speaking'
@@ -29,6 +38,8 @@ export interface VoiceEvent {
   question_id?: number
   difficulty?: string
   overall?: number | null
+  generation?: number
+  answer_id?: number
   code?: string
   message?: string
 }
@@ -51,14 +62,42 @@ export interface VoiceHandlers {
   onPartial?: (text: string) => void
   onFinalTranscript?: (text: string) => void
   onEvaluation?: (overall: number | null, answerId?: number) => void
+  onAnswerSubmitted?: (answerId?: number) => void
+  onTurnEnded?: () => void
   onError?: (code: string, message: string) => void
-  onTTSStart?: () => void
-  onTTSStop?: () => void
+  onTTSStart?: (generation?: number) => void
+  onTTSStop?: (generation?: number) => void
   onClosed?: () => void
 }
 
 const TARGET_SAMPLE_RATE = 16000
 const PLAYBACK_SAMPLE_RATE = 24000
+
+export function micErrorMessage(err: unknown): { code: string; message: string } {
+  const name = err instanceof DOMException ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return {
+      code: 'permission_denied',
+      message: 'Microphone permission was denied. Allow the mic in your browser and try again.',
+    }
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return {
+      code: 'device_unavailable',
+      message: 'No microphone was found. Plug one in and try again.',
+    }
+  }
+  if (name === 'NotReadableError') {
+    return {
+      code: 'mic_unavailable',
+      message: 'The microphone is in use by another app. Close it and try again.',
+    }
+  }
+  return {
+    code: 'mic_start_failed',
+    message: err instanceof Error ? err.message : 'Could not start the microphone.',
+  }
+}
 
 export class VoiceClient {
   private ws: WebSocket | null = null
@@ -69,6 +108,7 @@ export class VoiceClient {
   private playing = false
   private closedByUser = false
   public state: VoiceState = 'idle'
+  private currentGeneration = -1
   private url: string
   private handlers: VoiceHandlers
 
@@ -85,19 +125,34 @@ export class VoiceClient {
   async start(): Promise<void> {
     this.closedByUser = false
     this.playbackQueue = []
-    // Playback context first (user gesture unlocks audio).
-    this.audioCtx = new AudioContext({ latencyHint: 'interactive' })
-    if (this.audioCtx.state === 'suspended') await this.audioCtx.resume()
+    this.currentGeneration = -1
 
-    // Capture: mic -> AudioWorklet -> PCM16 16 kHz -> WS binary frames.
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        channelCount: 1,
-        sampleRate: TARGET_SAMPLE_RATE,
-      },
-    })
+    // H.6: create + resume AudioContext synchronously inside the user
+    // gesture (start() is called directly from the click handler).
+    this.audioCtx = new AudioContext({ latencyHint: 'interactive' })
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume()
+    }
+    if (this.audioCtx.state !== 'running') {
+      throw new Error('Audio output could not start. Unlock audio and try again.')
+    }
+
+    // H.9: mic capture with actionable failure mapping.
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          channelCount: 1,
+          sampleRate: TARGET_SAMPLE_RATE,
+        },
+      })
+    } catch (err) {
+      await this.teardown()
+      throw micErrorMessage(err)
+    }
+
+    // AudioWorklet capture: mic -> PCM16 16 kHz -> WS binary frames.
     await this.audioCtx.audioWorklet.addModule(
       URL.createObjectURL(
         new Blob([CAPTURE_WORKLET_SOURCE], { type: 'application/javascript' }),
@@ -121,7 +176,9 @@ export class VoiceClient {
     this.ws.onclose = () => {
       this.state = 'idle'
       this.handlers.onClosed?.()
-      if (!this.closedByUser) this.handlers.onError?.('ws_closed', 'Voice connection lost')
+      if (!this.closedByUser) {
+        this.handlers.onError?.('ws_closed', 'Voice connection lost. Reconnect to continue.')
+      }
     }
   }
 
@@ -150,6 +207,8 @@ export class VoiceClient {
     this.ws = null
     // Flush playback buffer + close context (no stale audio).
     this.playbackQueue = []
+    this.playing = false
+    this.currentGeneration = -1
     if (this.audioCtx) {
       await this.audioCtx.close()
       this.audioCtx = null
@@ -166,9 +225,16 @@ export class VoiceClient {
 
   /** Barge-in: clear local playback NOW and tell the server to cancel TTS. */
   interrupt(): void {
+    // H.7: invalidate current generation so any in-flight chunk is dropped.
+    this.currentGeneration = -1
     this.playbackQueue = []
     this.playing = false
     this.sendControl('interrupt')
+  }
+
+  /** Manual turn completion (H.2 manual mechanism). */
+  doneSpeaking(): void {
+    this.sendControl('end_turn')
   }
 
   pause(): void {
@@ -191,7 +257,6 @@ export class VoiceClient {
       }
       this.dispatch(payload)
     } else {
-      // Binary PCM16 24 kHz playback chunk.
       this.enqueuePlayback(ev.data as ArrayBuffer)
     }
   }
@@ -200,8 +265,10 @@ export class VoiceClient {
     switch (payload.type) {
       case 'state':
         this.state = payload.state ?? 'idle'
-        if (payload.state === 'interrupted') {
-          // Server confirmed interruption: flush local playback.
+        if (payload.state === 'interrupted' || payload.state === 'cancelled') {
+          // Server confirmed interruption: flush local playback + drop
+          // any stale generation (H.7).
+          this.currentGeneration = -1
           this.playbackQueue = []
           this.playing = false
         }
@@ -221,13 +288,24 @@ export class VoiceClient {
         this.handlers.onFinalTranscript?.(payload.text ?? '')
         break
       case 'evaluation':
-        this.handlers.onEvaluation?.(payload.overall ?? null)
+        this.handlers.onEvaluation?.(payload.overall ?? null, payload.answer_id)
+        break
+      case 'answer_submitted':
+        this.handlers.onAnswerSubmitted?.(payload.answer_id)
+        break
+      case 'turn_ended':
+        this.handlers.onTurnEnded?.()
         break
       case 'tts_start':
-        this.handlers.onTTSStart?.()
+        // H.7: remember the active generation; only this generation plays.
+        this.currentGeneration = payload.generation ?? -1
+        this.handlers.onTTSStart?.(payload.generation)
         break
       case 'tts_stop':
-        this.handlers.onTTSStop?.()
+        if (payload.generation === undefined || payload.generation === this.currentGeneration) {
+          this.currentGeneration = -1
+          this.handlers.onTTSStop?.(payload.generation)
+        }
         break
       case 'error':
         this.handlers.onError?.(payload.code ?? 'error', payload.message ?? 'Voice error')
@@ -235,10 +313,12 @@ export class VoiceClient {
     }
   }
 
-  // -- playback -------------------------------------------------------------
+  // -- playback (H.6/H.7) ---------------------------------------------------
 
   private enqueuePlayback(data: ArrayBuffer): void {
-    if (!this.audioCtx) return
+    if (!this.audioCtx || this.audioCtx.state !== 'running') return
+    // H.7: never accept audio outside an active, current TTS generation.
+    if (this.state !== 'speaking' || this.currentGeneration < 0) return
     const pcm = new Int16Array(data)
     const buffer = this.audioCtx.createBuffer(1, pcm.length, PLAYBACK_SAMPLE_RATE)
     const channel = buffer.getChannelData(0)
@@ -249,10 +329,19 @@ export class VoiceClient {
 
   private async drainPlayback(): Promise<void> {
     if (this.playing || !this.audioCtx || this.playbackQueue.length === 0) return
+    if (this.audioCtx.state !== 'running') return
     this.playing = true
     try {
       while (this.playbackQueue.length > 0) {
-        if (this.state === 'interrupted' || this.state === 'cancelled') break
+        // H.7: stop draining on interruption/cancellation — never play stale audio.
+        if (
+          this.state === 'interrupted' ||
+          this.state === 'cancelled' ||
+          this.currentGeneration < 0
+        ) {
+          this.playbackQueue = []
+          break
+        }
         const buf = this.playbackQueue.shift()
         if (!buf) break
         await new Promise<void>((resolve) => {

@@ -74,6 +74,7 @@ class VoiceState(StrEnum):
     """Voice pipeline states (mirrored client-side; authoritative server-side)."""
 
     IDLE = "idle"
+    STARTING = "starting"
     LISTENING = "listening"
     PROCESSING = "processing"
     SPEAKING = "speaking"

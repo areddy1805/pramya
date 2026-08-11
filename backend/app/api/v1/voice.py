@@ -74,13 +74,13 @@ def _engine(
     asr = ASRClient(
         base_url=settings.omlx_base_url,
         api_key=settings.omlx_api_key,
-        model=settings.omlx_asr_model,
+        model=settings.voice_live_asr_model,  # Parakeet-TDT: live ASR (H.4)
         timeout_seconds=settings.omlx_timeout_seconds,
     )
     tts = TTSClient(
         base_url=settings.omlx_base_url,
         api_key=settings.omlx_api_key,
-        model=settings.omlx_tts_model,
+        model=settings.voice_tts_model,  # Qwen3-TTS (H.4)
         timeout_seconds=settings.omlx_timeout_seconds,
     )
     return VoiceEngine(
@@ -90,6 +90,8 @@ def _engine(
         session_id=session_id,
         user_id=user_id,
         chunk_samples=settings.voice_chunk_samples,
+        silence_seconds=settings.voice_silence_seconds,
+        speech_rms=settings.voice_speech_rms,
     )
 
 

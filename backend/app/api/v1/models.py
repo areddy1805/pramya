@@ -76,9 +76,9 @@ async def models_status() -> ModelsStatusResponse:
                 healthy=omlx_healthy,
                 base_url=settings.omlx_base_url,
                 models=[
-                    settings.omlx_asr_model,
-                    settings.omlx_asr_optional_model,
-                    settings.omlx_tts_model,
+                    settings.voice_live_asr_model,
+                    settings.voice_offline_asr_model,
+                    settings.voice_tts_model,
                     settings.omlx_embedding_model,
                     settings.omlx_rerank_model,
                 ],

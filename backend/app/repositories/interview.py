@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.interview import (
     Answer,
@@ -49,6 +49,15 @@ class InterviewTurnRepository(BaseRepository[InterviewTurn]):
         )
         return (await self.session.scalars(stmt)).all()
 
+    async def latest_for_session(self, session_id: int) -> InterviewTurn | None:
+        stmt = (
+            select(InterviewTurn)
+            .where(InterviewTurn.interview_session_id == session_id)
+            .order_by(InterviewTurn.seq.desc())
+            .limit(1)
+        )
+        return (await self.session.scalars(stmt)).first()
+
     async def max_seq(self, session_id: int) -> int:
         stmt = select(InterviewTurn.seq).where(InterviewTurn.interview_session_id == session_id)
         seqs = (await self.session.scalars(stmt)).all()
@@ -69,6 +78,11 @@ class TranscriptSegmentRepository(BaseRepository[TranscriptSegment]):
             .order_by(TranscriptSegment.seq)
         )
         return (await self.session.scalars(stmt)).all()
+
+    async def max_seq_for_turn(self, turn_id: int) -> int:
+        stmt = select(func.max(TranscriptSegment.seq)).where(TranscriptSegment.turn_id == turn_id)
+        value = (await self.session.scalars(stmt)).first()
+        return int(value) if value is not None else 0
 
 
 class QuestionRepository(BaseRepository[Question]):

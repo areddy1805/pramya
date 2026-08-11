@@ -70,12 +70,22 @@ class Settings(BaseSettings):
     omlx_pramya_thinking_enabled: bool = False
     omlx_timeout_seconds: float = 120.0
 
-    # Voice (oMLX speech models registered in the running runtime)
-    omlx_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # primary ASR
-    omlx_asr_optional_model: str = "parakeet-tdt-0.6b-v3-int8"  # fallback ASR
-    omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"
+    # Voice (oMLX speech models; explicit live/offline split — ADR-023, H.4)
+    voice_live_asr_model: str = "parakeet-tdt-0.6b-v3-int8"  # live ASR (primary)
+    voice_offline_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # offline/archival ASR
+    voice_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"
+    # Legacy aliases (construction compat; prefer voice_* fields).
+    omlx_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # deprecated: use voice_offline_asr_model
+    omlx_asr_optional_model: str = (  # deprecated: use voice_live_asr_model
+        "parakeet-tdt-0.6b-v3-int8"
+    )
+    omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"  # deprecated: use voice_tts_model
     voice_retention_days: int = 30
     audio_storage_dir: str = ".runtime/audio"
+    # Turn finalization: silence (s) after speech ends auto-ends the turn.
+    voice_silence_seconds: float = 1.5
+    # RMS energy threshold (0-32767) to consider speech present.
+    voice_speech_rms: float = 400.0
     # Streaming playback chunk (samples per PCM16 audio_chunk frame).
     voice_chunk_samples: int = 4800  # 200 ms @ 24 kHz
 

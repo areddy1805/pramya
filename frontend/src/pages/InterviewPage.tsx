@@ -151,15 +151,18 @@ export function InterviewPage() {
           }),
         onEvaluation: (overall) => setEvaluation(overall),
         onError: (code, message) => {
-          if (code !== 'tts_unavailable') setError(message)
+          if (code !== 'tts_unavailable' && code !== 'asr_failed') setError(message)
         },
       })
       voiceRef.current = client
       await client.start()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start voice interview')
+      // H.9: micError payloads are {code, message}; keep them user-actionable.
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String(err.code) : 'unknown'
+      const message = err instanceof Error ? err.message : 'Failed to start voice interview'
+      setError(message)
       setSessionId(null)
-      setVoiceState('error')
+      setVoiceState(code === 'permission_denied' ? 'error' : 'error')
     }
   }
 
@@ -334,6 +337,11 @@ export function InterviewPage() {
                   <Button variant="danger" onClick={() => voiceRef.current?.interrupt()} disabled={voiceState !== 'speaking'}>
                     Interrupt
                   </Button>
+                  {voiceState === 'listening' ? (
+                    <Button variant="primary" onClick={() => voiceRef.current?.doneSpeaking()}>
+                      Done speaking
+                    </Button>
+                  ) : null}
                   {voiceState === 'listening' || voiceState === 'processing' || voiceState === 'speaking' ? (
                     <Button variant="ghost" onClick={() => voiceRef.current?.pause()}>Pause</Button>
                   ) : null}
