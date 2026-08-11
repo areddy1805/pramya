@@ -302,10 +302,10 @@ export class VoiceClient {
         this.handlers.onTTSStart?.(payload.generation)
         break
       case 'tts_stop':
-        if (payload.generation === undefined || payload.generation === this.currentGeneration) {
-          this.currentGeneration = -1
-          this.handlers.onTTSStop?.(payload.generation)
-        }
+        // H.7: the generation stays valid for QUEUED playback — chunks already
+        // received must finish playing. Only interrupt/cancel flushes the
+        // queue; a stale generation is dropped at enqueue time.
+        this.handlers.onTTSStop?.(payload.generation)
         break
       case 'error':
         this.handlers.onError?.(payload.code ?? 'error', payload.message ?? 'Voice error')
@@ -333,12 +333,9 @@ export class VoiceClient {
     this.playing = true
     try {
       while (this.playbackQueue.length > 0) {
-        // H.7: stop draining on interruption/cancellation — never play stale audio.
-        if (
-          this.state === 'interrupted' ||
-          this.state === 'cancelled' ||
-          this.currentGeneration < 0
-        ) {
+        // H.7: stop draining ONLY on interruption/cancellation — normal
+        // tts_stop must let already-queued chunks finish playing.
+        if (this.state === 'interrupted' || this.state === 'cancelled') {
           this.playbackQueue = []
           break
         }
