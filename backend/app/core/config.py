@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     document_max_pages: int = 50
     document_parse_timeout_seconds: float = 30.0
 
+    # Knowledge ingestion (Phase 2.2): chunking + embedding batch size.
+    knowledge_chunk_size: int = 1200
+    knowledge_chunk_overlap: int = 200
+    knowledge_embed_batch_size: int = 8
+
     # Observability (Langfuse optional)
     # Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability platform.
     # Langfuse Cloud and Enterprise-only features are NOT V1 dependencies.

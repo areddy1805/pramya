@@ -181,6 +181,19 @@ class DocumentService:
             path = self.storage_dir / doc.storage_key
             path.unlink(missing_ok=True)
 
+    async def read_stored_bytes(self, user_id: int, document_id: int) -> bytes:
+        """Read a document's stored upload bytes (used for re-parse/index)."""
+        doc = await self.get_document(user_id, document_id)
+        if self.storage_dir is None or not doc.storage_key:
+            raise ValidationFailedError(
+                "document content not retained (storage disabled)",
+                details={"document_id": document_id},
+            )
+        path = self.storage_dir / doc.storage_key
+        if not path.exists():
+            raise NotFoundError("stored document content missing")
+        return path.read_bytes()
+
     async def _store(self, data: bytes, kind: DocumentKind, digest: str, filename: str) -> str:
         assert self.storage_dir is not None
         subdir = self.storage_dir / kind.value

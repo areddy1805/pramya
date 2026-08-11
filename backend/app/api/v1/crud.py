@@ -9,10 +9,13 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.factory import build_inference_router
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.domain.enums import DocumentKind, EvidenceStatus
 from app.domain.errors import NotFoundError
+from app.knowledge.ingestion import IngestionService
+from app.knowledge.parsing import parse_document_with_timeout
 from app.services.document import DocumentService
 from app.services.evidence import EvidenceService
 from app.services.user import CandidateService
@@ -200,6 +203,52 @@ async def delete_document(
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
     await svc.delete_document(user_id, document_id)
+
+
+class DocumentIndexOut(BaseModel):
+    document_id: int
+    chunk_count: int
+    dimension: int = 0
+
+
+@router.post("/documents/{document_id}/index", response_model=DocumentIndexOut)
+async def index_document(
+    session: SessionDep,
+    document_id: int,
+    user_id: int = Query(...),
+) -> DocumentIndexOut:
+    """Chunk + embed + persist a parsed document (idempotent re-index)."""
+    settings = get_settings()
+    doc_svc = DocumentService(
+        session,
+        max_size_mb=settings.upload_max_mb,
+        max_pages=settings.document_max_pages,
+        parse_timeout_seconds=settings.document_parse_timeout_seconds,
+    )
+    doc = await doc_svc.get_document(user_id, document_id)
+    data = await doc_svc.read_stored_bytes(user_id, document_id)
+    parsed = await parse_document_with_timeout(
+        data=data,
+        kind=doc.kind,
+        mime=doc.mime,
+        filename=doc.filename,
+        content_hash=doc.content_hash,
+        max_pages=settings.document_max_pages,
+        timeout_seconds=settings.document_parse_timeout_seconds,
+    )
+    router = build_inference_router(settings)
+    ingestion = IngestionService(
+        session,
+        router,
+        chunk_size=settings.knowledge_chunk_size,
+        chunk_overlap=settings.knowledge_chunk_overlap,
+        embed_batch_size=settings.knowledge_embed_batch_size,
+    )
+    rows = await ingestion.index_document(doc, parsed.content)
+    dimension = len(rows[0].embedding) if rows and rows[0].embedding else 0
+    return DocumentIndexOut(
+        document_id=doc.id, chunk_count=len(rows), dimension=dimension
+    )
 
 
 @router.get("/candidates/{user_id}/evidence", response_model=list[EvidenceOut])

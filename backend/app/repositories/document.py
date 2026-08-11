@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 
 from app.domain.enums import DocumentKind
 from app.models.document import Document, DocumentChunk
@@ -39,3 +39,13 @@ class DocumentChunkRepository(BaseRepository[DocumentChunk]):
             .order_by(DocumentChunk.chunk_index)
         )
         return (await self.session.scalars(stmt)).all()
+
+    async def count_for_document(self, document_id: int) -> int:
+        stmt = select(func.count()).select_from(DocumentChunk).where(
+            DocumentChunk.document_id == document_id
+        )
+        return int((await self.session.scalar(stmt)) or 0)
+
+    async def delete_for_document(self, document_id: int) -> None:
+        stmt = delete(DocumentChunk).where(DocumentChunk.document_id == document_id)
+        await self.session.execute(stmt)

@@ -1,10 +1,16 @@
-"""Knowledge layer: document parsing (Phase 2.1).
+"""Knowledge layer: parsing (2.1) + chunking/embedding/ingestion (2.2).
 
-Phase 2.2 adds LlamaIndex ingestion, chunking, embedding, and retrieval —
-not yet. Application code depends on ``parse_document_with_timeout`` and
-``ParsedDocument``; parsers are deterministic and untrusted-input-safe.
+Application code depends on these deterministic components and the
+InferenceRouter for embeddings — never direct provider calls.
 """
 
+from app.knowledge.chunking import Chunk, chunk_text
+from app.knowledge.ingestion import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_EMBED_BATCH_SIZE,
+    IngestionService,
+)
 from app.knowledge.parsing import (
     MAX_DOCX_UNCOMPRESSED_BYTES,
     MIME_DOCX,
@@ -17,12 +23,18 @@ from app.knowledge.parsing import (
 )
 
 __all__ = [
+    "Chunk",
+    "DEFAULT_CHUNK_OVERLAP",
+    "DEFAULT_CHUNK_SIZE",
+    "DEFAULT_EMBED_BATCH_SIZE",
+    "IngestionService",
     "MAX_DOCX_UNCOMPRESSED_BYTES",
     "MIME_DOCX",
     "MIME_MARKDOWN",
     "MIME_PDF",
     "MIME_PLAIN",
     "ParsedDocument",
+    "chunk_text",
     "parse_document",
     "parse_document_with_timeout",
 ]
