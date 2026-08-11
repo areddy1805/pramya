@@ -35,16 +35,31 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://pramya:pramya@localhost:5432/pramya"
     db_echo: bool = False
 
-    # DeepSeek (cloud reasoning)
+    # DeepSeek (cloud reasoning; escalation-only per model policy)
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
+    deepseek_timeout_seconds: float = 60.0
 
     # Local AI runtime (oMLX)
     local_ai_enabled: bool = True
     local_ai_runtime: str = "omlx"
-    omlx_base_url: str = "http://127.0.0.1:7799"
+    # Verified against the local runtime (2026-08): oMLX listens on
+    # 127.0.0.1:8000 and serves OpenAI-compatible endpoints under /v1
+    # (docs/operations/DEPLOYMENT.md).
+    omlx_base_url: str = "http://127.0.0.1:8000/v1"
     omlx_api_key: str | None = None
+    # Canonical model IDs registered in the running oMLX (/v1/models):
+    # `pramya-4b` (Qwen3.5-4B alias), `bge-m3-mlx-4bit`, `Qwen3-Reranker-0.6B-4bit`
+    # (docs/MODEL_CATALOG.md; baseline re-verification at Phase 4, catalog §6).
+    omlx_chat_model: str = "pramya-4b"
+    omlx_embedding_model: str = "bge-m3-mlx-4bit"
+    omlx_rerank_model: str = "Qwen3-Reranker-0.6B-4bit"
+    # Explicit thinking-off for the pramya-4b workhorse. Never rely on the
+    # model's default thinking behavior: the request always carries
+    # chat_template_kwargs.enable_thinking mirroring this flag (catalog §2.2).
+    omlx_pramya_thinking_enabled: bool = False
+    omlx_timeout_seconds: float = 120.0
 
     # Voice
     voice_retention_days: int = 30

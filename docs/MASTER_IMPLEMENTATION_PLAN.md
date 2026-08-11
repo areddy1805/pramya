@@ -857,7 +857,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 PHASE STATUS
 Phase 0  Architecture + Scaffold     COMPLETE
 Phase 1  Core Domain + Persistence   COMPLETE
-Phase 2  Knowledge Layer             NOT STARTED
+Phase 2  Knowledge Layer             IN PROGRESS (2.0 done)
 Phase 3  Interview Engine (LangGraph)NOT STARTED
 Phase 4  Model Routing + Local       NOT STARTED
 Phase 5  Evaluation + Readiness      NOT STARTED
@@ -870,15 +870,15 @@ Phase 11 MCP/Observability/Security  NOT STARTED
 Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 ```
 
-- Current phase: Phase 1 COMPLETE (2026-08)
-- Current task: none (Phase 2 not started; awaiting user confirmation)
-- Blocked by: user confirmation to begin Phase 2
-- Next task: Phase 2.0 InferenceRouter + oMLX chat/embed provider (critical-path), then 2.1 parsing
-- Last verified commit: Phase 1 core domain + persistence (see git log)
-- Tests: 47 passing — 29 unit (health, config, request-id, domain enums/schemas, model metadata, upload validation, idempotency keys), 5 contract (OpenAPI surface, error envelope), 13 integration (migration up/down, pgvector extension, HNSW/GIN indexes, FTS generated column, CRUD, cascade delete, idempotency dedup, upload flow)
+- Current phase: Phase 2 (Knowledge Layer) — task 2.0 COMPLETE (2026-08)
+- Current task: 2.1 document parsing (next after 2.0)
+- Blocked by: user confirmation to continue Phase 2
+- Next task: 2.1 parsing, then 2.2 ingestion
+- Last verified commit: Phase 2.0 InferenceRouter + provider foundation (see git log)
+- Tests: 87 passing — 43 unit (Phase 0/1 tests + AI policy, provider HTTP contracts, router/fallback, structured output), 5 contract (OpenAPI surface, error envelope, provider capability contracts), 13 integration (unchanged), 26 new AI-layer tests
 - Evals: none yet
 - Known failures: none
-- Phase 1 acceptance verified: DB schema matches §7 (22 tables + idempotency_record); `alembic upgrade/downgrade` cycles clean; `alembic check` reports no drift; integration tests green on real pgvector (extension 0.8.6); upload flow accepts valid types, rejects invalid (mime/size/empty/duplicate); mypy + pyright + ruff green.
+- Phase 2.0 acceptance verified: router policy matches AI_ARCHITECTURE §2 (pramya-4b local workhorse thinking-off; deepseek-v4-flash escalation-only; BGE-M3 embed; Qwen3-Reranker rerank; no 9B); httpx-based providers against verified oMLX endpoints (http://127.0.0.1:8000/v1, models `pramya-4b` / `bge-m3-mlx-4bit` / `Qwen3-Reranker-0.6B-4bit`); thinking-disabled assertion (`chat_template_kwargs.enable_thinking=false` on the wire); fallback chains (4B↔deepseek); structured output bounded retry; no OpenAI SDK dependency; mypy + pyright + ruff green.
 
 ---
 
