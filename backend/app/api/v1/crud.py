@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
@@ -18,6 +19,8 @@ from app.knowledge.ingestion import IngestionService
 from app.knowledge.parsing import parse_document_with_timeout
 from app.services.document import DocumentService
 from app.services.evidence import EvidenceService
+from app.services.extraction import ResumeExtractionRunner
+from app.services.role import RoleAnalysisService
 from app.services.user import CandidateService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -273,3 +276,110 @@ async def patch_evidence(
         user_id, evidence_id, status=body.status, strength=body.strength, notes=body.notes
     )
     return EvidenceOut.model_validate(item)
+
+
+# --- Roles (Phase 2.5) -------------------------------------------------------
+
+
+class CompetencyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category: str
+    level: int
+    importance: str
+    weight: float
+    importance_rank: int
+
+
+class RoleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    title: str
+    seniority: str | None = None
+    summary: str | None = None
+    created_at: datetime
+
+
+class RoleDetailOut(RoleOut):
+    competencies: list[CompetencyOut] = Field(default_factory=lambda: [])
+
+
+class RoleAnalyzeIn(BaseModel):
+    user_id: int
+    jd_text: str = Field(min_length=20, max_length=100_000)
+    source_document_id: int | None = None
+
+
+@router.post("/roles/analyze", response_model=RoleDetailOut, status_code=201)
+async def analyze_role(
+    body: RoleAnalyzeIn,
+    session: SessionDep,
+) -> RoleDetailOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    role = await svc.analyze(body.user_id, body.jd_text, source_document_id=body.source_document_id)
+    competencies = await svc.roles.list_competencies(role.id)
+    await session.commit()
+    detail = RoleDetailOut.model_validate(role)
+    detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
+    return detail
+
+
+@router.get("/roles/{role_id}", response_model=RoleDetailOut)
+async def get_role(
+    role_id: int,
+    session: SessionDep,
+    user_id: int = Query(...),
+) -> RoleDetailOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    role = await svc.roles.get_or_raise(role_id, name="role")
+    if role.user_id != user_id:
+        raise NotFoundError("role not found")
+    competencies = await svc.roles.list_competencies(role.id)
+    detail = RoleDetailOut.model_validate(role)
+    detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
+    return detail
+
+
+@router.get("/roles", response_model=list[RoleOut])
+async def list_roles(
+    session: SessionDep,
+    user_id: int = Query(...),
+) -> list[RoleOut]:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    roles = await svc.roles.list_for_user(user_id)
+    return [RoleOut.model_validate(r) for r in roles]
+
+
+# --- Candidate extraction (Phase 2.4) ----------------------------------------
+
+
+class ExtractionOut(BaseModel):
+    extraction: dict[str, object]
+    evidence_count: int
+
+
+@router.post("/candidates/{user_id}/extract", response_model=ExtractionOut)
+async def extract_candidate(
+    session: SessionDep,
+    user_id: int,
+    document_id: int = Query(...),
+) -> ExtractionOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    runner = ResumeExtractionRunner(session, router, storage_dir=Path(settings.upload_storage_dir))
+    extraction, count = await runner.extract_document(user_id, document_id)
+    await session.commit()
+    return ExtractionOut(
+        extraction=extraction.model_dump(),
+        evidence_count=count,
+    )

@@ -11,8 +11,41 @@ from app.models.debrief import EvaluationVersion, InterviewDebrief
 from app.models.idempotency import IdempotencyRecord
 from app.models.preparation import PracticeSession, PreparationItem
 from app.models.readiness import ReadinessSnapshot
+from app.models.role import CandidateCompetency, Competency, Role
 from app.models.story import Story
 from app.repositories.base import BaseRepository
+
+
+class RoleRepository(BaseRepository[Role]):
+    model = Role
+
+    async def add_all_competencies(self, competencies: Sequence[Competency]) -> None:
+        self.session.add_all(competencies)
+        await self.session.flush()
+
+    async def list_for_user(self, user_id: int) -> Sequence[Role]:
+        stmt = select(Role).where(Role.user_id == user_id).order_by(Role.id)
+        return (await self.session.scalars(stmt)).all()
+
+    async def list_competencies(self, role_id: int) -> Sequence[Competency]:
+        stmt = (
+            select(Competency)
+            .where(Competency.role_id == role_id)
+            .order_by(Competency.importance_rank)
+        )
+        return (await self.session.scalars(stmt)).all()
+
+
+class CandidateCompetencyRepository(BaseRepository[CandidateCompetency]):
+    model = CandidateCompetency
+
+    async def list_for_profile(self, candidate_profile_id: int) -> Sequence[CandidateCompetency]:
+        stmt = (
+            select(CandidateCompetency)
+            .where(CandidateCompetency.candidate_profile_id == candidate_profile_id)
+            .order_by(CandidateCompetency.id)
+        )
+        return (await self.session.scalars(stmt)).all()
 
 
 class PreparationItemRepository(BaseRepository[PreparationItem]):
