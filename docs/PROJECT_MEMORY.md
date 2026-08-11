@@ -22,10 +22,10 @@
 
 - All 8 definitive models exist; no concrete incompatibility found. Do NOT reopen selection.
 - Licenses: Qwen3.5-4B/9B Apache-2.0; BGE-M3 MIT (mlx-embeddings library is GPLv3 — use oMLX /v1/embeddings instead); Qwen3-Reranker-0.6B Apache-2.0; Parakeet-TDT-0.6B-v3 CC-BY-4.0 (attribution); Qwen3-ASR-1.7B Apache-2.0; Qwen3-TTS-0.6B Apache-2.0; oMLX Apache-2.0.
-- Parakeet v3 = chunked pseudo-streaming only (no cache-aware streaming). Acceptable; Nemotron-3.5 ASR Streaming = documented upgrade candidate.
-- MLX weights: mlx-community/Qwen3.5-4B-MLX-4bit (~2.4GB), Qwen3.5-9B-MLX-4bit (~5.6GB), bge-m3-mlx-8bit (~592MB)/4bit (~321MB), Qwen3-TTS-12Hz-0.6B-Base-bf16 (~1.2GB)/CustomVoice-4bit (~960MB), parakeet-tdt-0.6b-v3 int8 (~1.3GB).
-- Qwen3.5 checkpoints are VLM — text-only inference needs correct chat template check (implementation caveat).
-- Qwen3-ASR-1.7B MLX path unverified — runtime decided at Phase 7/8 (official qwen_asr / GGUF fallback).
+- Parakeet v3 = chunked pseudo-streaming only (offline model; no cache-aware streaming; sherpa-onnx no true streaming either). VAD-gated pseudo-streaming + local-agreement commit; Qwen3-ASR-1.7B native streaming = documented live fallback. Nemotron-3.5 ASR Streaming = upgrade candidate.
+- MLX weights: mlx-community/Qwen3.5-4B-MLX-4bit (~2.4–3.1GB), Qwen3.5-9B-MLX-4bit (~5.6GB), bge-m3-mlx-8bit (~592MB)/4bit (~321MB), Qwen3-TTS-12Hz-0.6B-Base-bf16 (~1.2GB)/CustomVoice-4bit (~960MB), parakeet-tdt-0.6b-v3 int8 (~1.3GB), Qwen3-ASR-1.7B-8bit (~1.7GB)/4bit (~0.9GB via mlx-audio).
+- Qwen3.5 checkpoints are VLM; need recent mlx-lm for `qwen3_5` arch (ml-explore/mlx-lm issue #1136) — text-only inference needs correct chat template check.
+- MLX models cannot run concurrently from multiple threads → single serialized speech inference worker.
 
 ## Framework Gotchas (learned from research — avoid re-learning)
 
@@ -41,7 +41,7 @@
 - Modular monolith, FastAPI + React 19; LangGraph owns interview orchestration (Postgres checkpointer, thread_id=session); LlamaIndex owns ingestion/retrieval; InferenceRouter (deepseek + oMLX providers) owns model access; MCP = read-only external surface only; readiness/priority/progress = deterministic pure functions; evaluation append-only + versioned.
 - 1024-dim BGE-M3 locked into schema from day one (dimension changes painful).
 - DeepEval judge = deepseek-v4-flash (not gpt default): cost + privacy.
-- Voice: Parakeet live / Qwen3-ASR recorded / Qwen3-TTS; explicit state machine server-side; stale-TTS prohibition; audio not stored by default.
+- Voice: Parakeet live / Qwen3-ASR recorded / Qwen3-TTS; explicit state machine server-side; stale-TTS prohibition (<150 ms flush target); audio not stored by default.
 
 ## Known Problems / Blockers
 
@@ -56,7 +56,7 @@
 
 ## Important Lessons
 
-- Research forks returned empty in one planning session → do research directly in parent context when forks fail silently.
+- Research forks returned empty results in one planning session, but wrote files asynchronously → verify file state after parallel forks; do decision-critical research directly in parent context.
 - Plan docs must be verified against framework reality (2026 versions differ wildly from 2024-era tutorials: chains removed, agents renamed, SDK renamed).
 
 ## Operational Notes

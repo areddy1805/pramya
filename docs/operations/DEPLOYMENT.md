@@ -1,6 +1,6 @@
 # Pramya — Deployment & Operations
 
-> Companion to master plan §34 and ADR-020. Proportional infra; fresh-clone quickstart is the bar.
+> Companion to master plan §34. Proportional infra; fresh-clone quickstart is the bar.
 
 ---
 
@@ -67,7 +67,7 @@ Record in TROUBLESHOOTING.md + this doc once measured (Phase 8/12): API latency,
 ## 7. Health / Monitoring
 
 - `/api/v1/health` (app), `/api/v1/models/status` (providers + loaded models), DB connectivity check.
-- Structured logs: request_id/session_id/turn_id/graph_node/model/provider/latency/tokens/errors (ADR-011).
+- Structured logs: request_id/session_id/turn_id/graph_node/model/provider/latency/tokens/errors (ADR-008).
 
 ## 8. Release Checklist (spec §57)
 

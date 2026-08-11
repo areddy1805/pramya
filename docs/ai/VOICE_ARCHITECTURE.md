@@ -1,6 +1,6 @@
 # Pramya — Voice Architecture
 
-> Companion to master plan §16 and ADR-005/016.
+> Companion to master plan §16 and ADR-012.
 > Voice is a first-class feature: explicit state machine, streaming ASR/TTS, correctness-grade interruption.
 
 ---
@@ -49,18 +49,22 @@ Rules: no stale TTS after interrupt (tested); interruption during generation can
 ## 4. ASR: Parakeet-TDT-0.6B-v3 (live)
 
 - `parakeet-mlx` `transcribe_stream(context_size=(256,256))`; feed ~1s PCM chunks; partial text per chunk; finalize with local-agreement commit (N chunks agree) for turn boundaries.
+- **VAD-gated pseudo-streaming** (verified constraint, ADR-012): Parakeet v3 is an offline (full-context) model — no cache-aware streaming; sherpa-onnx has no true streaming for it either (k2-fsa/sherpa-onnx#2918). Live path = short decode windows + Silero VAD gating + local-agreement partials (emit partials, finalize on segment boundaries).
+- **Fallback live path**: if pseudo-streaming latency/quality is insufficient in Phase 8 measurement, switch live transcription to Qwen3-ASR-1.7B native streaming (same runtime family) — documented fallback, not a default change.
+- **Serialized speech inference**: MLX models cannot run concurrently from multiple threads — one serialized inference worker for speech; VAD on CPU/ANE; speech stack runs host-native (Docker cannot reach Metal).
 - Word timestamps → communication analysis (duration, pauses, filler detection).
-- Verified limitation: chunked pseudo-streaming (not cache-aware) — acceptable; Nemotron-3.5 ASR Streaming = upgrade candidate.
 - Quantization: int8 recommended (~1.3GB), int4 for headroom.
+- Upgrade candidate (not V1): Nemotron-3.5 ASR Streaming.
 
 ## 5. ASR: Qwen3-ASR-1.7B (recorded/archival)
 
-- Offline reprocessing of uploaded recordings / transcript correction; multilingual; NOT in live loop (spec §12).
-- Runtime: official `qwen_asr`; MLX path verified at Phase 7/8 (GGUF/transcribe.cpp fallback).
+- Offline reprocessing of uploaded recordings / transcript correction; multilingual; NOT in live loop (spec §12); native streaming supported — documented live fallback if Parakeet pseudo-streaming insufficient (Phase 8 measurement).
+- Runtime: host-native MLX (mlx-audio 8-bit ~1.7GB / 4-bit ~0.9GB) or official `qwen_asr`; MLX path verified at Phase 7/8 (GGUF/transcribe.cpp fallback).
 
 ## 6. TTS: Qwen3-TTS-0.6B
 
 - mlx-audio `generate(stream=True, streaming_interval≈0.32)`; sentence segmentation from LLM token stream; audio chunks (PCM 24kHz) over WS.
+- ~250 ms jitter buffer before playback; cooperative cancellation (CancelScope-style) between chunks; stale-TTS flush + cancel target < 150 ms (hard correctness requirement, tested).
 - Interrupt: discard queued chunks + cancel generation task; client clears AudioWorklet buffer.
 - CustomVoice preset for consistent interviewer voice; TTFA measured and logged.
 
@@ -82,7 +86,13 @@ Server → client:
 - Interrupt button and barge-in (audio level) both clear playback buffer.
 - Full cleanup on unmount: close context, stop tracks, close WS, cancel rAF.
 
-## 9. Failure Handling
+## 9. Runtime Constraints (M4 16GB + Metal)
+
+- MLX models cannot run concurrently from multiple threads → single serialized inference worker for speech; VAD on CPU/ANE.
+- Speech stack is host-native (oMLX/parakeet-mlx/mlx-audio run on host; Docker cannot reach Metal).
+- Lifecycle: lazy load/unload, memory cap; 4B+9B+ASR+TTS never co-resident; oMLX handles LLM/embed/rerank lifecycle, voice service handles speech model lifecycle.
+
+## 10. Failure Handling
 
 | Failure | Behavior |
 |---|---|

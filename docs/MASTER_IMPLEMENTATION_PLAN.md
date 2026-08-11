@@ -347,7 +347,7 @@ Additional states: PAUSED, INTERRUPTED.
 
 ---
 
-## 14. MCP Design (see ADR-017)
+## 14. MCP Design (see ADR-006)
 
 - **Boundary rule**: MCP is an interoperability boundary for external MCP clients, NOT the internal architecture. Application services never route through MCP.
 - **Server**: standalone process (`backend/app/mcp_server/`) exposing bounded, read-oriented surface:
@@ -481,7 +481,7 @@ prompts/       # versioned prompt tree
 demo/          # synthetic resumes/JDs/fixtures
 docs/
   MASTER_IMPLEMENTATION_PLAN.md  PROJECT_MEMORY.md  DECISIONS.md  MODEL_CATALOG.md
-  architecture/   # ADR-006..ADR-020
+  architecture/   # ADR-001..ADR-014
   ai/             # AI_ARCHITECTURE.md VOICE_ARCHITECTURE.md
                   # RETRIEVAL_ARCHITECTURE.md EVALUATION.md
   operations/     # DEPLOYMENT.md TROUBLESHOOTING.md OBSERVABILITY.md SECURITY.md
@@ -499,26 +499,22 @@ frontend/src/**/__tests__/  # component/unit tests
 
 | ADR | Title | File | Status |
 |---|---|---|---|
-| ADR-001 | Greenfield project | DECISIONS.md | Accepted |
-| ADR-002 | Evidence-driven product architecture | DECISIONS.md | Accepted |
-| ADR-003 | Model-routed AI architecture | DECISIONS.md | Accepted |
-| ADR-004 | Apple Silicon local AI (MLX/oMLX) | DECISIONS.md | Accepted |
-| ADR-005 | Voice as a first-class capability | DECISIONS.md | Accepted |
-| ADR-006 | Framework boundaries | architecture/0006 | Accepted |
-| ADR-007 | LangGraph as interview orchestration engine | architecture/0007 | Accepted |
-| ADR-008 | LlamaIndex as knowledge/retrieval layer | architecture/0008 | Accepted |
-| ADR-009 | Evidence-first evaluation + deterministic readiness | architecture/0009 | Accepted |
-| ADR-010 | pgvector for vector persistence/hybrid retrieval | architecture/0010 | Accepted |
-| ADR-011 | Observability (Langfuse + structured logs, PII-safe) | architecture/0011 | Accepted |
-| ADR-012 | AI evaluation strategy (DeepEval + golden datasets) | architecture/0012 | Accepted |
-| ADR-013 | Security & PII model | architecture/0013 | Accepted |
-| ADR-014 | Definitive V1 model stack (verified compatibility) | architecture/0014 | Accepted |
-| ADR-015 | oMLX as local inference runtime | architecture/0015 | Accepted |
-| ADR-016 | Speech stack (Parakeet v3 live / Qwen3-ASR recorded / Qwen3-TTS) | architecture/0016 | Accepted |
-| ADR-017 | MCP boundary: read-oriented external surface only | architecture/0017 | Accepted |
-| ADR-018 | Persistence: PostgreSQL authoritative; Redis deferred | architecture/0018 | Accepted |
-| ADR-019 | Modular monolith + API-first versioning | architecture/0019 | Accepted |
-| ADR-020 | Deployment: Docker Compose local; proportional infra | architecture/0020 | Accepted |
+| ADR-001 | Framework Boundaries | `architecture/ADR-001-framework-boundaries.md` | Accepted |
+| ADR-002 | LangGraph Interview Workflow | `architecture/ADR-002-langgraph-workflow.md` | Accepted |
+| ADR-003 | LlamaIndex Knowledge Layer | `architecture/ADR-003-llamaindex-knowledge-layer.md` | Accepted |
+| ADR-004 | Model Routing | `architecture/ADR-004-model-routing.md` | Accepted |
+| ADR-005 | Evidence-First Evaluation | `architecture/ADR-005-evidence-first-evaluation.md` | Accepted |
+| ADR-006 | MCP Boundary | `architecture/ADR-006-mcp-boundary.md` | Accepted |
+| ADR-007 | pgvector | `architecture/ADR-007-pgvector.md` | Accepted |
+| ADR-008 | Observability | `architecture/ADR-008-observability.md` | Accepted |
+| ADR-009 | Evaluation | `architecture/ADR-009-evaluation.md` | Accepted |
+| ADR-010 | Security and PII | `architecture/ADR-010-security-and-pii.md` | Accepted |
+| ADR-011 | MLX Runtime + oMLX | `architecture/ADR-011-mlx-runtime-omlx.md` | Accepted |
+| ADR-012 | Voice Model Stack (ASR/TTS) | `architecture/ADR-012-voice-models.md` | Accepted |
+| ADR-013 | deepseek-v4-flash Cloud Reasoning + Thinking Policy | `architecture/ADR-013-deepseek-cloud.md` | Accepted |
+| ADR-014 | Retrieval Models (BGE-M3 + Qwen3-Reranker-0.6B) | `architecture/ADR-014-retrieval-models.md` | Accepted |
+
+Project-foundation decisions (greenfield, evidence-driven product, model-routed AI, Apple Silicon, voice-first) are recorded in `docs/DECISIONS.md`.
 
 ---
 

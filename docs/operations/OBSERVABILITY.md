@@ -1,6 +1,6 @@
 # Pramya — Observability
 
-> Langfuse 4.x tracing. ADR-011 (docs/architecture/0011-observability.md). Redaction is mandatory.
+> Langfuse 4.x tracing. ADR-008 (docs/architecture/ADR-008-observability.md). Redaction is mandatory.
 
 ## What We Trace
 

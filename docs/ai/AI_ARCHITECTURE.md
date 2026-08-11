@@ -1,6 +1,6 @@
 # Pramya — AI Architecture
 
-> Companion to master plan §10–§14 and ADR-006/007/015/016.
+> Companion to master plan §10–§14 and ADR-001/002/003/011.
 > Describes how AI components compose: InferenceRouter → providers → models, LangGraph orchestration, prompt management, structured output, injection defenses.
 
 ---
@@ -55,7 +55,7 @@ Application asks for capabilities: `generate()`, `embed()`, `rerank()`, `transcr
 - Rerank: Qwen3-Reranker-0.6B.
 - Voice endpoints verified at Phase 7; fallback to parakeet-mlx / mlx-audio direct paths behind the same provider interface.
 
-## 5. LangGraph Interview Orchestration (see ADR-007)
+## 5. LangGraph Interview Orchestration (see ADR-002)
 
 Typed StateGraph; nodes per §13 of master plan; Postgres checkpointer (thread_id = session id); `interrupt()` at LISTENING; `Command(resume=...)`; per-node timeouts; node error handlers; streaming events → SSE.
 
@@ -91,13 +91,13 @@ prompts/
 
 - Five regions always delimited: SYSTEM INSTRUCTIONS / USER DATA / DOCUMENT DATA / RETRIEVED EVIDENCE / MODEL OUTPUT.
 - Document content is data; extraction prompt says so; claims validated as data.
-- LLM output never directly mutates state: proposal → validation → application logic → persistence (ADR-013).
+- LLM output never directly mutates state: proposal → validation → application logic → persistence (ADR-010).
 - Adversarial fixtures in test suite (Phase 11).
 
 ## 9. Cost Control
 
 - Local-first routing; retrieval instead of full-context; prompt minimization; response caching where safe (never cached where it could corrupt interview state); request dedup; token/cost telemetry; DeepSeek only where policy says.
 
-## 10. Observability (see ADR-011)
+## 10. Observability (see ADR-008)
 
 - Langfuse `@observe` on router + graph nodes; structured logs with the event set; PII-safe (IDs + redacted metadata).
