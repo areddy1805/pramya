@@ -28,7 +28,8 @@ How to build regression-grade AI quality testing?
 - Deterministic domain tests (readiness math, prioritization, routing
   selection, evidence aggregation) — pure unit tests with golden numbers.
 - Judge backend: deepseek-v4-flash (non-thinking, temp 0) or local
-  Qwen3.5-9B per suite; one judge per benchmark at temperature 0.
+  Qwen3.5-4B per suite; one judge per benchmark at temperature 0. (Qwen3.5-9B
+  is deferred — not a judge option in V1.)
 - CI runs: `deepeval test run` + pytest unit/integration.
 
 ## Alternatives

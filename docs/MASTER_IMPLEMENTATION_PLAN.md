@@ -269,7 +269,7 @@ backend/app/
 | BGE-M3 | Embeddings | via oMLX `/v1/embeddings` (MLX); 1024-dim |
 | Qwen3-Reranker-0.6B | Reranking | via oMLX `/v1/rerank` |
 | deepseek-v4-flash | Complex reasoning/eval/synthesis | via OpenAI-compatible API; thinking mode per task policy |
-| Qwen3.5-4B/9B | Cheap local LLM work / local reasoning | via oMLX `/v1/chat/completions` |
+| Qwen3.5-4B (`pramya-4b`) | Primary local workhorse: routine generation, extraction, classification, structured generation, semantic tasks, ordinary eval | via oMLX `/v1/chat/completions` |
 | Parakeet-TDT-0.6B-v3 | Live ASR | local (parakeet-mlx or oMLX STT); chunked streaming |
 | Qwen3-ASR-1.7B | Recorded/archival ASR | local; offline reprocessing |
 | Qwen3-TTS-0.6B | Interviewer voice | local; streaming via mlx-audio or oMLX TTS |
@@ -287,6 +287,7 @@ backend/app/
 ## 10. AI Architecture
 
 - **InferenceRouter**: task → task policy → provider → model. Observable: task, selected provider/model, reason, latency, tokens, errors, fallback, cache hit/miss, cost (cloud).
+- **Canonical model roles (finalized 2026-08):** Qwen3.5-4B (`pramya-4b`) is the primary local workhorse (default, thinking off, local-first, majority of workload); deepseek-v4-flash is the escalation model (only when workload materially benefits from stronger reasoning/capability/context — never the default, never for routine high-volume work); Qwen3.5-9B is DEFERRED (not required, not a fallback, not a routing target). Architecture principle: **the strongest model is not the default model.**
 - **Providers**: `DeepSeekProvider` (OpenAI-compatible SDK, base_url `https://api.deepseek.com`, model `deepseek-v4-flash`, thinking via `reasoning_effort`, JSON output, tool calls), `MLXProvider` (oMLX OpenAI-compatible endpoints for chat/embed/rerank/STT/TTS), future providers plug in behind `generate()/embed()/rerank()/transcribe()/synthesize()` capabilities.
 - **Structured output**: Pydantic schemas; JSON-schema response_format where supported; validation + retry-with-feedback loop on schema failure; never trust raw LLM output.
 - **Prompt management**: `prompts/` tree (role_analysis/, candidate_analysis/, question_generation/, answer_evaluation/, evidence_extraction/, follow_up/, report_generation/, transcript_analysis/, debrief_analysis/, system_design/, story_analysis/); every prompt versioned; `evaluation_version` records prompt_hash + model policy.
@@ -296,16 +297,17 @@ backend/app/
 
 | Task class | Default model | Thinking mode |
 |---|---|---|
-| Extraction, classification, metadata, simple summary, transformations | Qwen3.5-4B (oMLX) | off |
-| Higher-quality local reasoning, candidate analysis, local eval | Qwen3.5-9B (oMLX) | off |
-| Question generation, deep evaluation, complex reasoning, system design, final synthesis | deepseek-v4-flash | on for complex eval/adaptive reasoning/system design; off for latency-sensitive |
+| Routine generation, extraction, classification, metadata, structured generation, semantic tasks, interview content generation, ordinary evaluation/support | Qwen3.5-4B (`pramya-4b`, oMLX) | off |
+| Deep evaluation, complex reasoning, adaptive reasoning, system design, final synthesis, difficult follow-ups, candidate deep analysis beyond 4B capability | deepseek-v4-flash (escalation) | on for complex eval/adaptive reasoning/system design; off for latency-sensitive |
 | Embeddings | BGE-M3 | — |
 | Reranking | Qwen3-Reranker-0.6B | — |
 | Live ASR | Parakeet-TDT-0.6B-v3 | — |
 | Recorded/multilingual ASR | Qwen3-ASR-1.7B | — |
 | TTS | Qwen3-TTS-0.6B | — |
 
-Fallbacks: cloud → local (Qwen3.5-9B), 9B → 4B, TTS → text response, ASR → manual transcript, retrieval → degraded mode. Mode selection observable in telemetry.
+Routing decision flow: 4B local first → application-level task-class decision → can 4B handle this workload adequately? yes → 4B; no → deepseek-v4-flash. No arbitrary "complexity = cloud" heuristic beyond the task-class policy above.
+
+Fallbacks: DeepSeek down → local 4B (degraded quality) for non-critical tasks; TTS → text response; ASR → manual transcript; retrieval → degraded mode. (Qwen3.5-9B is NOT part of any fallback chain in V1.) Mode selection observable in telemetry.
 
 ---
 
@@ -553,7 +555,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 - 2.1 Document parsing (pdf/docx/txt/md) with size/type/timeout guards.
 - 2.2 LlamaIndex 0.14 IngestionPipeline → chunk → metadata → BGE-M3 embed (oMLX) → pgvector write; persistent docstore dedup.
 - 2.3 Hybrid search service: vector + FTS + RRF + rerank (Qwen3-Reranker via oMLX).
-- 2.4 Candidate extraction pipeline: role/experience/projects/claims → evidence records (claimed status) — Qwen3.5-9B local + deepseek for hard cases.
+- 2.4 Candidate extraction pipeline: role/experience/projects/claims → evidence records (claimed status) — Qwen3.5-4B local, escalate to deepseek-v4-flash for hard cases.
 - 2.5 Role analysis pipeline: JD → role model + competency graph + importance — deepseek-v4-flash.
 - 2.6 Evidence status model + user correction endpoint.
 **Tests:** parsing fixtures; ingestion idempotency; hybrid retrieval recall checks; rerank ordering; extraction schema validity; role analysis on demo JDs.
@@ -584,9 +586,9 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 - 4.4 Task policy table (§10) + fallback chains; routing decision logging.
 - 4.5 Model status endpoint (health, loaded models, memory).
 - 4.6 Structured-output helper: Pydantic schema → JSON-schema prompt + validation + retry-feedback.
-- 4.7 oMLX setup docs + Makefile target; model download pins (see MODEL_CATALOG).
-**Tests:** routing table unit tests; provider adapter tests against mocked/fixture responses; fallback behavior (deepseek down → local); schema retry loop.
-**Acceptance:** router observable; task→model mapping matches §10; degraded modes verified.
+- 4.7 oMLX setup docs + Makefile target; model download pins (see MODEL_CATALOG; required set excludes 9B).
+**Tests:** routing table unit tests; provider adapter tests against mocked/fixture responses; fallback behavior (deepseek down → local 4B); schema retry loop; no-9B-dependency check.
+**Acceptance:** router observable; task→model mapping matches §10; degraded modes verified; local runtime baseline verified per MODEL_CATALOG §6 (`pramya-4b` discoverable + loads, thinking off, normal + structured JSON generation, alias works, no 9B dependency).
 
 ### Phase 5 — Evaluation + Evidence-Backed Feedback (Days 13–15)
 **Goal:** deterministic readiness/preparation engine + reports.
@@ -783,6 +785,7 @@ Classify new feature requests here.
 | Redis | SHOULD-if-justified | measure first |
 | Semantic cache | NICE | measure first |
 | LlamaCloud/managed ingestion | REJECT (V1) | self-hosted pipeline |
+| Qwen3.5-9B as production local model | DEFERRED (experimental) | not required, not a fallback, not a routing target; catalog §2.3; only changeable via ADR + evidence |
 
 ---
 
@@ -889,6 +892,7 @@ Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 | 2026-08 | DeepEval judge = deepseek-v4-flash (not gpt default) | cost + privacy | Phase 11 evals |
 | 2026-08 | Parakeet chunked streaming accepted; Qwen3-ASR native-streaming fallback; Nemotron streaming documented as upgrade candidate | verified limitation | Voice matrix accounts for it |
 | 2026-08 | Voice = WebSocket (control+audio); text events = SSE | bidirectional/interrupt needs | §16 |
+| 2026-08 | Model stack finalization: 4B (`pramya-4b`) = primary local workhorse; deepseek-v4-flash = escalation only; 9B DEFERRED (not required/fallback/routing target) | 4B handles majority of workload; cloud reserved for justified escalation; strongest ≠ default | Routing tables/fallbacks/setup/evals updated repo-wide; ADR-004/013 amended; catalog §0/§2.3/§6; baseline verification at Phase 4 |
 
 ---
 
@@ -896,6 +900,7 @@ Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-08 | Model stack reconciliation (pre-Phase 1): Qwen3.5-4B = primary local workhorse (alias `pramya-4b`, thinking off, local-first, majority of workload); deepseek-v4-flash = escalation model (not default); Qwen3.5-9B DEFERRED (historical entry preserved, not required/fallback/routing target). Routing tables, fallback chains, ADR-004/009/011/013, AI/VOICE architecture, DEPLOYMENT setup, catalog, memory, README, decision log updated consistently. Local verification baseline defined (catalog §6). Phase 1+ has no 9B dependency. | Engineering session |
 | 2026-08 | Phase 0 scaffold: backend (uv/FastAPI/lifespan/health/request-id/logging), frontend (Vite 8 + React 19 + TS strict + router/query/zustand shell), compose + Makefile + CI, domain enums/schemas/errors, `.env.example` aligned. pgvector Python pin corrected to 0.5.x (client) — server ext 0.8.x in Docker image. Tests moved to repo-root `tests/` per §23 (plan §8 showed backend/app/tests; §23 target structure wins). | Implementation session |
 
 (Coherent feature-level changes only. CHANGELOG.md tracks releases.)

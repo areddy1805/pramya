@@ -41,16 +41,15 @@ The goal is to build a genuinely useful interview-preparation product rather tha
 
 The planned V1 AI stack includes:
 
-- DeepSeek V4 Flash
-- Qwen3.5-4B
-- Qwen3.5-9B
+- DeepSeek V4 Flash (escalation/cloud reasoning only)
+- Qwen3.5-4B (primary local workhorse, alias `pramya-4b`)
 - BGE-M3
 - Qwen3-Reranker-0.6B
 - Parakeet TDT 0.6B v3
 - Qwen3-ASR 1.7B
 - Qwen3-TTS 0.6B
 
-The architecture uses model routing so that each task is handled by an appropriate capability rather than sending every operation to a single model.
+The architecture uses model routing so that each task is handled by an appropriate capability rather than sending every operation to a single model. Local 4B handles the majority of workload; cloud escalation is reserved for workloads where additional capability is justified. (Qwen3.5-9B is deferred from the V1 stack — see docs/MODEL_CATALOG.md.)
 
 ## Technology
 

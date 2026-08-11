@@ -51,5 +51,6 @@ and with deliberate thinking-mode policy?
 
 - `packages/ai/providers/deepseek.py`; task policies in config; telemetry
   records thinking flag + token cost.
-- Failure strategy: DeepSeek unavailable → local Qwen3.5-9B fallback for
-  non-critical tasks; user-visible degraded state.
+- Failure strategy: DeepSeek unavailable → local Qwen3.5-4B fallback for
+  non-critical tasks; user-visible degraded state. (Qwen3.5-9B is NOT a
+  fallback in V1 — deferred.)

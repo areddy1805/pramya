@@ -30,6 +30,7 @@
 | ADR-017 | Model-routed AI architecture | Accepted | inline below |
 | ADR-018 | Apple Silicon local AI (MLX/oMLX) | Accepted | inline below |
 | ADR-019 | Voice as a first-class capability | Accepted | inline below |
+| ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Accepted | inline below |
 
 ---
 
@@ -285,3 +286,28 @@
 **Rationale:** Voice provides materially different experience from text-only chat.
 
 **Consequences:** Voice architecture (ADR-012, docs/ai/VOICE_ARCHITECTURE.md); voice test matrix; critical-path schedule protection.
+
+## ADR-020 — Model Stack Finalization: 4B Workhorse + DeepSeek Escalation (9B Deferred)
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:**
+
+1. Qwen3.5-4B (oMLX alias `pramya-4b`) is the primary local workhorse: default local model, thinking off, local-first, handles the majority of Pramya workload (routine generation, extraction, classification, structured generation, normal semantic tasks, interview content generation, ordinary evaluation/support).
+2. deepseek-v4-flash is the escalation/cloud reasoning model: used only when the workload materially benefits from stronger reasoning/capability/context. Not the default. Not a replacement for the 4B workhorse. The InferenceRouter decides when escalation is justified.
+3. Qwen3.5-9B is DEFERRED from the V1 production model stack: not a required runtime, not a fallback, not a routing target, not a required download/setup dependency. Phase 1+ must not depend on it. Recorded as a deferred/experimental local candidate (catalog §2.3) rather than a production-stack member.
+
+Routing policy: 4B local first → application-level task-class decision → can 4B handle this adequately? yes → 4B; no → deepseek-v4-flash. No arbitrary "complexity = cloud" heuristic beyond the task-class policy. Architecture principle: **the strongest model is not the default model.**
+
+**Context:** Prior planning documents assigned Qwen3.5-9B a production role (local reasoning, local eval, cloud fallback). Finalized stack reclassifies it: the 4B workhorse plus a deliberately reserved cloud escalation path is the canonical V1 model architecture.
+
+**Rationale:** 4B handles the majority of workload at local cost/latency; cloud spend is reserved for workloads that materially benefit; 9B neither adds enough capability for its memory/thermal cost on M4 16GB to be a required runtime, nor is it needed as a fallback (4B→DeepSeek escalation chain covers degradation). Historical consideration of 9B is preserved for accuracy.
+
+**Consequences:**
+
+- Routing tables/fallback chains updated repo-wide (plan §10, ADR-004, AI_ARCHITECTURE §2).
+- Setup/docs updated so a fresh environment does not download 9B (DEPLOYMENT §4, catalog §6 baseline).
+- Evals/judge options updated (ADR-009: local judge = 4B, not 9B).
+- Local verification baseline at Phase 4 (catalog §6): `pramya-4b` discoverable/loads, thinking off, normal + structured JSON generation, alias works, no 9B dependency.
+- Only changeable via a new ADR + verified evidence (spec §7/§15 protocol).

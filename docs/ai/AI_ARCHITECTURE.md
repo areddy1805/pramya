@@ -23,20 +23,30 @@ Application asks for capabilities: `generate()`, `embed()`, `rerank()`, `transcr
 ## 2. InferenceRouter
 
 - `RouterRequest(task, prompt_input, schema, mode_flags, latency_budget)` → `RouterDecision(provider, model, reason, thinking)` → execution.
+- **Canonical model roles (finalized 2026-08):** Qwen3.5-4B (`pramya-4b`) =
+  primary local workhorse (default; majority of workload; thinking off);
+  deepseek-v4-flash = escalation model (only when workload materially
+  benefits from stronger reasoning/capability/context; never default);
+  Qwen3.5-9B = DEFERRED (not required, not a fallback, not a routing target).
 - Task classes (initial policy; ADR-004):
 
 | Task | Model | Thinking |
 |---|---|---|
-| extraction / classification / metadata / simple transform | Qwen3.5-4B | off |
-| local reasoning / candidate analysis / local eval | Qwen3.5-9B | off |
-| question generation / deep evaluation / complex reasoning / system design / final synthesis | deepseek-v4-flash | on where justified (complex eval, adaptive reasoning, system design); off for latency-sensitive |
+| routine generation / extraction / classification / metadata / structured generation / semantic tasks / interview content generation / ordinary evaluation | Qwen3.5-4B (`pramya-4b`) | off |
+| deep evaluation / complex reasoning / adaptive reasoning / system design / final synthesis / difficult follow-ups | deepseek-v4-flash | on where justified (complex eval, adaptive reasoning, system design); off for latency-sensitive |
 | embeddings | BGE-M3 | — |
 | rerank | Qwen3-Reranker-0.6B | — |
 | live ASR | Parakeet-TDT-0.6B-v3 | — |
 | recorded ASR | Qwen3-ASR-1.7B | — |
 | TTS | Qwen3-TTS-0.6B | — |
 
-- Fallback chains: cloud→Qwen3.5-9B→4B; 9B→4B; TTS→text; ASR→manual transcript; retrieval→degraded mode.
+Routing decision flow: 4B first → task-class decision → can 4B handle this
+adequately? yes → 4B; no → deepseek-v4-flash. No arbitrary "complexity =
+cloud" heuristic beyond the task-class policy.
+
+- Fallback chains: DeepSeek down → local 4B (non-critical tasks); TTS → text;
+  ASR → manual transcript; retrieval → degraded mode. (9B is NOT part of any
+  V1 fallback chain.)
 - Every decision logged: task, provider, model, reason, latency, tokens, error, fallback, cache hit/miss, cost (cloud).
 - Health: provider health checks, capability detection, `/api/v1/models/status`.
 

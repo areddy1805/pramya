@@ -10,13 +10,52 @@
 
 ---
 
+## 0. Model Hierarchy (finalized 2026-08)
+
+Canonical roles — the basis for all routing policy (ADR-004, master plan §10,
+`docs/ai/AI_ARCHITECTURE.md`):
+
+1. **Qwen3.5-4B (oMLX alias/profile `pramya-4b`) — primary local workhorse.**
+   Default local model. Handles the majority of Pramya workload: routine
+   generation, extraction, classification, structured generation, normal
+   semantic tasks, interview content generation, ordinary evaluation/support
+   workloads. Thinking OFF by default. Local-first.
+2. **deepseek-v4-flash — escalation/cloud reasoning model.**
+   Used only when the workload materially benefits from stronger reasoning,
+   capability, or context. NOT the default. NOT a replacement for the local
+   4B workhorse. The InferenceRouter decides when escalation is justified.
+   Routine high-volume work is never routed to DeepSeek merely because it is
+   stronger.
+3. **Qwen3.5-9B — DEFERRED from the V1 production stack.**
+   Not a required runtime, not a fallback, not a routing target, not a
+   required download/setup dependency. Recorded below as a deferred/experimental
+   local candidate only (historical context preserved).
+
+Routing decision flow (deterministic, task-class based — see ADR-004):
+
+```
+4B local first
+    ↓
+application-level task-class decision
+    ↓
+can 4B handle this workload adequately?
+    ├── yes → Qwen3.5-4B (pramya-4b)
+    └── no  → deepseek-v4-flash (escalation)
+```
+
+Architecture principle: **the strongest model is not the default model.**
+Local 4B handles the majority of workload; cloud escalation is reserved for
+workloads where additional capability is justified.
+
+---
+
 ## 1. Model Inventory Summary
 
 | # | Model | Purpose | Runtime | License | Local/Cloud |
 |---|---|---|---|---|---|
-| 1 | deepseek-v4-flash | Cloud reasoning, deep evaluation, synthesis | DeepSeek API | DeepSeek terms (proprietary cloud API) | Cloud |
-| 2 | Qwen3.5-4B | Cheap local classification/extraction/transformations | MLX via oMLX | Apache-2.0 | Local |
-| 3 | Qwen3.5-9B | Higher-quality local reasoning, local question gen/eval | MLX via oMLX | Apache-2.0 | Local |
+| 1 | deepseek-v4-flash | ESCALATION: complex reasoning, deep evaluation, synthesis (never default) | DeepSeek API | DeepSeek terms (proprietary cloud API) | Cloud |
+| 2 | Qwen3.5-4B (`pramya-4b`) | PRIMARY local workhorse: routine generation, extraction, classification, structured generation, semantic tasks, ordinary eval | MLX via oMLX | Apache-2.0 | Local |
+| 3 | Qwen3.5-9B | DEFERRED from V1 production stack (experimental local candidate; not required) | MLX via oMLX | Apache-2.0 | Local (optional) |
 | 4 | BGE-M3 | Embeddings (dense retrieval, multilingual) | MLX via oMLX | MIT | Local |
 | 5 | Qwen3-Reranker-0.6B | Reranking candidate evidence | MLX via oMLX | Apache-2.0 | Local |
 | 6 | Parakeet-TDT-0.6B-v3 | Live ASR (chunked/pseudo-streaming) | Host-native MLX (parakeet-mlx) | CC-BY-4.0 | Local |
@@ -27,10 +66,11 @@
 
 ## 2. Detailed Entries
 
-### 2.1 deepseek-v4-flash
+### 2.1 deepseek-v4-flash (escalation model — NOT default)
 
 - **Model:** DeepSeek V4 Flash
 - **Version:** model ID `deepseek-v4-flash` (V4-Flash-0731 checkpoint public beta as of Aug 2026; legacy `deepseek-chat`/`deepseek-reasoner` IDs deprecated 2026-07-24 — do NOT use)
+- **Role in stack:** escalation/cloud reasoning. Used only when the workload materially benefits from stronger reasoning/capability/context. NOT the default model; NOT a replacement for the local 4B workhorse. The InferenceRouter decides when escalation is justified (ADR-004, §0 above).
 - **Purpose:** complex reasoning, adaptive question generation, deep answer evaluation, evidence interpretation, difficult follow-ups, system-design reasoning, final synthesis.
 - **Runtime:** DeepSeek cloud API, OpenAI-compatible. Base URL `https://api.deepseek.com`. Anthropic-format endpoint also available.
 - **Architecture:** MoE 284B total / 13B active (per official docs).
@@ -43,14 +83,16 @@
 - **Pricing (Aug 2026):** ~$0.14/1M input (cache miss), ~$0.0028/1M (cache hit), ~$0.28/1M output; concurrency limit 2500. Verify at api-docs.deepseek.com.
 - **License:** proprietary cloud API terms; no redistribution; minimize PII sent.
 - **Source:** https://api-docs.deepseek.com/ , https://api-docs.deepseek.com/quick_start/pricing/
-- **Fallback:** Qwen3.5-9B (local, degraded quality).
-- **Why selected:** spec-mandated primary cloud reasoning model (spec §6.1).
+- **Fallback (DeepSeek unavailable):** Qwen3.5-4B (local, degraded quality) for non-critical tasks; user-visible degraded state. The 9B is NOT a fallback.
+- **Why selected:** spec-mandated escalation/cloud reasoning model (spec §6.1), reconciled to escalation-only role (finalized 2026-08).
 - **Alternatives rejected:** legacy IDs (deprecated); deepseek-v4-pro (costlier; not needed in V1).
 
-### 2.2 Qwen3.5-4B
+### 2.2 Qwen3.5-4B (alias `pramya-4b`) — PRIMARY LOCAL WORKHORSE
 
 - **Model:** Qwen/Qwen3.5-4B (MLX: `mlx-community/Qwen3.5-4B-OptiQ-4bit` ~2.8–3.0 GB)
-- **Purpose:** fast classification, lightweight extraction, metadata analysis, simple transformations, structured extraction, cheap conversational ops, background processing.
+- **oMLX alias/profile:** `pramya-4b` (canonical alias configured in oMLX pointing at the 4B model; used by all routing/config code instead of raw HF names).
+- **Role in stack:** primary local workhorse. Default local model; handles the majority of Pramya workload. Thinking OFF by default. Local-first.
+- **Purpose:** routine generation, extraction, classification, metadata analysis, structured generation, normal semantic tasks, interview content generation, ordinary evaluation/support workloads, background processing, simple transformations.
 - **Runtime:** MLX via oMLX (`/v1/chat/completions`, streaming, JSON-schema structured output, tool calling).
 - **License:** Apache-2.0.
 - **Quantization:** 4-bit standard; OptiQ mixed-precision variants exist.
@@ -59,23 +101,31 @@
 - **Streaming:** yes. **Batching:** oMLX continuous batching.
 - **Compatibility note:** initial mlx-lm lag for `qwen3_5` architecture (ml-explore/mlx-lm issue #1136) — must use recent mlx-lm. Verify at Phase 4.
 - **Source:** https://huggingface.co/Qwen/Qwen3.5-4B , https://huggingface.co/mlx-community/Qwen3.5-4B-OptiQ-4bit
-- **Fallback:** none (local); if unavailable, route task to Qwen3.5-9B or DeepSeek per policy.
-- **Why selected:** spec-mandated cheap local model; fits 16 GB envelope.
+- **Fallback (4B unavailable):** escalate to deepseek-v4-flash per task policy (not another local model); graceful degraded mode.
+- **Why selected:** spec-mandated cheap local model; finalized 2026-08 as the primary local workhorse; fits 16 GB envelope.
 
-### 2.3 Qwen3.5-9B
+### 2.3 Qwen3.5-9B — DEFERRED (experimental local candidate, NOT V1 production)
+
+> Historical note: initially considered for higher-quality local reasoning,
+> candidate analysis, local question generation/evaluation, and as a local
+> fallback for cloud. Finalized 2026-08: DEFERRED from the V1 production
+> model stack. Not a required runtime, not a fallback, not a routing target,
+> not a required download/setup dependency. This entry is preserved for
+> historical accuracy and as a documented experimental candidate.
 
 - **Model:** Qwen/Qwen3.5-9B (MLX: `mlx-community/Qwen3.5-9B-OptiQ-4bit` ~5.6 GB)
-- **Purpose:** higher-quality local reasoning, candidate analysis, local question generation, local evaluation, synthesis where cloud unnecessary.
-- **Runtime:** MLX via oMLX.
+- **Status:** DEFERRED / experimental. Phase 1+ must not depend on it.
+- **Purpose (if enabled experimentally):** higher-quality local reasoning beyond 4B capability.
+- **Runtime:** MLX via oMLX (only if explicitly enabled).
 - **License:** Apache-2.0.
 - **Quantization:** 4-bit standard; 8-bit/bf16/mxfp8 variants exist.
 - **Memory expectation:** ~5.6 GB (4-bit); peak ~6–7 GB at 4K ctx.
-- **Latency expectation:** ~19–35 tok/s on M4 16 GB; ~51 tok/s M3 Max-class (community) — measure at Phase 4.
+- **Latency expectation:** ~19–35 tok/s on M4 16 GB (community, unmeasured on Pramya) — measure only if enabled.
 - **Streaming:** yes.
 - **Compatibility note:** same mlx-lm `qwen3_5` arch support caveat as 4B.
 - **Source:** https://huggingface.co/Qwen/Qwen3.5-9B , https://huggingface.co/mlx-community/Qwen3.5-9B-OptiQ-4bit
-- **Fallback:** DeepSeek for complex reasoning; Qwen3.5-4B for cheap ops.
-- **Memory budget note:** 4B + 9B must not be loaded simultaneously with speech models on 16 GB; model lifecycle (lazy load, unload, oMLX memory cap) enforces.
+- **Fallback:** none in V1 — not part of any fallback chain.
+- **Memory budget note (if ever enabled):** 4B + 9B must not be loaded simultaneously with speech models on 16 GB; model lifecycle (lazy load, unload, oMLX memory cap) enforces. Default V1 concurrent set never includes 9B.
 
 ### 2.4 BGE-M3
 
@@ -147,17 +197,21 @@
 | Model | Runs on M4 16GB | MLX | oMLX | Streaming | Batch | Cancel | Est. resident |
 |---|---|---|---|---|---|---|---|
 | deepseek-v4-flash | N/A (cloud) | — | — | yes | yes | client-side | 0 |
-| Qwen3.5-4B 4-bit | yes | yes | yes | yes | yes | client-side | ~3 GB |
-| Qwen3.5-9B 4-bit | yes | yes | yes | yes | yes | client-side | ~5.6 GB |
+| Qwen3.5-4B 4-bit (`pramya-4b`) | yes | yes | yes | yes | yes | client-side | ~3 GB |
+| Qwen3.5-9B 4-bit | yes* | yes | yes | yes | yes | client-side | ~5.6 GB |
 | BGE-M3 4-bit | yes | yes | yes | yes | yes | n/a | ~0.3 GB |
 | Qwen3-Reranker-0.6B 4-bit | yes | yes | yes | n/a | yes | n/a | ~0.3 GB |
 | Parakeet-TDT v3 INT8/4 | yes | yes | no (host-native) | chunked/pseudo | yes | mid-window | ~0.5–0.8 GB |
 | Qwen3-ASR-1.7B 8-bit | yes | yes | audio via mlx-audio | yes (native) | yes | yes | ~0.9–2.4 GB |
 | Qwen3-TTS-0.6B 4-bit | yes | yes | audio via mlx-audio | yes | n/a | cooperative | ~1 GB |
 
-**16 GB budget rule:** never load 4B + 9B + ASR + TTS simultaneously. Typical
-concurrent sets: one LLM (4B or 9B) + BGE-M3 + reranker (~4–6.5 GB) OR speech
-stack (ASR + TTS, ~1.5–3 GB) + small LLM. Model lifecycle service enforces
+*\*9B is DEFERRED from V1 production: it runs on the hardware but is not part of the
+required stack, not a fallback, not a routing target, and not a required download.*
+
+**16 GB budget rule (V1 default):** one LLM — the 4B workhorse — + BGE-M3 +
+reranker (~4–6.5 GB total) OR speech stack (ASR + TTS, ~1.5–3 GB) + small LLM.
+9B is not in the default concurrent set. If 9B is ever enabled experimentally,
+never load 4B + 9B + ASR + TTS simultaneously; model lifecycle service enforces
 memory cap, lazy load, unload; speech runs on a single serialized MLX worker
 (MLX Metal workloads should not run concurrently from multiple threads).
 
@@ -165,8 +219,8 @@ memory cap, lazy load, unload; speech runs on a single serialized MLX worker
 
 ## 4. License Audit Notes
 
-- Apache-2.0: Qwen3.5-4B/9B, Qwen3-Reranker-0.6B, Qwen3-ASR-1.7B,
-  Qwen3-TTS-0.6B, oMLX, FastMCP, DeepEval.
+- Apache-2.0: Qwen3.5-4B (production), Qwen3.5-9B (deferred/experimental),
+  Qwen3-Reranker-0.6B, Qwen3-ASR-1.7B, Qwen3-TTS-0.6B, oMLX, FastMCP, DeepEval.
 - MIT: BGE-M3 weights/conversions.
 - CC-BY-4.0: Parakeet-TDT v3 (attribution required — record in NOTICE).
 - Proprietary cloud terms: DeepSeek API.
@@ -191,3 +245,22 @@ memory cap, lazy load, unload; speech runs on a single serialized MLX worker
 | Magpie TTS | TTS | research candidate |
 | DeepSeek V4 Pro | cloud | not needed in V1 (flash sufficient) |
 | Qwen3.5-35B/122B (MoE) | local | exceeds 16 GB comfortable envelope in V1 |
+| **Qwen3.5-9B** | **local LLM** | **DEFERRED from V1 production (historical consideration; experimental candidate only — §2.3). Not required, not a fallback, not a routing target.** |
+
+---
+
+## 6. Local Runtime Verification Baseline (required at Phase 4)
+
+Before any Phase 1+ work depends on local inference, the oMLX + `pramya-4b`
+baseline must be verified (no 9B dependency):
+
+- [ ] `pramya-4b` is discoverable through oMLX (model alias/profile exists)
+- [ ] `pramya-4b` loads successfully on M4 16 GB
+- [ ] thinking is disabled by default (task policy `thinking: off`)
+- [ ] normal generation works (`/v1/chat/completions`)
+- [ ] structured JSON generation works (JSON-schema response_format)
+- [ ] model alias/profile (`pramya-4b`) works through the router config
+- [ ] no 9B dependency exists anywhere in config/setup/tests
+
+No performance or quality claims beyond verified facts may be recorded
+(measure at Phase 4; see §2.2 latency note).

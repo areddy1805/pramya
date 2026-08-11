@@ -47,7 +47,8 @@ Services: `db` (pgvector/pgvector:pg17), `backend` (uvicorn, depends on db), `fr
 ## 4. Local AI Runtime (oMLX)
 
 - Runs on host (Metal access): brew (`brew services start omlx`) or DMG. Backend reaches via `OMLX_BASE_URL`.
-- Models: per `docs/MODEL_CATALOG.md` — Qwen3.5-4B/9B 4-bit, BGE-M3, Qwen3-Reranker-0.6B, Parakeet-TDT-0.6B-v3 (int8), Qwen3-ASR-1.7B, Qwen3-TTS-0.6B.
+- Models: per `docs/MODEL_CATALOG.md` — Qwen3.5-4B 4-bit (required, alias `pramya-4b`), BGE-M3, Qwen3-Reranker-0.6B, Parakeet-TDT-0.6B-v3 (int8), Qwen3-ASR-1.7B, Qwen3-TTS-0.6B. Qwen3.5-9B is NOT required (deferred — see catalog §2.3); a fresh environment must not download it.
+- `make models-pull` downloads only the required V1 model set (no 9B).
 - Resource control: oMLX model pinning/TTL/LRU + memory enforcement; do not load all models simultaneously; lifecycle managed by oMLX.
 - Fallbacks if oMLX unavailable: app degrades (ASR→manual transcript, TTS→text, cloud→local, local→cloud per policy).
 
