@@ -32,9 +32,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
 
     # Database (PostgreSQL + pgvector)
-    database_url: str = (
-        "postgresql+asyncpg://pramya:pramya@localhost:5432/pramya"
-    )
+    database_url: str = "postgresql+asyncpg://pramya:pramya@localhost:5432/pramya"
     db_echo: bool = False
 
     # DeepSeek (cloud reasoning)
@@ -54,6 +52,7 @@ class Settings(BaseSettings):
 
     # Uploads
     upload_max_mb: int = 5
+    upload_storage_dir: str = ".runtime/uploads"
 
     # Observability (Langfuse optional)
     langfuse_public_key: str | None = None
