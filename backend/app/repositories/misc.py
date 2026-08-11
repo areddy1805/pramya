@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.domain.enums import PracticeItemStatus
 from app.models.debrief import EvaluationVersion, InterviewDebrief
@@ -50,6 +50,19 @@ class CandidateCompetencyRepository(BaseRepository[CandidateCompetency]):
 
 class PreparationItemRepository(BaseRepository[PreparationItem]):
     model = PreparationItem
+
+    async def reopen_open(self, user_id: int) -> None:
+        """Reopen dismissed items (or mark stale done items open) for a
+        fresh regeneration pass — keeps the queue accurate per snapshot."""
+        stmt = (
+            update(PreparationItem)
+            .where(
+                PreparationItem.user_id == user_id,
+                PreparationItem.status == PracticeItemStatus.DISMISSED,
+            )
+            .values(status=PracticeItemStatus.OPEN)
+        )
+        await self.session.execute(stmt)
 
     async def list_open_for_user(
         self, user_id: int, *, limit: int = 50
