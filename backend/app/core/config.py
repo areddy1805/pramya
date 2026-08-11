@@ -66,9 +66,13 @@ class Settings(BaseSettings):
     omlx_pramya_thinking_enabled: bool = False
     omlx_timeout_seconds: float = 120.0
 
-    # Voice
+    # Voice (oMLX speech models registered in the running runtime)
+    omlx_asr_model: str = "parakeet-tdt-0.6b-v3-int8"
+    omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"
     voice_retention_days: int = 30
     audio_storage_dir: str = ".runtime/audio"
+    # Streaming playback chunk (samples per PCM16 audio_chunk frame).
+    voice_chunk_samples: int = 4800  # 200 ms @ 24 kHz
 
     # Uploads
     upload_max_mb: int = 5
