@@ -9,6 +9,7 @@ import {
   DEFAULT_USER_ID,
 } from '../hooks/queries'
 import { useSSE } from '../hooks/useSSE'
+import { VoiceClient, type VoiceState } from '../lib/voice'
 import { Button, Divider, EmptyState, ErrorState, Field, Pill, SectionHeading, Select, Spinner, StatusDot, Surface } from '../components/ui'
 const KINDS = [
   { value: 'general', label: 'General' },
@@ -32,21 +33,38 @@ const STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger'
   error: { label: 'Error', tone: 'danger' },
 }
 
+const VOICE_STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active'; blurb: string }> = {
+  idle: { label: 'Ready', tone: 'neutral', blurb: 'Connect your microphone to begin.' },
+  speaking: { label: 'Interviewer speaking', tone: 'active', blurb: 'Listen — you can interrupt at any time.' },
+  listening: { label: 'Listening', tone: 'ok', blurb: 'Your turn. Speak naturally; the transcript appears live.' },
+  processing: { label: 'Thinking', tone: 'active', blurb: 'Evaluating your answer and deciding what to ask next.' },
+  paused: { label: 'Paused', tone: 'warn', blurb: 'The interview is paused.' },
+  interrupted: { label: 'Interrupted', tone: 'warn', blurb: 'Stopped mid-sentence. Your turn.' },
+  cancelled: { label: 'Cancelled', tone: 'neutral', blurb: 'Session cancelled.' },
+  completed: { label: 'Completed', tone: 'ok', blurb: 'Interview complete.' },
+  error: { label: 'Voice error', tone: 'danger', blurb: 'A voice problem occurred.' },
+}
+
 interface TranscriptLine {
   role: 'interviewer' | 'candidate'
   text: string
+  partial?: boolean
 }
 
 export function InterviewPage() {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [kind, setKind] = useState('general')
   const [duration, setDuration] = useState(30)
+  const [mode, setMode] = useState<'text' | 'voice'>('voice')
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle')
+  const [evaluation, setEvaluation] = useState<number | null>(null)
   const [answer, setAnswer] = useState('')
   const [lastHint, setLastHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
   const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string } | null>(null)
   const keyCounter = useRef(0)
+  const voiceRef = useRef<VoiceClient | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   const create = useCreateInterview()
@@ -95,6 +113,66 @@ export function InterviewPage() {
       setError(err instanceof Error ? err.message : 'Failed to start interview')
       setSessionId(null)
     }
+  }
+
+  async function startVoiceInterview() {
+    setError(null)
+    setTranscript([])
+    setEvaluation(null)
+    setVoiceState('idle')
+    try {
+      const s = await create.mutateAsync({
+        user_id: DEFAULT_USER_ID,
+        kind,
+        role_id: roles.data?.at(-1)?.id,
+        duration_minutes: duration,
+        focus_competency_ids: [],
+        mode: 'voice',
+      })
+      setSessionId(s.id)
+      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+      const url = `${proto}://${window.location.host}/api/v1/ws/voice/${s.id}?user_id=${DEFAULT_USER_ID}`
+      const client = new VoiceClient(url, {
+        onState: (st) => setVoiceState(st),
+        onQuestion: (q) => {
+          setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '' })
+          setLastHint(null)
+          setTranscript((t) => [...t, { role: 'interviewer', text: q.text }])
+        },
+        onPartial: (text) =>
+          setTranscript((t) => {
+            const base = t.filter((l) => !(l.role === 'candidate' && l.partial))
+            return [...base, { role: 'candidate', text, partial: true }]
+          }),
+        onFinalTranscript: (text) =>
+          setTranscript((t) => {
+            const base = t.filter((l) => !(l.role === 'candidate' && l.partial))
+            return [...base, { role: 'candidate', text }]
+          }),
+        onEvaluation: (overall) => setEvaluation(overall),
+        onError: (code, message) => {
+          if (code !== 'tts_unavailable') setError(message)
+        },
+      })
+      voiceRef.current = client
+      await client.start()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start voice interview')
+      setSessionId(null)
+      setVoiceState('error')
+    }
+  }
+
+  async function endVoice() {
+    await voiceRef.current?.stop()
+    voiceRef.current = null
+    setSessionId(null)
+  }
+
+  async function cancelVoice() {
+    await voiceRef.current?.cancel()
+    voiceRef.current = null
+    setSessionId(null)
   }
 
   async function submitAnswer() {
@@ -150,6 +228,12 @@ export function InterviewPage() {
             <SectionHeading>New interview</SectionHeading>
             <div className="space-y-4">
               <Field label="Mode">
+                <Select value={mode} onChange={(e) => setMode(e.target.value as 'text' | 'voice')}>
+                  <option value="voice">Live voice interview</option>
+                  <option value="text">Typed interview</option>
+                </Select>
+              </Field>
+              <Field label="Interview type">
                 <Select value={kind} onChange={(e) => setKind(e.target.value)}>
                   {KINDS.map((k) => (
                     <option key={k.value} value={k.value}>{k.label}</option>
@@ -166,11 +250,19 @@ export function InterviewPage() {
                   onChange={(e) => setDuration(Number(e.target.value))}
                 />
               </Field>
-              <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
-                {create.isPending ? 'Creating…' : 'Start interview'}
-              </Button>
+              {mode === 'voice' ? (
+                <Button size="lg" className="w-full" onClick={() => void startVoiceInterview()} disabled={create.isPending}>
+                  {create.isPending ? 'Connecting…' : '🎙 Start Live Voice Interview'}
+                </Button>
+              ) : (
+                <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
+                  {create.isPending ? 'Creating…' : 'Start typed interview'}
+                </Button>
+              )}
               <p className="text-xs leading-relaxed text-fg-3">
-                Questions adapt to your demonstrated evidence. Answers are evaluated against 13 dimensions and update your readiness.
+                {mode === 'voice'
+                  ? 'You hear the interviewer, speak your answers aloud, and the conversation adapts to what you demonstrate. Interrupt any time; stop whenever you are ready.'
+                  : 'Questions adapt to your demonstrated evidence. Answers are evaluated against 13 dimensions and update your readiness.'}
               </p>
             </div>
           </Surface>
@@ -217,6 +309,46 @@ export function InterviewPage() {
               )}
             </Surface>
 
+            {mode === 'voice' ? (
+              /* Voice instrument: state + controls (flagship workspace) */
+              <Surface className={`p-6 transition-colors ${voiceState === 'speaking' || voiceState === 'processing' ? 'pramya-focus-lock' : ''}`}>
+                <SectionHeading>Voice session</SectionHeading>
+                <div className="flex items-center gap-3 rounded-xl border border-line bg-track/60 px-4 py-4">
+                  <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${voiceState === 'listening' ? 'bg-ok animate-pulse' : voiceState === 'speaking' ? 'bg-accent animate-pulse' : voiceState === 'processing' ? 'bg-warn animate-pulse' : voiceState === 'error' ? 'bg-danger' : 'bg-fg-3'}`} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-fg">
+                      {VOICE_STATE_META[voiceState]?.label ?? 'Ready'}
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-fg-2">
+                      {VOICE_STATE_META[voiceState]?.blurb ?? 'Connect your microphone to begin.'}
+                    </p>
+                  </div>
+                </div>
+                {evaluation != null ? (
+                  <div className="mt-4 rounded-lg border border-line bg-accent-soft p-3.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">Answer evaluated</p>
+                    <p className="mt-1 text-sm text-fg">Overall score: {evaluation.toFixed(1)} / 10 — the next question adapts to this answer.</p>
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <Button variant="danger" onClick={() => voiceRef.current?.interrupt()} disabled={voiceState !== 'speaking'}>
+                    Interrupt
+                  </Button>
+                  {voiceState === 'listening' || voiceState === 'processing' || voiceState === 'speaking' ? (
+                    <Button variant="ghost" onClick={() => voiceRef.current?.pause()}>Pause</Button>
+                  ) : null}
+                  {voiceState === 'paused' ? (
+                    <Button variant="ghost" onClick={() => voiceRef.current?.resume()}>Resume</Button>
+                  ) : null}
+                  <span className="flex-1" />
+                  <Button variant="secondary" onClick={() => void endVoice()}>End interview</Button>
+                  <Button variant="ghost" onClick={() => void cancelVoice()}>Cancel</Button>
+                </div>
+                <p className="mt-4 text-xs leading-relaxed text-fg-3">
+                  Partial transcripts appear live as you speak; they stabilize into your recorded answer. Interrupting the interviewer is fine — nothing is lost.
+                </p>
+              </Surface>
+            ) : (
             <Surface className="p-6">
               <SectionHeading>Your answer</SectionHeading>
               <textarea
@@ -253,6 +385,7 @@ export function InterviewPage() {
                 </div>
               ) : null}
             </Surface>
+            )}
 
             <Surface className="p-6">
               <SectionHeading>Transcript</SectionHeading>
