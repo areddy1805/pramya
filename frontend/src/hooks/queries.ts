@@ -182,54 +182,67 @@ export function useCreateInterview() {
   })
 }
 
-export function useInterviewAction(interviewId: number) {
+export function useInterviewAction() {
   const qc = useQueryClient()
-  const base = `/api/v1/interviews/${interviewId}`
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['interview', interviewId] })
+  const base = (id: number) => `/api/v1/interviews/${id}`
+  const invalidate = (id: number) => {
+    qc.invalidateQueries({ queryKey: ['interview', id] })
     qc.invalidateQueries({ queryKey: ['interviews'] })
   }
   return {
     begin: useMutation({
-      mutationFn: (userId: number) => api.post<InterviewSession>(`${base}/begin${qs({ user_id: userId })}`),
-      onSuccess: invalidate,
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) =>
+        api.post<InterviewSession>(`${base(id)}/begin${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
     }),
     nextQuestion: useMutation({
-      mutationFn: (userId: number) =>
-        api.post<Question>(`${base}/questions${qs({ user_id: userId })}`),
-      onSuccess: invalidate,
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) =>
+        api.post<Question>(`${base(id)}/questions${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
     }),
     answer: useMutation({
       mutationFn: ({
+        interviewId: id,
         userId,
         questionId,
         text,
         key,
       }: {
+        interviewId: number
         userId: number
         questionId: number
         text: string
         key?: string
       }) =>
-        api.post(`/api/v1/interviews/${interviewId}/answers${qs({ user_id: userId })}`, {
+        api.post(`${base(id)}/answers${qs({ user_id: userId })}`, {
           question_id: questionId,
           answer_text: text,
           idempotency_key: key,
           mode: 'text',
         }),
-      onSuccess: invalidate,
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
     }),
     hint: useMutation({
-      mutationFn: ({ userId, questionId }: { userId: number; questionId: number }) =>
-        api.post<{ hint: string }>(
-          `${base}/hint${qs({ user_id: userId, question_id: questionId })}`,
-        ),
-      onSuccess: invalidate,
+      mutationFn: ({ interviewId: id, userId, questionId }: { interviewId: number; userId: number; questionId: number }) =>
+        api.post<{ hint: string }>(`${base(id)}/hint${qs({ user_id: userId, question_id: questionId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
     }),
-    pause: useMutation({ mutationFn: (userId: number) => api.post(`${base}/pause${qs({ user_id: userId })}`), onSuccess: invalidate }),
-    resume: useMutation({ mutationFn: (userId: number) => api.post(`${base}/resume${qs({ user_id: userId })}`), onSuccess: invalidate }),
-    stop: useMutation({ mutationFn: (userId: number) => api.post(`${base}/stop${qs({ user_id: userId })}`), onSuccess: invalidate }),
-    cancel: useMutation({ mutationFn: (userId: number) => api.post(`${base}/cancel${qs({ user_id: userId })}`), onSuccess: invalidate }),
+    pause: useMutation({
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) => api.post(`${base(id)}/pause${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
+    }),
+    resume: useMutation({
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) => api.post(`${base(id)}/resume${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
+    }),
+    stop: useMutation({
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) => api.post(`${base(id)}/stop${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
+    }),
+    cancel: useMutation({
+      mutationFn: ({ interviewId: id, userId }: { interviewId: number; userId: number }) => api.post(`${base(id)}/cancel${qs({ user_id: userId })}`),
+      onSuccess: (_d, vars) => invalidate(vars.interviewId),
+    }),
   }
 }
 

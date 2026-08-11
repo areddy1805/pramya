@@ -53,7 +53,7 @@ export function InterviewPage() {
   const sessions = useInterviews(DEFAULT_USER_ID)
   const roles = useRoles(DEFAULT_USER_ID)
   const session = useInterview(sessionId ?? 0, DEFAULT_USER_ID)
-  const actions = useInterviewAction(sessionId ?? 0)
+  const actions = useInterviewAction()
 
   useSSE(sessionId ? `/api/v1/interviews/${sessionId}/events?user_id=${DEFAULT_USER_ID}` : '', {
     enabled: sessionId != null,
@@ -89,8 +89,8 @@ export function InterviewPage() {
         mode: 'text',
       })
       setSessionId(s.id)
-      await actions.begin.mutateAsync(DEFAULT_USER_ID)
-      await actions.nextQuestion.mutateAsync(DEFAULT_USER_ID)
+      await actions.begin.mutateAsync({ interviewId: s.id, userId: DEFAULT_USER_ID })
+      await actions.nextQuestion.mutateAsync({ interviewId: s.id, userId: DEFAULT_USER_ID })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start interview')
       setSessionId(null)
@@ -103,10 +103,10 @@ export function InterviewPage() {
     const text = answer.trim()
     const key = `k-${sessionId}-${currentQuestion.id}-${++keyCounter.current}`
     try {
-      await actions.answer.mutateAsync({ userId: DEFAULT_USER_ID, questionId: currentQuestion.id, text, key })
+      await actions.answer.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID, questionId: currentQuestion.id, text, key })
       setTranscript((t) => [...t, { role: 'candidate', text }])
       setAnswer('')
-      await actions.nextQuestion.mutateAsync(DEFAULT_USER_ID)
+      await actions.nextQuestion.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Answer submission failed')
     }
@@ -115,7 +115,7 @@ export function InterviewPage() {
   async function requestHint() {
     if (!currentQuestion) return
     try {
-      const res = await actions.hint.mutateAsync({ userId: DEFAULT_USER_ID, questionId: currentQuestion.id })
+      const res = await actions.hint.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID, questionId: currentQuestion.id })
       setLastHint(res.hint)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Hint request failed')
@@ -239,12 +239,12 @@ export function InterviewPage() {
                 </Button>
                 <span className="flex-1" />
                 {status === 'questioning' ? (
-                  <Button variant="ghost" onClick={() => void actions.pause.mutateAsync(DEFAULT_USER_ID)}>Pause</Button>
+                  <Button variant="ghost" onClick={() => void actions.pause.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID })}>Pause</Button>
                 ) : null}
                 {status === 'paused' ? (
-                  <Button variant="ghost" onClick={() => void actions.resume.mutateAsync(DEFAULT_USER_ID)}>Resume</Button>
+                  <Button variant="ghost" onClick={() => void actions.resume.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID })}>Resume</Button>
                 ) : null}
-                <Button variant="danger" onClick={() => void actions.stop.mutateAsync(DEFAULT_USER_ID)}>End</Button>
+                <Button variant="danger" onClick={() => void actions.stop.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID })}>End</Button>
               </div>
               {lastHint ? (
                 <div className="mt-4 rounded-lg border border-line bg-warn-soft p-3.5">
@@ -288,7 +288,7 @@ export function InterviewPage() {
               Each answer is evaluated on 13 dimensions; evidence-backed claims update your ledger, and readiness reflects what you demonstrate — not what you claim.
             </p>
             <Divider className="my-3" />
-            <Button variant="secondary" className="w-full" onClick={() => void actions.cancel.mutateAsync(DEFAULT_USER_ID)}>
+            <Button variant="secondary" className="w-full" onClick={() => void actions.cancel.mutateAsync({ interviewId: sessionId ?? 0, userId: DEFAULT_USER_ID })}>
               Cancel session
             </Button>
           </Surface>

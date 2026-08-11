@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ApiError } from '../lib/api'
 import {
   useAnalyzeRole,
   useCandidate,
@@ -28,6 +29,7 @@ export function SetupPage() {
   const [seniority, setSeniority] = useState('')
   const [jdText, setJdText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [stage, setStage] = useState<string | null>(null)
 
   const resumeDoc = documents.data?.find((d) => d.kind === 'resume')
@@ -36,6 +38,7 @@ export function SetupPage() {
 
   async function onUploadResume(file: File) {
     setError(null)
+    setNotice(null)
     try {
       setStage('Parsing resume…')
       const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'resume', file })
@@ -45,13 +48,20 @@ export function SetupPage() {
       await extract.mutateAsync({ documentId: doc.id })
       setStage(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Resume processing failed')
       setStage(null)
+      if (err instanceof ApiError && err.code === 'validation_failed' && err.details.document_id) {
+        // Identical content already uploaded: show the existing document, not an error.
+        setNotice('That exact file was already uploaded — it is listed below.')
+        void documents.refetch()
+        return
+      }
+      setError(err instanceof Error ? err.message : 'Resume processing failed')
     }
   }
 
   async function onUploadJd(file: File) {
     setError(null)
+    setNotice(null)
     try {
       setStage('Parsing JD…')
       const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'jd', file })
@@ -59,8 +69,13 @@ export function SetupPage() {
       await index.mutateAsync({ userId: DEFAULT_USER_ID, documentId: doc.id })
       setStage(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'JD processing failed')
       setStage(null)
+      if (err instanceof ApiError && err.code === 'validation_failed' && err.details.document_id) {
+        setNotice('That exact file was already uploaded — it is listed below.')
+        void documents.refetch()
+        return
+      }
+      setError(err instanceof Error ? err.message : 'JD processing failed')
     }
   }
 
@@ -117,6 +132,11 @@ export function SetupPage() {
       </div>
 
       {error ? <ErrorState title="Something went wrong" body={error} /> : null}
+      {notice ? (
+        <div className="rounded-xl border border-accent-line bg-accent-soft px-4 py-3 text-sm text-accent">
+          {notice}
+        </div>
+      ) : null}
 
       <Surface className="p-6">
         <SectionHeading>Profile</SectionHeading>

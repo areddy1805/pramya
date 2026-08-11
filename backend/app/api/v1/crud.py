@@ -173,6 +173,7 @@ async def upload_document(
     settings = get_settings()
     svc = DocumentService(
         session,
+        storage_dir=Path(settings.upload_storage_dir),
         max_size_mb=settings.upload_max_mb,
         max_pages=settings.document_max_pages,
         parse_timeout_seconds=settings.document_parse_timeout_seconds,
@@ -229,6 +230,7 @@ async def index_document(
     settings = get_settings()
     doc_svc = DocumentService(
         session,
+        storage_dir=Path(settings.upload_storage_dir),
         max_size_mb=settings.upload_max_mb,
         max_pages=settings.document_max_pages,
         parse_timeout_seconds=settings.document_parse_timeout_seconds,
