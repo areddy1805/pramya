@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.models.preparation import PreparationItem
 from app.services.analytics import PreparationService, ProgressService, ReadinessService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -38,12 +40,41 @@ class ReadinessOut(BaseModel):
 class PreparationItemOut(BaseModel):
     id: int
     competency_id: int | None = None
+    competency_name: str | None = None
     priority: int
     estimated_minutes: int | None = None
     reason: str | None = None
     assessment_type: str | None = None
     expected_improvement: float | None = None
     status: str
+
+
+async def _prep_items_out(
+    session: AsyncSession, rows: Sequence[PreparationItem]
+) -> list[PreparationItemOut]:
+    from sqlalchemy import select
+
+    from app.models.role import Competency
+
+    comp_ids = [r.competency_id for r in rows if r.competency_id is not None]
+    names: dict[int, str] = {}
+    if comp_ids:
+        comps = (await session.scalars(select(Competency).where(Competency.id.in_(comp_ids)))).all()
+        names = {c.id: c.name for c in comps}
+    return [
+        PreparationItemOut(
+            id=row.id,
+            competency_id=row.competency_id,
+            competency_name=names.get(row.competency_id) if row.competency_id else None,
+            priority=row.priority,
+            estimated_minutes=row.estimated_minutes,
+            reason=row.reason,
+            assessment_type=row.assessment_type,
+            expected_improvement=row.expected_improvement,
+            status=str(row.status),
+        )
+        for row in rows
+    ]
 
 
 class ProgressPointOut(BaseModel):
@@ -140,19 +171,7 @@ async def regenerate_preparation(
 ) -> list[PreparationItemOut]:
     svc = PreparationService(session)
     rows = await svc.regenerate(user_id)
-    return [
-        PreparationItemOut(
-            id=row.id,
-            competency_id=row.competency_id,
-            priority=row.priority,
-            estimated_minutes=row.estimated_minutes,
-            reason=row.reason,
-            assessment_type=row.assessment_type,
-            expected_improvement=row.expected_improvement,
-            status=str(row.status),
-        )
-        for row in rows
-    ]
+    return await _prep_items_out(session, list(rows))
 
 
 @router.get("/preparation", response_model=list[PreparationItemOut])
@@ -162,19 +181,7 @@ async def list_preparation(
 ) -> list[PreparationItemOut]:
     svc = PreparationService(session)
     rows = await svc.items.list_open_for_user(user_id)
-    return [
-        PreparationItemOut(
-            id=row.id,
-            competency_id=row.competency_id,
-            priority=row.priority,
-            estimated_minutes=row.estimated_minutes,
-            reason=row.reason,
-            assessment_type=row.assessment_type,
-            expected_improvement=row.expected_improvement,
-            status=str(row.status),
-        )
-        for row in rows
-    ]
+    return await _prep_items_out(session, list(rows))
 
 
 @router.get("/progress", response_model=ProgressOut)

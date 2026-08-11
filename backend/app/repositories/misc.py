@@ -107,6 +107,15 @@ class ReadinessSnapshotRepository(BaseRepository[ReadinessSnapshot]):
 class InterviewDebriefRepository(BaseRepository[InterviewDebrief]):
     model = InterviewDebrief
 
+    async def list_for_user(self, user_id: int, *, limit: int = 100) -> Sequence[InterviewDebrief]:
+        stmt = (
+            select(InterviewDebrief)
+            .where(InterviewDebrief.user_id == user_id)
+            .order_by(InterviewDebrief.id.desc())
+            .limit(limit)
+        )
+        return (await self.session.scalars(stmt)).all()
+
 
 class EvaluationVersionRepository(BaseRepository[EvaluationVersion]):
     model = EvaluationVersion

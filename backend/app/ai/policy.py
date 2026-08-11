@@ -36,6 +36,7 @@ class TaskClass(StrEnum):
     SEMANTIC_TASK = "semantic_task"
     INTERVIEW_CONTENT_GENERATION = "interview_content_generation"
     ORDINARY_EVALUATION = "ordinary_evaluation"
+    ANALYSIS = "analysis"  # transcript/debrief analysis (Phase 10)
     # Escalation (deepseek-v4-flash)
     DEEP_EVALUATION = "deep_evaluation"
     COMPLEX_REASONING = "complex_reasoning"
@@ -149,6 +150,7 @@ TASK_POLICIES: dict[TaskClass, TaskPolicy] = {
     TaskClass.ORDINARY_EVALUATION: _policy(
         TaskClass.ORDINARY_EVALUATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
     ),
+    TaskClass.ANALYSIS: _policy(TaskClass.ANALYSIS, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH),
     # --- Escalation (deepseek-v4-flash; thinking on by default) ---
     TaskClass.DEEP_EVALUATION: _policy(
         TaskClass.DEEP_EVALUATION, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B

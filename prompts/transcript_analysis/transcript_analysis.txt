@@ -1,0 +1,19 @@
+# Transcript analysis (Phase 10)
+
+You are analyzing a pasted interview transcript (candidate + interviewer).
+
+Extract:
+- questions: interviewer questions
+- answers: candidate answers (condensed, preserving substance)
+- follow_ups: follow-up questions asked
+- weaknesses: candidate weaknesses visible in the transcript (with support)
+- strengths: candidate strengths visible in the transcript (with support)
+
+Rules:
+- Only what the transcript shows — never infer beyond it.
+- Keep answers faithful; no fabrication.
+
+## Section separation
+SYSTEM INSTRUCTIONS: this prompt.
+DOCUMENT DATA: the transcript between the markers.
+MODEL OUTPUT: your structured JSON response.

@@ -3,6 +3,7 @@ import { DashboardPage } from '../pages/DashboardPage'
 import { SetupPage } from '../pages/SetupPage'
 import { PreparationPage } from '../pages/PreparationPage'
 import { InterviewPage } from '../pages/InterviewPage'
+import { ReportPage } from '../pages/ReportPage'
 import { ProgressPage } from '../pages/ProgressPage'
 import { StoriesPage } from '../pages/StoriesPage'
 import { SettingsPage } from '../pages/SettingsPage'
@@ -23,17 +24,17 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <span className="text-lg font-semibold">Pramya</span>
-          <nav aria-label="Main navigation" className="flex gap-4 text-sm">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
+          <span className="text-lg font-semibold">
+            Pramya <span className="text-xs font-normal text-slate-400">prove you're ready</span>
+          </span>
+          <nav aria-label="Main navigation" className="flex flex-wrap gap-3 text-sm">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  isActive
-                    ? 'font-medium text-blue-700'
-                    : 'text-slate-600 hover:text-slate-900'
+                  isActive ? 'font-medium text-blue-700' : 'text-slate-600 hover:text-slate-900'
                 }
               >
                 {item.label}
@@ -49,6 +50,7 @@ export function AppShell() {
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/preparation" element={<PreparationPage />} />
           <Route path="/interview" element={<InterviewPage />} />
+          <Route path="/interview/:id/report" element={<ReportPage />} />
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/stories" element={<StoriesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
