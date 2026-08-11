@@ -10,7 +10,7 @@ import {
   useUploadDocument,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
-import { Badge, Button, Card, EmptyState, ErrorState, SectionTitle, Spinner } from '../components/ui'
+import { Button, ErrorState, Field, Pill, SectionHeading, Select, Spinner, Surface, TextArea, TextInput } from '../components/ui'
 
 export function SetupPage() {
   const candidate = useCandidate(DEFAULT_USER_ID)
@@ -25,132 +25,163 @@ export function SetupPage() {
   const [headline, setHeadline] = useState('')
   const [seniority, setSeniority] = useState('')
   const [jdText, setJdText] = useState('')
-  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [stage, setStage] = useState<string | null>(null)
 
   const resumeDoc = documents.data?.find((d) => d.kind === 'resume')
   const jdDoc = documents.data?.find((d) => d.kind === 'jd')
   const activeRole = roles.data?.at(-1)
 
   async function onUploadResume(file: File) {
-    setUploadError(null)
+    setError(null)
     try {
+      setStage('Parsing resume…')
       const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'resume', file })
+      setStage('Indexing into knowledge base…')
       await index.mutateAsync({ userId: DEFAULT_USER_ID, documentId: doc.id })
+      setStage('Extracting claims…')
       await extract.mutateAsync({ documentId: doc.id })
+      setStage(null)
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'upload failed')
+      setError(err instanceof Error ? err.message : 'Resume processing failed')
+      setStage(null)
     }
   }
 
   async function onUploadJd(file: File) {
-    setUploadError(null)
+    setError(null)
     try {
+      setStage('Parsing JD…')
       const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'jd', file })
+      setStage('Indexing JD…')
       await index.mutateAsync({ userId: DEFAULT_USER_ID, documentId: doc.id })
+      setStage(null)
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'upload failed')
+      setError(err instanceof Error ? err.message : 'JD processing failed')
+      setStage(null)
     }
   }
 
   async function onSaveProfile() {
-    await updateCandidate.mutateAsync({ headline: headline || undefined, seniority_target: seniority || undefined })
+    setError(null)
+    try {
+      await updateCandidate.mutateAsync({ headline: headline || undefined, seniority_target: seniority || undefined })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    }
   }
 
   async function onAnalyzeJd() {
     if (!jdText.trim()) return
-    await analyzeRole.mutateAsync({ user_id: DEFAULT_USER_ID, jd_text: jdText })
-    setJdText('')
+    setError(null)
+    try {
+      setStage('Analyzing role & competencies…')
+      await analyzeRole.mutateAsync({ user_id: DEFAULT_USER_ID, jd_text: jdText })
+      setJdText('')
+      setStage(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Role analysis failed')
+      setStage(null)
+    }
   }
 
-  const busy = upload.isPending || index.isPending || extract.isPending || analyzeRole.isPending
+  const steps = [
+    { key: 'profile', label: 'Profile', done: Boolean(candidate.data?.headline || candidate.data?.seniority_target) },
+    { key: 'resume', label: 'Resume', done: resumeDoc?.status === 'parsed' },
+    { key: 'role', label: 'Target role', done: Boolean(activeRole) },
+  ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Candidate Setup</h1>
-        <p className="mt-1 text-sm text-slate-600">Profile · resume · target role</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Profile & role</h1>
+        <p className="mt-1 text-sm text-ink-500">Three inputs unlock everything else: who you are, what you've done, where you're going.</p>
       </header>
 
-      {uploadError ? <ErrorState message={uploadError} /> : null}
+      {/* Setup progress */}
+      <div aria-label="Setup progress" className="flex items-center gap-2">
+        {steps.map((step, i) => (
+          <div key={step.key} className="flex items-center gap-2">
+            {i > 0 ? <span aria-hidden className="h-px w-6 bg-ink-200" /> : null}
+            <Pill tone={step.done ? 'ok' : 'neutral'}>{step.done ? '✓ ' : ''}{step.label}</Pill>
+          </div>
+        ))}
+      </div>
 
-      <Card>
-        <SectionTitle>Profile</SectionTitle>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="text-slate-600">Headline</span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              placeholder={candidate.data?.headline ?? 'Senior Backend Engineer'}
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-slate-600">Seniority target</span>
-            <select
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              value={seniority}
-              onChange={(e) => setSeniority(e.target.value)}
-            >
+      {error ? <ErrorState title="Something went wrong" body={error} /> : null}
+
+      <Surface className="p-6">
+        <SectionHeading>Profile</SectionHeading>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Headline" hint="One line that captures where you are.">
+            <TextInput placeholder={candidate.data?.headline ?? 'Senior Backend Engineer'} value={headline} onChange={(e) => setHeadline(e.target.value)} />
+          </Field>
+          <Field label="Seniority target">
+            <Select value={seniority} onChange={(e) => setSeniority(e.target.value)}>
               <option value="">—</option>
               <option value="junior">Junior</option>
               <option value="mid">Mid</option>
               <option value="senior">Senior</option>
               <option value="staff">Staff</option>
               <option value="principal">Principal</option>
-            </select>
-          </label>
+            </Select>
+          </Field>
         </div>
-        <div className="mt-3">
+        <div className="mt-4">
           <Button onClick={() => void onSaveProfile()} disabled={updateCandidate.isPending}>
             {updateCandidate.isPending ? 'Saving…' : 'Save profile'}
           </Button>
         </div>
-      </Card>
+      </Surface>
 
-      <Card>
-        <SectionTitle>Resume</SectionTitle>
+      <Surface className="p-6">
+        <SectionHeading aside={resumeDoc ? <Pill tone={resumeDoc.status === 'parsed' ? 'ok' : 'warn'}>{resumeDoc.status}</Pill> : undefined}>
+          Resume
+        </SectionHeading>
+        <p className="mb-4 text-sm text-ink-500">
+          Pramya parses your resume, indexes it into your knowledge base, and extracts the claims that seed your evidence ledger.
+        </p>
         {resumeDoc ? (
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-800">{resumeDoc.filename}</p>
-              <p className="text-xs text-slate-500">
-                status: {resumeDoc.status} · {resumeDoc.size} bytes
-              </p>
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-ink-800">{resumeDoc.filename}</p>
+              <p className="text-xs text-ink-400">{resumeDoc.size.toLocaleString()} bytes · {resumeDoc.kind}</p>
             </div>
-            <Badge tone={resumeDoc.status === 'parsed' ? 'green' : 'amber'}>{resumeDoc.status}</Badge>
+            {extract.data ? <Pill tone="ok">{extract.data.evidence_count} claims extracted</Pill> : null}
           </div>
-        ) : (
-          <p className="text-sm text-slate-500">No resume yet.</p>
-        )}
-        <label className="mt-3 block">
+        ) : null}
+        <label className="inline-block">
           <span className="sr-only">Upload resume</span>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md"
-            className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+            className="block w-full cursor-pointer text-sm text-ink-500 file:mr-3 file:rounded-lg file:border-0 file:bg-accent-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white file:cursor-pointer hover:file:bg-accent-800"
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) void onUploadResume(file)
             }}
           />
         </label>
-        {busy ? <Spinner label="Parsing, indexing and extracting…" /> : null}
-        {extract.data ? <p className="mt-2 text-xs text-slate-500">{extract.data.evidence_count} evidence claims extracted</p> : null}
-      </Card>
+        {stage && !stage.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
+      </Surface>
 
-      <Card>
-        <SectionTitle>Target role (JD)</SectionTitle>
+      <Surface className="p-6">
+        <SectionHeading aside={activeRole ? <Pill tone="ok">{activeRole.competencies?.length ?? 0} competencies</Pill> : undefined}>
+          Target role
+        </SectionHeading>
+        <p className="mb-4 text-sm text-ink-500">
+          Paste a job description or upload one. Pramya builds the competency model — required vs preferred — that drives readiness and preparation.
+        </p>
         {activeRole ? (
-          <div className="mb-3">
-            <p className="text-sm font-medium text-slate-800">{activeRole.title}</p>
-            <p className="text-xs text-slate-500">{activeRole.seniority ?? ''} · {activeRole.competencies?.length ?? 0} competencies</p>
+          <div className="mb-4 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
+            <p className="text-sm font-medium text-ink-800">
+              {activeRole.title} {activeRole.seniority ? `· ${activeRole.seniority}` : ''}
+            </p>
+            {activeRole.summary ? <p className="mt-0.5 text-xs text-ink-500">{activeRole.summary}</p> : null}
           </div>
-        ) : (
-          <p className="text-sm text-slate-500">No role analyzed yet.</p>
-        )}
-        <textarea
-          className="min-h-28 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        ) : null}
+        <TextArea
+          className="min-h-28"
           placeholder="Paste a job description here…"
           value={jdText}
           onChange={(e) => setJdText(e.target.value)}
@@ -159,42 +190,23 @@ export function SetupPage() {
           <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
             {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
           </Button>
-          <label className="text-sm text-slate-500">
+          <label className="text-sm text-ink-500">
             or{' '}
             <input
               type="file"
               accept=".pdf,.docx,.txt,.md"
-              className="text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium"
+              className="cursor-pointer text-xs text-ink-500 file:mr-2 file:rounded-lg file:border-0 file:bg-ink-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (file) void onUploadJd(file)
               }}
             />
-            upload JD document
+            upload a JD document
           </label>
+          {jdDoc ? <Pill>{jdDoc.filename} ({jdDoc.status})</Pill> : null}
         </div>
-        {jdDoc ? (
-          <p className="mt-2 text-xs text-slate-500">
-            JD document: {jdDoc.filename} ({jdDoc.status})
-          </p>
-        ) : null}
-      </Card>
-
-      <Card>
-        <SectionTitle>Evidence ledger</SectionTitle>
-        {!documents.data?.length ? (
-          <EmptyState title="No documents yet" hint="Upload a resume to build your evidence profile." />
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {documents.data.map((d) => (
-              <li key={d.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="text-slate-700">{d.filename}</span>
-                <Badge>{d.kind} · {d.status}</Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+        {stage?.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
+      </Surface>
     </div>
   )
 }

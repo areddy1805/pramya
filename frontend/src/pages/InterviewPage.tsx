@@ -9,8 +9,7 @@ import {
   DEFAULT_USER_ID,
 } from '../hooks/queries'
 import { useSSE } from '../hooks/useSSE'
-import { Badge, Button, Card, EmptyState, ErrorState, SectionTitle } from '../components/ui'
-
+import { Button, Divider, EmptyState, ErrorState, Field, Pill, SectionHeading, Select, Spinner, StatusDot, Surface } from '../components/ui'
 const KINDS = [
   { value: 'general', label: 'General' },
   { value: 'resume_deep_dive', label: 'Resume deep dive' },
@@ -22,6 +21,22 @@ const KINDS = [
   { value: 'coding_reasoning', label: 'Coding reasoning (verbal)' },
 ]
 
+const STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active' }> = {
+  created: { label: 'Created', tone: 'neutral' },
+  planning: { label: 'Planning', tone: 'active' },
+  questioning: { label: 'Live', tone: 'active' },
+  paused: { label: 'Paused', tone: 'warn' },
+  interrupted: { label: 'Interrupted', tone: 'warn' },
+  completed: { label: 'Completed', tone: 'ok' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+  error: { label: 'Error', tone: 'danger' },
+}
+
+interface TranscriptLine {
+  role: 'interviewer' | 'candidate'
+  text: string
+}
+
 export function InterviewPage() {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [kind, setKind] = useState('general')
@@ -29,15 +44,16 @@ export function InterviewPage() {
   const [answer, setAnswer] = useState('')
   const [lastHint, setLastHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [transcript, setTranscript] = useState<{ role: string; text: string }[]>([])
+  const [transcript, setTranscript] = useState<TranscriptLine[]>([])
+  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string } | null>(null)
   const keyCounter = useRef(0)
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   const create = useCreateInterview()
   const sessions = useInterviews(DEFAULT_USER_ID)
   const roles = useRoles(DEFAULT_USER_ID)
   const session = useInterview(sessionId ?? 0, DEFAULT_USER_ID)
   const actions = useInterviewAction(sessionId ?? 0)
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string } | null>(null)
 
   useSSE(sessionId ? `/api/v1/interviews/${sessionId}/events?user_id=${DEFAULT_USER_ID}` : '', {
     enabled: sessionId != null,
@@ -53,14 +69,10 @@ export function InterviewPage() {
         setAnswer('')
         setTranscript((t) => [...t, { role: 'interviewer', text: String(event.data.text) }])
       }
-      if (event.type === 'hint' && typeof event.data.hint === 'string') {
-        setLastHint(event.data.hint)
-      }
+      if (event.type === 'hint' && typeof event.data.hint === 'string') setLastHint(event.data.hint)
       if (event.type === 'session_status') {
         const status = String(event.data.status ?? '')
-        if (status === 'completed' || status === 'cancelled') {
-          setSessionId(null)
-        }
+        if (status === 'completed' || status === 'cancelled') setSessionId(null)
       }
     },
   })
@@ -80,7 +92,8 @@ export function InterviewPage() {
       await actions.begin.mutateAsync(DEFAULT_USER_ID)
       await actions.nextQuestion.mutateAsync(DEFAULT_USER_ID)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to start interview')
+      setError(err instanceof Error ? err.message : 'Failed to start interview')
+      setSessionId(null)
     }
   }
 
@@ -89,170 +102,196 @@ export function InterviewPage() {
     setError(null)
     const text = answer.trim()
     const key = `k-${sessionId}-${currentQuestion.id}-${++keyCounter.current}`
-    await actions.answer.mutateAsync({
-      userId: DEFAULT_USER_ID,
-      questionId: currentQuestion.id,
-      text,
-      key,
-    })
-    setTranscript((t) => [...t, { role: 'candidate', text }])
-    setAnswer('')
-    // Next question (evaluation handled server-side; follow-ups stream via SSE).
-    await actions.nextQuestion.mutateAsync(DEFAULT_USER_ID)
+    try {
+      await actions.answer.mutateAsync({ userId: DEFAULT_USER_ID, questionId: currentQuestion.id, text, key })
+      setTranscript((t) => [...t, { role: 'candidate', text }])
+      setAnswer('')
+      await actions.nextQuestion.mutateAsync(DEFAULT_USER_ID)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Answer submission failed')
+    }
   }
 
   async function requestHint() {
     if (!currentQuestion) return
-    const res = await actions.hint.mutateAsync({
-      userId: DEFAULT_USER_ID,
-      questionId: currentQuestion.id,
-    })
-    setLastHint(res.hint)
+    try {
+      const res = await actions.hint.mutateAsync({ userId: DEFAULT_USER_ID, questionId: currentQuestion.id })
+      setLastHint(res.hint)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Hint request failed')
+    }
   }
 
   const status = session.data?.status
   const inSession = sessionId != null && status !== 'completed' && status !== 'cancelled'
+  const meta = STATE_META[status ?? 'created'] ?? STATE_META.created
+  const answering = actions.answer.isPending
 
   return (
-    <div className="space-y-6">
-      <header className="flex items-center justify-between">
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Practice Interview</h1>
-          <p className="mt-1 text-sm text-slate-600">Adaptive text interview · evidence-backed evaluation</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Practice interview</h1>
+          <p className="mt-1 text-sm text-ink-500">Adaptive questioning, evidence-backed evaluation, no interruptions by the system.</p>
         </div>
-        {status ? <Badge tone={status === 'questioning' ? 'green' : status === 'paused' ? 'amber' : 'blue'}>{status}</Badge> : null}
+        {status ? (
+          <div className="flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-1.5">
+            <StatusDot tone={meta.tone} />
+            <span className="text-xs font-semibold text-ink-700">{meta.label}</span>
+          </div>
+        ) : null}
       </header>
 
-      {error ? <ErrorState message={error} /> : null}
+      {error ? <ErrorState title="That didn't work" body={error} /> : null}
 
       {!inSession ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <SectionTitle>New interview</SectionTitle>
-            <label className="block text-sm">
-              <span className="text-slate-600">Mode</span>
-              <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value={kind} onChange={(e) => setKind(e.target.value)}>
-                {KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>{k.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="mt-3 block text-sm">
-              <span className="text-slate-600">Duration (minutes)</span>
-              <input
-                type="number"
-                min={5}
-                max={120}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-              />
-            </label>
-            <div className="mt-4">
-              <Button onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
+        <div className="grid gap-6 lg:grid-cols-5">
+          <Surface className="p-6 lg:col-span-2">
+            <SectionHeading>New interview</SectionHeading>
+            <div className="space-y-4">
+              <Field label="Mode">
+                <Select value={kind} onChange={(e) => setKind(e.target.value)}>
+                  {KINDS.map((k) => (
+                    <option key={k.value} value={k.value}>{k.label}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Duration" hint="The interviewer adapts pacing to fit.">
+                <input
+                  type="number"
+                  min={5}
+                  max={120}
+                  className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20"
+                  value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                />
+              </Field>
+              <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
                 {create.isPending ? 'Creating…' : 'Start interview'}
               </Button>
+              <p className="text-xs leading-relaxed text-ink-400">
+                Questions adapt to your demonstrated evidence. Answers are evaluated against 13 dimensions and update your readiness.
+              </p>
             </div>
-          </Card>
+          </Surface>
 
-          <Card>
-            <SectionTitle>Past sessions</SectionTitle>
+          <Surface className="p-6 lg:col-span-3">
+            <SectionHeading>Past sessions</SectionHeading>
             {!sessions.data?.length ? (
-              <EmptyState title="No sessions yet" hint="Start your first practice interview." />
+              <EmptyState icon="🎙️" title="No sessions yet" body="Start a practice interview. Every answered question produces an evaluation and evidence." />
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-ink-100">
                 {sessions.data.slice(0, 10).map((s) => (
-                  <li key={s.id} className="flex items-center justify-between py-2 text-sm">
-                    <span className="text-slate-700">{s.kind} · {s.status}</span>
-                    <Link className="text-blue-700 hover:underline" to={`/interview/${s.id}/report`}>
+                  <li key={s.id} className="flex items-center justify-between py-3">
+                    <div>
+                      <p className="text-sm font-medium text-ink-800">{s.kind}</p>
+                      <p className="text-xs text-ink-400">
+                        {s.started_at ? new Date(s.started_at).toLocaleDateString() : ''} · {s.status}
+                      </p>
+                    </div>
+                    <Link className="text-sm font-medium text-accent-700 hover:underline" to={`/interview/${s.id}/report`}>
                       Report →
                     </Link>
                   </li>
                 ))}
               </ul>
             )}
-          </Card>
+          </Surface>
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-4 lg:col-span-2">
-            <Card>
-              <SectionTitle>Current question</SectionTitle>
+        /* Focused interview workspace */
+        <div className={`grid gap-6 lg:grid-cols-3 ${answering ? 'pramya-focus-lock' : ''}`}>
+          <div className="space-y-5 lg:col-span-2">
+            <Surface className="p-6">
+              <SectionHeading>Current question</SectionHeading>
               {currentQuestion ? (
                 <>
-                  <p className="text-lg font-medium text-slate-900">{currentQuestion.text}</p>
-                  <div className="mt-2 flex gap-2">
-                    <Badge tone="blue">{currentQuestion.difficulty}</Badge>
-                    <Badge>{currentQuestion.type}</Badge>
+                  <p className="text-xl font-semibold leading-relaxed tracking-tight text-ink-900">{currentQuestion.text}</p>
+                  <div className="mt-3 flex gap-2">
+                    <Pill tone="accent">{currentQuestion.difficulty}</Pill>
+                    <Pill>{currentQuestion.type}</Pill>
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-slate-500">Waiting for question…</p>
+                <Spinner label="Preparing the next question…" />
               )}
-            </Card>
+            </Surface>
 
-            <Card>
-              <SectionTitle>Your answer</SectionTitle>
+            <Surface className="p-6">
+              <SectionHeading>Your answer</SectionHeading>
               <textarea
-                className="min-h-32 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Type your answer…"
+                aria-label="Your answer"
+                className="min-h-36 w-full resize-y rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-sm leading-relaxed focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20"
+                placeholder="Answer as you would in a real interview — specifics, tradeoffs, examples…"
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void submitAnswer()
+                }}
               />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button onClick={() => void submitAnswer()} disabled={!answer.trim() || actions.answer.isPending}>
-                  {actions.answer.isPending ? 'Evaluating…' : 'Submit answer'}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button onClick={() => void submitAnswer()} disabled={!answer.trim() || answering}>
+                  {answering ? 'Evaluating…' : 'Submit answer'}
+                  <kbd className="ml-1 hidden rounded border border-white/30 px-1 text-[10px] opacity-70 sm:inline">⌘⏎</kbd>
                 </Button>
                 <Button variant="secondary" onClick={() => void requestHint()} disabled={!currentQuestion || actions.hint.isPending}>
                   Request hint
                 </Button>
-                <Button variant="ghost" onClick={() => void actions.pause.mutateAsync(DEFAULT_USER_ID)} disabled={status !== 'questioning'}>
-                  Pause
-                </Button>
-                {status === 'paused' ? (
-                  <Button variant="ghost" onClick={() => void actions.resume.mutateAsync(DEFAULT_USER_ID)}>
-                    Resume
-                  </Button>
+                <span className="flex-1" />
+                {status === 'questioning' ? (
+                  <Button variant="ghost" onClick={() => void actions.pause.mutateAsync(DEFAULT_USER_ID)}>Pause</Button>
                 ) : null}
-                <Button variant="danger" onClick={() => void actions.stop.mutateAsync(DEFAULT_USER_ID)}>
-                  End interview
-                </Button>
+                {status === 'paused' ? (
+                  <Button variant="ghost" onClick={() => void actions.resume.mutateAsync(DEFAULT_USER_ID)}>Resume</Button>
+                ) : null}
+                <Button variant="danger" onClick={() => void actions.stop.mutateAsync(DEFAULT_USER_ID)}>End</Button>
               </div>
               {lastHint ? (
-                <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">💡 Hint: {lastHint}</p>
+                <div className="mt-4 rounded-lg border border-warn-100 bg-warn-50 p-3.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-warn-700">Hint</p>
+                  <p className="mt-1 text-sm text-warn-800">{lastHint}</p>
+                </div>
               ) : null}
-            </Card>
+            </Surface>
 
-            <Card>
-              <SectionTitle>Transcript</SectionTitle>
+            <Surface className="p-6">
+              <SectionHeading>Transcript</SectionHeading>
               {!transcript.length ? (
-                <p className="text-sm text-slate-500">The live transcript will appear here.</p>
+                <p className="text-sm text-ink-400">The live transcript appears here as the interview unfolds.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
                   {transcript.map((line, i) => (
-                    <p key={i} className={`text-sm ${line.role === 'interviewer' ? 'text-slate-700' : 'text-slate-900'}`}>
-                      <span className="font-semibold">{line.role === 'interviewer' ? 'Interviewer' : 'You'}:</span>{' '}
-                      {line.text}
-                    </p>
+                    <div key={i} className={`flex gap-3 ${line.role === 'candidate' ? 'justify-end' : ''}`}>
+                      <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${line.role === 'interviewer' ? 'bg-ink-100' : 'bg-accent-50'}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                          {line.role === 'interviewer' ? 'Interviewer' : 'You'}
+                        </p>
+                        <p className="mt-0.5 text-sm leading-relaxed text-ink-800">{line.text}</p>
+                      </div>
+                    </div>
                   ))}
+                  <div ref={transcriptEndRef} />
                 </div>
               )}
-            </Card>
+            </Surface>
           </div>
 
-          <Card>
-            <SectionTitle>Session</SectionTitle>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between"><dt className="text-slate-500">Status</dt><dd>{status}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Mode</dt><dd>{String(session.data?.config?.mode ?? 'text')}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Duration</dt><dd>{String(session.data?.config?.duration_minutes ?? 30)} min</dd></div>
+          <Surface className="h-fit p-5 lg:sticky lg:top-20">
+            <SectionHeading>Session</SectionHeading>
+            <dl className="text-sm">
+              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Mode</dt><dd className="font-medium capitalize">{String(session.data?.config?.mode ?? 'text')}</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Duration</dt><dd className="font-medium">{String(session.data?.config?.duration_minutes ?? duration)} min</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Status</dt><dd className="font-medium capitalize">{status}</dd></div>
             </dl>
-            <div className="mt-4">
-              <Button variant="secondary" onClick={() => void actions.cancel.mutateAsync(DEFAULT_USER_ID)}>
-                Cancel session
-              </Button>
-            </div>
-          </Card>
+            <Divider className="my-3" />
+            <p className="text-xs leading-relaxed text-ink-400">
+              Each answer is evaluated on 13 dimensions; evidence-backed claims update your ledger, and readiness reflects what you demonstrate — not what you claim.
+            </p>
+            <Divider className="my-3" />
+            <Button variant="secondary" className="w-full" onClick={() => void actions.cancel.mutateAsync(DEFAULT_USER_ID)}>
+              Cancel session
+            </Button>
+          </Surface>
         </div>
       )}
     </div>

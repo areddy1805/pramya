@@ -6,44 +6,62 @@ import { InterviewPage } from '../pages/InterviewPage'
 import { ReportPage } from '../pages/ReportPage'
 import { ProgressPage } from '../pages/ProgressPage'
 import { StoriesPage } from '../pages/StoriesPage'
+import { EvidencePage } from '../pages/EvidencePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { ModelStatusPage } from '../pages/ModelStatusPage'
 
-const navItems = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/setup', label: 'Setup' },
+const primaryNav = [
+  { to: '/dashboard', label: 'Overview' },
+  { to: '/setup', label: 'Profile & Role' },
   { to: '/preparation', label: 'Preparation' },
-  { to: '/interview', label: 'Interview' },
+  { to: '/interview', label: 'Practice' },
   { to: '/progress', label: 'Progress' },
+  { to: '/evidence', label: 'Evidence' },
   { to: '/stories', label: 'Stories' },
-  { to: '/settings', label: 'Settings' },
-  { to: '/models', label: 'Models' },
 ]
+
+const secondaryNav = [
+  { to: '/settings', label: 'Settings' },
+  { to: '/models', label: 'Runtime' },
+]
+
+function NavLinkItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+          isActive ? 'bg-accent-50 text-accent-800' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+        }`
+      }
+    >
+      {label}
+    </NavLink>
+  )
+}
 
 export function AppShell() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <span className="text-lg font-semibold">
-            Pramya <span className="text-xs font-normal text-slate-400">prove you're ready</span>
-          </span>
-          <nav aria-label="Main navigation" className="flex flex-wrap gap-3 text-sm">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  isActive ? 'font-medium text-blue-700' : 'text-slate-600 hover:text-slate-900'
-                }
-              >
-                {item.label}
-              </NavLink>
+    <div className="min-h-screen bg-ink-50 text-ink-900">
+      <header className="sticky top-0 z-30 border-b border-ink-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[17px] font-semibold tracking-tight">Pramya</span>
+            <span className="hidden text-[11px] font-medium text-ink-400 sm:block">evidence-driven interview prep</span>
+          </div>
+          <nav aria-label="Primary" className="flex flex-wrap items-center gap-1">
+            {primaryNav.map((item) => (
+              <NavLinkItem key={item.to} {...item} />
+            ))}
+            <span aria-hidden className="mx-1 h-4 w-px bg-ink-200" />
+            {secondaryNav.map((item) => (
+              <NavLinkItem key={item.to} {...item} />
             ))}
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -52,6 +70,7 @@ export function AppShell() {
           <Route path="/interview" element={<InterviewPage />} />
           <Route path="/interview/:id/report" element={<ReportPage />} />
           <Route path="/progress" element={<ProgressPage />} />
+          <Route path="/evidence" element={<EvidencePage />} />
           <Route path="/stories" element={<StoriesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/models" element={<ModelStatusPage />} />

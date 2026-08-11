@@ -1,118 +1,193 @@
-// Minimal accessible UI kit: Card, Button, Badge, Spinner, EmptyState,
-// ErrorState, ProgressBar, StatCard. Tailwind v4 utility classes.
+// Pramya UI primitives — one system, no per-page reinvention.
+// Editorial surfaces, restrained borders, 4px rhythm, deliberate accents.
 
-import type { ReactNode } from 'react'
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+// --- Surface ---------------------------------------------------------------
+
+export function Surface({ children, className = '', tone = 'default' }: { children: ReactNode; className?: string; tone?: 'default' | 'inset' | 'accent' }) {
+  const tones = {
+    default: 'border border-ink-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+    inset: 'border border-ink-200 bg-ink-50',
+    accent: 'border border-accent-200 bg-accent-50/40',
+  }[tone]
+  return <div className={`rounded-xl ${tones} ${className}`}>{children}</div>
+}
+
+export function SectionHeading({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
-      {children}
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">{children}</h2>
+      {aside}
     </div>
   )
 }
 
-export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">{children}</h2>
+// --- Buttons ---------------------------------------------------------------
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
+  size?: 'sm' | 'md' | 'lg'
 }
 
-export function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'primary',
-  type = 'button',
-  className = '',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
-  type?: 'button' | 'submit'
-  className?: string
-}) {
-  const styles = {
-    primary: 'bg-blue-700 text-white hover:bg-blue-800 disabled:bg-blue-300',
-    secondary: 'bg-slate-100 text-slate-800 hover:bg-slate-200 disabled:opacity-50',
-    danger: 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300',
-    ghost: 'text-blue-700 hover:bg-blue-50 disabled:opacity-50',
+export function Button({ children, variant = 'primary', size = 'md', className = '', ...rest }: ButtonProps) {
+  const variants = {
+    primary: 'bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900 disabled:bg-ink-200 disabled:text-ink-400',
+    secondary: 'bg-white text-ink-700 border border-ink-200 hover:border-ink-300 hover:bg-ink-50 disabled:opacity-50',
+    ghost: 'text-accent-700 hover:bg-accent-50 disabled:opacity-50',
+    danger: 'bg-danger-700 text-white hover:bg-danger-800 disabled:bg-ink-200 disabled:text-ink-400',
   }[variant]
+  const sizes = {
+    sm: 'px-2.5 py-1.5 text-xs',
+    md: 'px-3.5 py-2 text-sm',
+    lg: 'px-5 py-2.5 text-sm',
+  }[size]
   return (
     <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed ${styles} ${className}`}
+      type="button"
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed ${variants} ${sizes} ${className}`}
+      {...rest}
     >
       {children}
     </button>
   )
 }
 
-export function Badge({ children, tone = 'slate' }: { children: ReactNode; tone?: 'slate' | 'green' | 'amber' | 'red' | 'blue' }) {
-  const tones = {
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-green-100 text-green-800',
-    amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
-    blue: 'bg-blue-100 text-blue-800',
-  }[tone]
-  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${tones}`}>{children}</span>
+// --- Form controls ----------------------------------------------------------
+
+const fieldClass =
+  'w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20 disabled:bg-ink-50'
+
+export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
+  const { className = '', ...rest } = props
+  return <input className={`${fieldClass} ${className}`} {...rest} />
 }
 
-export function Spinner({ label = 'Loading…' }: { label?: string }) {
+export function TextArea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const { className = '', ...rest } = props
+  return <textarea className={`${fieldClass} ${className}`} {...rest} />
+}
+
+export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
+  const { className = '', children, ...rest } = props
   return (
-    <div role="status" className="flex items-center gap-2 text-sm text-slate-500">
-      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-700" />
+    <select className={`${fieldClass} ${className}`} {...rest}>
+      {children}
+    </select>
+  )
+}
+
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block text-[13px] font-medium text-ink-700">{label}</span>
+      {children}
+      {hint ? <span className="mt-1 block text-xs text-ink-400">{hint}</span> : null}
+    </label>
+  )
+}
+
+// --- Status -----------------------------------------------------------------
+
+export function StatusDot({ tone }: { tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active' }) {
+  const tones = {
+    ok: 'bg-ok-700',
+    warn: 'bg-warn-700',
+    danger: 'bg-danger-700',
+    neutral: 'bg-ink-300',
+    active: 'bg-accent-600 animate-pulse',
+  }[tone]
+  return <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${tones}`} />
+}
+
+export function Pill({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'ok' | 'warn' | 'danger' | 'accent' }) {
+  const tones = {
+    neutral: 'bg-ink-100 text-ink-600',
+    ok: 'bg-ok-50 text-ok-700 border border-ok-100',
+    warn: 'bg-warn-50 text-warn-700 border border-warn-100',
+    danger: 'bg-danger-50 text-danger-700 border border-danger-100',
+    accent: 'bg-accent-50 text-accent-700 border border-accent-100',
+  }[tone]
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tones}`}>{children}</span>
+}
+
+// --- Progress ---------------------------------------------------------------
+
+export function Meter({ value, max = 10, tone = 'accent' }: { value: number; max?: number; tone?: 'accent' | 'ok' | 'danger' }) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100))
+  const tones = {
+    accent: 'bg-accent-600',
+    ok: 'bg-ok-700',
+    danger: 'bg-danger-700',
+  }[tone]
+  return (
+    <div role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max} className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100">
+      <div className={`h-full rounded-full transition-all duration-500 ${tones}`} style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+// --- States -----------------------------------------------------------------
+
+export function Spinner({ label = 'Working…', subtle = false }: { label?: string; subtle?: boolean }) {
+  return (
+    <div role="status" className={`flex items-center gap-2 text-sm ${subtle ? 'text-ink-400' : 'text-ink-500'}`}>
+      <span aria-hidden className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ink-200 border-t-accent-600" />
       {label}
     </div>
   )
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div aria-hidden className={`animate-pulse rounded-lg bg-ink-100 ${className}`} />
+}
+
+export function EmptyState({ icon, title, body, action }: { icon?: string; title: string; body?: string; action?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      {hint ? <p className="mt-1 text-sm text-slate-500">{hint}</p> : null}
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-300 bg-ink-50/60 px-6 py-12 text-center">
+      {icon ? <span aria-hidden className="mb-3 text-2xl">{icon}</span> : null}
+      <p className="text-sm font-semibold text-ink-800">{title}</p>
+      {body ? <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-500">{body}</p> : null}
+      {action ? <div className="mt-4">{action}</div> : null}
     </div>
   )
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({ title = 'Something went wrong', body, onRetry }: { title?: string; body?: string; onRetry?: () => void }) {
   return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-      <p className="font-medium">{message}</p>
+    <div role="alert" className="rounded-xl border border-danger-100 bg-danger-50 px-4 py-4">
+      <p className="text-sm font-semibold text-danger-700">{title}</p>
+      {body ? <p className="mt-1 text-sm text-danger-700/80">{body}</p> : null}
       {onRetry ? (
-        <button className="mt-2 text-red-700 underline hover:text-red-900" onClick={onRetry}>
-          Retry
+        <button className="mt-2 text-sm font-medium text-danger-700 underline hover:text-danger-800" onClick={onRetry}>
+          Try again
         </button>
       ) : null}
     </div>
   )
 }
 
-export function ProgressBar({ value, max = 10, label }: { value: number; max?: number; label?: string }) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100))
+// --- Data display -----------------------------------------------------------
+
+export function KeyValue({ k, v }: { k: string; v: ReactNode }) {
   return (
-    <div className="w-full">
-      {label ? (
-        <div className="mb-1 flex justify-between text-xs text-slate-500">
-          <span>{label}</span>
-          <span>{value.toFixed(1)}</span>
-        </div>
-      ) : null}
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-blue-700" style={{ width: `${pct}%` }} />
-      </div>
+    <div className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
+      <dt className="text-ink-500">{k}</dt>
+      <dd className="text-right font-medium text-ink-800">{v}</dd>
     </div>
   )
 }
 
-export function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
   return (
-    <Card className="text-center">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
-      {sub ? <p className="mt-1 text-xs text-slate-500">{sub}</p> : null}
-    </Card>
+    <div className="min-w-0">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
+      {sub ? <p className="mt-0.5 truncate text-xs text-ink-400">{sub}</p> : null}
+    </div>
   )
+}
+
+export function Divider({ className = '' }: { className?: string }) {
+  return <div role="separator" className={`h-px bg-ink-100 ${className}`} />
 }

@@ -1,93 +1,82 @@
 import { useState } from 'react'
 import { useCreateStory, useStories, DEFAULT_USER_ID } from '../hooks/queries'
-import { Badge, Button, Card, EmptyState, SectionTitle } from '../components/ui'
+import { Button, EmptyState, Field, Pill, SectionHeading, Surface, TextArea } from '../components/ui'
+
+const FIELDS: { key: string; label: string; hint: string }[] = [
+  { key: 'situation', label: 'Situation', hint: 'Context — where and when.' },
+  { key: 'task', label: 'Task', hint: 'What you were responsible for.' },
+  { key: 'action', label: 'Action', hint: 'What you actually did.' },
+  { key: 'result', label: 'Result', hint: 'What happened as a result.' },
+  { key: 'metrics', label: 'Metrics', hint: 'Numbers that prove impact.' },
+  { key: 'conflict', label: 'Conflict', hint: 'Obstacles or tensions.' },
+  { key: 'learning', label: 'Learning', hint: 'What you took away.' },
+  { key: 'strength', label: 'Strength', hint: 'The competency this story demonstrates.' },
+]
 
 export function StoriesPage() {
   const stories = useStories(DEFAULT_USER_ID)
   const createStory = useCreateStory()
-  const [form, setForm] = useState({
-    situation: '',
-    task: '',
-    action: '',
-    result: '',
-    metrics: '',
-    conflict: '',
-    learning: '',
-    strength: '',
-  })
+  const [form, setForm] = useState<Record<string, string>>({})
 
   const filled = Object.values(form).some((v) => v.trim())
 
   async function save() {
     await createStory.mutateAsync({ user_id: DEFAULT_USER_ID, ...form })
-    setForm({ situation: '', task: '', action: '', result: '', metrics: '', conflict: '', learning: '', strength: '' })
+    setForm({})
   }
 
-  const fields: { key: keyof typeof form; label: string }[] = [
-    { key: 'situation', label: 'Situation' },
-    { key: 'task', label: 'Task' },
-    { key: 'action', label: 'Action' },
-    { key: 'result', label: 'Result' },
-    { key: 'metrics', label: 'Metrics' },
-    { key: 'conflict', label: 'Conflict' },
-    { key: 'learning', label: 'Learning' },
-    { key: 'strength', label: 'Strength' },
-  ]
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Story Bank</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          STAR stories mapped to competencies — reusable in interviews.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">Story bank</h1>
+        <p className="mt-1 text-sm text-ink-500">Your reusable evidence in STAR form — mapped to competencies, ready for behavioral interviews.</p>
       </header>
 
-      <Card>
-        <SectionTitle>Add a story</SectionTitle>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {fields.map((f) => (
-            <label key={f.key} className="block text-sm">
-              <span className="text-slate-600">{f.label}</span>
-              <textarea
-                className="mt-1 min-h-16 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                value={form[f.key]}
+      <Surface className="p-6">
+        <SectionHeading>Add a story</SectionHeading>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {FIELDS.map((f) => (
+            <Field key={f.key} label={f.label} hint={f.hint}>
+              <TextArea
+                className="min-h-16"
+                value={form[f.key] ?? ''}
                 onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
               />
-            </label>
+            </Field>
           ))}
         </div>
-        <div className="mt-3">
+        <div className="mt-4">
           <Button onClick={() => void save()} disabled={!filled || createStory.isPending}>
             {createStory.isPending ? 'Saving…' : 'Save story'}
           </Button>
         </div>
-      </Card>
+      </Surface>
 
-      <Card>
-        <SectionTitle>Saved stories ({stories.data?.length ?? 0})</SectionTitle>
+      <Surface className="p-6">
+        <SectionHeading aside={<Pill>{stories.data?.length ?? 0} stories</Pill>}>Saved stories</SectionHeading>
         {!stories.data?.length ? (
-          <EmptyState title="No stories yet" hint="Add your first STAR story above." />
+          <EmptyState icon="📚" title="Your story bank is empty" body="Add one STAR story above. During behavioral interviews, the interviewer can ground questions in what you've actually done." />
         ) : (
           <ul className="space-y-3">
             {stories.data.map((story) => (
-              <li key={story.id} className="rounded-lg border border-slate-100 p-3">
-                <p className="text-sm text-slate-800">
-                  <span className="font-semibold">S:</span> {story.situation}
-                </p>
-                <p className="mt-1 text-sm text-slate-800">
-                  <span className="font-semibold">R:</span> {story.result}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {story.metrics ? <Badge tone="green">📈 {story.metrics}</Badge> : null}
-                  {story.strength ? <Badge tone="blue">{story.strength}</Badge> : null}
-                  <Badge>used {story.usage_count}×</Badge>
+              <li key={story.id} className="rounded-lg border border-ink-200 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <p className="text-sm text-ink-800"><span className="font-semibold">S</span> {story.situation}</p>
+                  <p className="text-sm text-ink-800"><span className="font-semibold">T</span> {story.task}</p>
+                  <p className="text-sm text-ink-800"><span className="font-semibold">A</span> {story.action}</p>
+                  <p className="text-sm text-ink-800"><span className="font-semibold">R</span> {story.result}</p>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {story.metrics ? <Pill tone="ok">📈 {story.metrics}</Pill> : null}
+                  {story.strength ? <Pill tone="accent">{story.strength}</Pill> : null}
+                  {story.conflict ? <Pill>{story.conflict}</Pill> : null}
+                  <Pill>used {story.usage_count}×</Pill>
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </Card>
+      </Surface>
     </div>
   )
 }
