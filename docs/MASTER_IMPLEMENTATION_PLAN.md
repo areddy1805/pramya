@@ -851,7 +851,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 
 ```
 PHASE STATUS
-Phase 0  Architecture + Scaffold     NOT STARTED
+Phase 0  Architecture + Scaffold     COMPLETE
 Phase 1  Core Domain + Persistence   NOT STARTED
 Phase 2  Knowledge Layer             NOT STARTED
 Phase 3  Interview Engine (LangGraph)NOT STARTED
@@ -866,14 +866,15 @@ Phase 11 MCP/Observability/Security  NOT STARTED
 Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 ```
 
-- Current phase: Phase 0 (planning complete, implementation not started)
-- Current task: none (awaiting user approval of this plan)
-- Blocked by: plan approval
-- Next task: Phase 0.1 repo structure
-- Last verified commit: `54ac6d2 Update implementation plan`
-- Tests: none yet
+- Current phase: Phase 0 COMPLETE (2026-08)
+- Current task: none (Phase 1 not started; awaiting user confirmation)
+- Blocked by: user confirmation to begin Phase 1
+- Next task: Phase 1.1 SQLAlchemy async models
+- Last verified commit: Phase 0 scaffold commit (see git log)
+- Tests: 16 unit tests passing (health, config, request-id, domain enums/schemas)
 - Evals: none yet
 - Known failures: none
+- Phase 0 acceptance verified: `make test` (16 passed), `make lint`, `make typecheck`, `docker compose config` valid, frontend production build green, CI workflow written.
 
 ---
 
@@ -895,7 +896,7 @@ Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 
 | Date | Change | Author |
 |---|---|---|
-| 2026-08 | Plan created from spec; framework/model research verified | Planning session |
+| 2026-08 | Phase 0 scaffold: backend (uv/FastAPI/lifespan/health/request-id/logging), frontend (Vite 8 + React 19 + TS strict + router/query/zustand shell), compose + Makefile + CI, domain enums/schemas/errors, `.env.example` aligned. pgvector Python pin corrected to 0.5.x (client) — server ext 0.8.x in Docker image. Tests moved to repo-root `tests/` per §23 (plan §8 showed backend/app/tests; §23 target structure wins). | Implementation session |
 
 (Coherent feature-level changes only. CHANGELOG.md tracks releases.)
 

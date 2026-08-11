@@ -7,9 +7,16 @@
 
 ## Current State
 
-- Project status: **Planning complete, implementation not started** (2026-08).
-- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 0 ready to begin after user approval.
-- Last verified commit: `8947ff2 start Pramya`.
+- Project status: **Phase 0 (Architecture + Scaffold) COMPLETE** (2026-08).
+- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 1 (Core Domain + Persistence) is next.
+- Last verified commit: see `git log`; Phase 0 scaffold committed.
+- Local `.env` exists (copied from `.env.example`, gitignored).
+
+## Verified Environment Facts (2026-08)
+
+- Dev machine: MacBook Pro M4, 16GB unified, 512GB. Node v24.11.1, Python 3.14.6 (project pinned to 3.12/3.13 via uv — `.venv` created with 3.13), Docker 27.5.1, uv 0.12, pnpm 10.
+- Frontend reality (verified via template probe + registry): React 19.2.x, Vite 8.2.x, TypeScript ~6.0.x (7.0.2 latest available), plugin-react 6.x, oxlint (replaced eslint in Vite template), Tailwind 4.3.x, TanStack Query 5.101.x, Zustand 5.0.x, react-router-dom 7.18.x. Template ships `tsc -b` builds + oxlint; strict mode enabled explicitly.
+- **pgvector pin correction**: PyPI Python client latest = **0.5.0** (server extension 0.8.x lives in the Docker image `pgvector/pgvector:pg17`). Plan §33 conflated them; pyproject pins `pgvector>=0.5,<0.6`.
 
 ## Verified Environment Facts (2026-08)
 
@@ -45,7 +52,7 @@
 
 ## Known Problems / Blockers
 
-- None. Awaiting user approval of master plan to start Phase 0.
+- None. Phase 0 acceptance criteria verified (make test/lint/typecheck green, CI config valid, compose config valid).
 
 ## Deferred Decisions
 
