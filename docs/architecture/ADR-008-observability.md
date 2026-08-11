@@ -16,8 +16,12 @@ How to observe AI workflows without exposing sensitive data?
 
 ## Decision
 
+- **Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability
+  platform.** Langfuse Cloud and Enterprise-only features are NOT V1
+  dependencies; no paid Langfuse subscription is required.
 - Langfuse Python SDK 4.x (OTel-based; `get_client()` singleton) as the
-  observability backend, self-hosted/local by default.
+  observability backend, self-hosted/local by default (Docker Compose
+  optional profile).
 - LangGraph traced via `langfuse.langchain.CallbackHandler` in graph config;
   one trace per interview invocation, `thread_id`/`session_id` propagation.
 - LlamaIndex via `openinference-instrumentation-llama-index` (native callback
@@ -29,7 +33,8 @@ How to observe AI workflows without exposing sensitive data?
 - Redaction policy: never put raw resume contents or candidate answer content
   in traces; store IDs and redacted metadata. Explicit env flag controls any
   debug-level content capture (off by default).
-- Langfuse prompts management for versioned prompts.
+- Langfuse prompt management (OSS) for versioned prompts; `prompts/` tree
+  remains canonical.
 
 ## Alternatives
 

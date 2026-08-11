@@ -11,7 +11,7 @@ Prerequisites: Python 3.12/3.13 (uv), Node 24, Docker 27, oMLX (host install), D
 ```bash
 git clone <repo> && cd pramya
 cp .env.example .env        # edit: DATABASE_URL, DEEPSEEK_API_KEY, OMLX_BASE_URL
-docker compose up -d        # postgres+pgvector (+ optional langfuse profile)
+docker compose up -d        # postgres+pgvector (+ optional langfuse OSS profile)
 make models-pull            # downloads pinned local models via oMLX (see MODEL_CATALOG)
 make migrate
 make dev-backend            # uvicorn on :8000
@@ -32,7 +32,7 @@ Open http://localhost:5173 → onboarding → demo.
 | OMLX_BASE_URL | default `http://localhost:8000/v1` (oMLX default port; may differ) |
 | OMLX_API_KEY | optional |
 | LOCAL_AI_ENABLED | true |
-| LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST | optional observability |
+| LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST | optional observability (OSS self-hosted; Cloud/Enterprise not V1) |
 | VOICE_RETENTION_DAYS | audio retention (default 0 = do not store audio) |
 | UPLOAD_MAX_MB | default 5 |
 | RATE_LIMIT_* | app-level token bucket |
@@ -42,7 +42,7 @@ Never commit `.env`. Secrets only via env.
 
 ## 3. Docker Compose
 
-Services: `db` (pgvector/pgvector:pg17), `backend` (uvicorn, depends on db), `frontend` (vite dev or nginx serving build). Optional profiles: `langfuse` (v4: web + worker + its own postgres/clickhouse/redis/s3 — heavy; skip on 16GB dev unless needed).
+Services: `db` (pgvector/pgvector:pg17), `backend` (uvicorn, depends on db), `frontend` (vite dev or nginx serving build). Optional profiles: `langfuse` (OSS v4: web + worker + its own postgres/clickhouse/redis/s3 — heavy; skip on 16GB dev unless needed).
 
 ## 4. Local AI Runtime (oMLX)
 
@@ -59,7 +59,7 @@ Services: `db` (pgvector/pgvector:pg17), `backend` (uvicorn, depends on db), `fr
 - oMLX on an Apple Silicon host (or swap MLXProvider for a cloud OpenAI-compatible endpoint).
 - Env-driven; secrets via host secrets; no secrets in repo.
 - Backup/recovery: pg_dump schedules; document in ops runbook.
-- Observability: Langfuse self-host or cloud; structured logs to stdout.
+- Observability: Langfuse OSS self-hosted (MIT) or structured logs to stdout; no Cloud dependency.
 
 ## 6. Performance Targets (recorded after measurement, not fabricated)
 

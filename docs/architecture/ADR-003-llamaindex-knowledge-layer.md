@@ -45,6 +45,6 @@ LlamaIndex never owns application state.
 ## Consequences
 
 - `packages/knowledge/` module wraps ingestion + retrieval.
-- Observability via OpenInference instrumentation (Langfuse v4 path —
+- Observability via OpenInference instrumentation (Langfuse OSS v4 path —
   native llama-index callback deprecated).
 - Tests: ingestion idempotency, hybrid retrieval, metadata filters, rerank.

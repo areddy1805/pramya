@@ -24,7 +24,7 @@ logic to frameworks and makes replacement impossible.
   candidate/JD/evidence knowledge. Does NOT own workflow state.
 - **MCP** — interoperability boundary only (read-oriented external surface).
 - **DeepEval** — AI evaluation suite (semantic metrics, golden datasets).
-- **Langfuse** — LLM observability.
+- **Langfuse OSS** — LLM observability (self-hosted, MIT; Cloud/Enterprise not V1 deps).
 
 Domain logic, persistence, readiness math, and evidence aggregation are plain
 Python. Framework adapters live at package boundaries.

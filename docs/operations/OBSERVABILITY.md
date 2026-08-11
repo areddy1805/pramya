@@ -1,6 +1,8 @@
 # Pramya — Observability
 
-> Langfuse 4.x tracing. ADR-008 (docs/architecture/ADR-008-observability.md). Redaction is mandatory.
+> Langfuse OSS (self-hosted, MIT-licensed) 4.x tracing. ADR-008
+> (docs/architecture/ADR-008-observability.md). Redaction is mandatory.
+> Langfuse Cloud and Enterprise-only features are not V1 dependencies.
 
 ## What We Trace
 
@@ -31,7 +33,7 @@ latency.
 - Debug content capture behind explicit env flag, **off by default**.
 - Tests assert trace payloads contain no candidate content.
 
-## Wiring (Langfuse SDK 4.x)
+## Wiring (Langfuse OSS SDK 4.x, self-hosted)
 
 - `get_client()` singleton; env `LANGFUSE_BASE_URL` (+ keys).
 - LangGraph: `langfuse.langchain.CallbackHandler` in graph config; one trace
@@ -44,7 +46,8 @@ latency.
 ## Prompt Management
 
 Prompts registered with versions; evaluation records store prompt_version +
-evaluator_version. Langfuse prompt management optional.
+evaluator_version. Langfuse prompt management (MIT, OSS) optional; versioned
+prompts remain the source of truth in `prompts/` regardless.
 
 ## Health / Degradation
 

@@ -23,7 +23,7 @@
 
 - Dev machine: MacBook Pro M4, 16GB unified, 512GB. Node v24.11.1, Python 3.14.6 (pin project to 3.12/3.13 in pyproject), Docker 27.5.1.
 - DeepSeek API: model `deepseek-v4-flash` (V4-Flash-0731 public beta 2026-07-31). 1M ctx, thinking via `reasoning_effort`. Legacy IDs `deepseek-chat`/`deepseek-reasoner` DISCONTINUED 2026-07-24 — never use. `frequency_penalty`/`presence_penalty` unsupported. OpenAI-compatible at `https://api.deepseek.com`. Pricing: $0.14/M in (miss), $0.0028/M (hit), $0.28/M out.
-- Framework versions (verified): LangChain 1.3.x, langchain-core 1.4.x, LangGraph 1.2.x (create_react_agent deprecated → `langchain.agents.create_agent`; `StateGraph(state_schema=...)` mandatory; `interrupt()`+`Command(resume=...)`; `langgraph.types`), LlamaIndex 0.14.x (QueryPipeline removed in 0.13), MCP Python SDK 2.0 (`MCPServer`, FastMCP renamed; v1 pinned `mcp>=1.28,<2` alternative), DeepEval 4.1.x (judge default gpt-5.4 → override to deepseek), Langfuse v4 server / Python SDK 4.14.x (OTel-based, `@observe`), FastAPI 0.139.x, Pydantic 2.13.x, SQLAlchemy 2.0.51 async, pgvector 0.8.x (HNSW, sparsevec), PostgreSQL 17, React 19.x, Vite 8, TS 5.7+ strict.
+- Framework versions (verified): LangChain 1.3.x, langchain-core 1.4.x, LangGraph 1.2.x (create_react_agent deprecated → `langchain.agents.create_agent`; `StateGraph(state_schema=...)` mandatory; `interrupt()`+`Command(resume=...)`; `langgraph.types`), LlamaIndex 0.14.x (QueryPipeline removed in 0.13), MCP Python SDK 2.0 (`MCPServer`, FastMCP renamed; v1 pinned `mcp>=1.28,<2` alternative), DeepEval 4.1.x (judge default gpt-5.4 → override to deepseek), Langfuse OSS v4 server / Python SDK 4.14.x (OTel-based, `@observe`; MIT self-hosted; Cloud/Enterprise not V1 deps), FastAPI 0.139.x, Pydantic 2.13.x, SQLAlchemy 2.0.51 async, pgvector 0.8.x (HNSW, sparsevec), PostgreSQL 17, React 19.x, Vite 8, TS 5.7+ strict.
 - oMLX v0.5.x = local inference server (Apache-2.0). OpenAI-compatible: chat/embeddings/rerank/audio endpoints. SSD KV-cache, model pinning/TTL. Audio endpoint support for Parakeet/Qwen3-ASR/Qwen3-TTS must be VERIFIED at Phase 7; direct `parakeet-mlx` + `mlx-audio` are the fallback.
 
 ## Verified Model Facts (see docs/MODEL_CATALOG.md)
@@ -42,7 +42,7 @@
 - DeepEval: `retrieval_context` must be list[str]; empty retrieval_context makes Faithfulness silently return 1.0; pin judge at temp 0.
 - LangGraph v2 streaming returns unified StreamPart/GraphOutput; agent event node renamed "agent"→"model"; durability modes sync/async/exit.
 - MCP SDK v2 (2026-07-28 protocol revision) = stateless request/response, `server/discover`; decide v2 vs pinned v1 at Phase 11.
-- Langfuse: metadata now dict[str,str] ≤200 chars; `start_span`/`start_generation` unified to `start_observation`; real-time ingestion needs Python SDK ≥4.7.
+- Langfuse (OSS): metadata now dict[str,str] ≤200 chars; `start_span`/`start_generation` unified to `start_observation`; real-time ingestion needs Python SDK ≥4.7.
 - SSE vs WS: text events SSE; voice = WS (bidirectional + interrupt). AudioWorklet for low-latency playback; AbortController everywhere; rAF batching for token streams.
 
 ## Phase 1 Facts (verified 2026-08)
@@ -70,7 +70,7 @@
 
 - Redis: only if Phase 10/11 measurement justifies (rate limiting/coordination/cache).
 - Auth: deployment-dependent; single-user local default; must not threaten deadline.
-- Langfuse self-host: optional Compose profile (heavy: pg+clickhouse+redis+s3); dev fallback = structured logs.
+- Langfuse self-host (OSS, MIT): optional Compose profile (heavy: pg+clickhouse+redis+s3); dev fallback = structured logs. Cloud/Enterprise not V1 deps.
 - MCP SDK v2 vs pinned v1: decide at Phase 11.
 
 ## Important Lessons

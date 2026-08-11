@@ -20,7 +20,7 @@
 | DeepSeek errors on penalties | frequency/presence penalty used | Removed/unsupported — do not send. |
 | Legacy model ID error | deepseek-chat / deepseek-reasoner used | Use `deepseek-v4-flash`. |
 | Structured output invalid repeatedly | Schema drift / prompt mismatch | Bump evaluation_version; check golden eval; retry-feedback loop should have caught it. |
-| Langfuse data delayed | SDK <4.7 with v4 server | Upgrade SDK; real-time ingestion needs ≥4.7. |
+| Langfuse OSS data delayed | SDK <4.7 with v4 server | Upgrade SDK; real-time ingestion needs ≥4.7. |
 | MCP client cannot connect | SDK version mismatch (v1 vs v2 protocol) | Re-verify at Phase 11; pin SDK; streamable-http transport. |
 
 ## 2. Environment Checks
@@ -36,7 +36,7 @@ make evals                       # AI eval suite
 ## 3. Where to Look First
 
 - Logs: `backend` stdout (structured JSON; request_id/session_id correlation).
-- Langfuse (if enabled): trace per interview/session.
+- Langfuse OSS (if enabled): trace per interview/session.
 - `docs/MODEL_CATALOG.md`: model pins + licenses.
 - `docs/MASTER_IMPLEMENTATION_PLAN.md` §35: phase/status; §29 risk register.
 

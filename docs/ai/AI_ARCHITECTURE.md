@@ -110,4 +110,4 @@ prompts/
 
 ## 10. Observability (see ADR-008)
 
-- Langfuse `@observe` on router + graph nodes; structured logs with the event set; PII-safe (IDs + redacted metadata).
+- Langfuse OSS `@observe` (self-hosted, MIT) on router + graph nodes; structured logs with the event set; PII-safe (IDs + redacted metadata).

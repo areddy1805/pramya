@@ -5,6 +5,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ## [Unreleased]
 
+### Changed
+- Cost policy reconciliation: Langfuse pinned to OSS/self-hosted (MIT) — Cloud/Enterprise are not V1 dependencies; `LANGFUSE_HOST` default now self-hosted (`http://localhost:3000`). Added project-wide free/open-source-first infrastructure rule and dependency classification to `docs/DECISIONS.md`. Docs updated repo-wide (plan, ADR-008, observability, deployment, troubleshooting, memory).
+
 ### Added
 
 - Master implementation plan (`docs/MASTER_IMPLEMENTATION_PLAN.md`): product vision, architecture, domain model, framework boundaries, AI/voice/retrieval/evaluation architecture, 13 implementation phases with tasks/tests/acceptance criteria, 30-day schedule, risk register, progress tracker.

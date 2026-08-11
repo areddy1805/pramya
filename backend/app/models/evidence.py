@@ -29,7 +29,9 @@ class Evidence(Base, TimestampMixin):
     source_kind: Mapped[EvidenceSourceKind] = mapped_column(String(32), nullable=False)
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     claim: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[EvidenceStatus] = mapped_column(String(32), nullable=False, default=EvidenceStatus.CLAIMED)
+    status: Mapped[EvidenceStatus] = mapped_column(
+        String(32), nullable=False, default=EvidenceStatus.CLAIMED
+    )
     competency_id: Mapped[int | None] = mapped_column(
         ForeignKey("competency.id", ondelete="SET NULL"), nullable=True, index=True
     )

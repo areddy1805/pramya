@@ -170,7 +170,9 @@ class Answer(Base, TimestampMixin):
         ForeignKey("interview_turn.id", ondelete="SET NULL"), nullable=True
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    mode: Mapped[AssessmentMode] = mapped_column(String(32), nullable=False, default=AssessmentMode.TEXT)
+    mode: Mapped[AssessmentMode] = mapped_column(
+        String(32), nullable=False, default=AssessmentMode.TEXT
+    )
     raw_audio_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     question: Mapped[Question] = relationship(back_populates="answers")

@@ -66,6 +66,7 @@ Resume + JD → Candidate Intelligence + Role Intelligence → Competency Model
 8. **Treat AI output as untrusted data.** Structured proposal → validation → application logic → persistence.
 9. **Small coherent integrations.** Every framework has a documented responsibility; removing one must not require rewriting unrelated domain logic.
 10. **Respect the M4 16GB target.** Lazy loading, resource-aware lifecycle, bounded concurrency, no model zoo.
+11. **Free/open-source-first infrastructure.** V1 framework/infrastructure selection must prefer the strongest viable free/open-source/self-hosted option. Hosted paid services require explicit architectural approval and must not enter the dependency graph implicitly.
 
 ---
 
@@ -277,9 +278,9 @@ backend/app/
 | PostgreSQL | Durable application state | authoritative V1 DB; SQLite only for tests if justified |
 | pgvector 0.8 | Vector persistence/retrieval | hybrid search (vector + FTS + RRF) |
 | Redis | Only if justified (rate limiting, coordination, cache) | Decision deferred until Phase 10/11 measurement |
-| Langfuse v4 | LLM observability, traces, cost | Python SDK `@observe`; no candidate PII |
+| Langfuse OSS (self-hosted, MIT) | LLM observability, traces, cost | Python SDK `@observe`; no candidate PII; Cloud/Enterprise not V1 deps |
 | DeepEval 4.1 | AI evaluation suite | golden datasets + CI; judge = deepseek-v4-flash (not cloud gpt by default) |
-| Docker | Dev + deployment | Compose: postgres+pgvector, backend, frontend, (langfuse optional) |
+| Docker | Dev + deployment | Compose: postgres+pgvector, backend, frontend, (langfuse OSS optional profile) |
 | GitHub Actions | CI/CD | lint, typecheck, unit, integration, contract, e2e, evals, build |
 
 ---
@@ -439,7 +440,7 @@ Every endpoint: Pydantic request/response models, validation, idempotency keys o
 
 ## 20. Observability (see ADR-008)
 
-- Langfuse v4 (self-hosted optional in Compose; Python SDK `@observe`); traces: interview → LangGraph run → question gen, retrieval, evaluation, evidence extraction, tool calls.
+- Langfuse OSS v4 (self-hosted, MIT-licensed; optional Compose profile; Python SDK `@observe`; Cloud/Enterprise not V1 deps); traces: interview → LangGraph run → question gen, retrieval, evaluation, evidence extraction, tool calls.
 - Structured JSON logs (request_id, session_id, turn_id, graph_node, model, provider, latency, tokens, cache_hit, retrieval_count, reranker_count, ASR latency, TTS latency, TTFA, interruption_count, error, fallback).
 - No raw resume/answer content in traces; content-length + IDs + redacted snippets only.
 - Routing events always logged (task, provider, model, reason).
@@ -665,7 +666,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 **Goal:** MCP server, full observability, security hardening, eval suite complete.
 **Tasks:**
 - 11.1 MCP server (read-only tools/resources, streamable-http; contract tests; external-client demo script).
-- 11.2 Langfuse integration (self-hosted in Compose): traces across interview graph, retrieval, routing; PII-safe.
+- 11.2 Langfuse OSS integration (self-hosted, MIT-licensed, in Compose): traces across interview graph, retrieval, routing; PII-safe. No Langfuse Cloud dependency.
 - 11.3 Structured logs full event set (§20); redaction audit.
 - 11.4 Security hardening: rate limiting, CORS/headers, upload guards, prompt-injection tests (adversarial docs fixture), secret audit (gitleaks in CI), pip/npm audit.
 - 11.5 Eval suite: golden datasets (§21) + DeepEval runner + CI gate; routing/evidence/adaptive evals.
@@ -815,7 +816,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 | LlamaIndex | 0.14.x (0.14.23) | `IngestionPipeline`; no `QueryPipeline` (removed 0.13) |
 | MCP Python SDK | 2.0.0 (`MCPServer`) or pinned 1.28–2 | v2 protocol 2026-07-28; re-verify at Phase 11 |
 | DeepEval | 4.1.x | judge default gpt-5.4 → override to deepseek-v4-flash; RAG metrics; `RetrievedContextData` |
-| Langfuse | v4 server / Python SDK 4.14.x | `@observe`, `propagate_attributes`; OTel-based; needs Pydantic v2; self-host Compose (pg+clickhouse+redis+s3) heavier — optional profile |
+| Langfuse | v4 server / Python SDK 4.14.x | `@observe`, `propagate_attributes`; OTel-based; needs Pydantic v2; self-host Compose (pg+clickhouse+redis+s3) heavier — optional profile. **OSS/self-hosted (MIT), all product features MIT since 2025; Cloud/Enterprise (/ee: SCIM, extended audit logging, data retention policies, advanced RBAC) NOT V1 dependencies.** |
 | FastAPI | 0.139.x | Python 3.10+; SSE via StreamingResponse; WS via websockets; `app.frontend()` optional |
 | Pydantic | 2.13.x | v2 only; strict mode; discriminated unions |
 | SQLAlchemy | 2.0.51 | async; `Mapped`/`mapped_column` |
@@ -844,7 +845,7 @@ Rejected: skill-file-only architecture (Pramya needs owned state), Next.js/Supab
 - Target dev hardware: MacBook Pro M4, 16GB unified, 512GB.
 - Python: uv-managed, 3.12/3.13. Node 24. Docker 27.
 - Local AI: oMLX (brew or DMG; OpenAI-compatible endpoints; model pinning/TTL for memory). Model downloads per `docs/MODEL_CATALOG.md` (HF repos listed).
-- `.env.example`: APP_ENV, APP_HOST/PORT, DATABASE_URL (postgresql+asyncpg://…), DEEPSEEK_API_KEY, OMLX_BASE_URL, OMLX_API_KEY(optional), LANGFUSE_* (optional), VOICE_RETENTION_DAYS, UPLOAD_MAX_MB, ROUTING config, frontend VITE_API_URL.
+- `.env.example`: APP_ENV, APP_HOST/PORT, DATABASE_URL (postgresql+asyncpg://…), DEEPSEEK_API_KEY, OMLX_BASE_URL, OMLX_API_KEY(optional), LANGFUSE_* (optional; OSS self-hosted only), VOICE_RETENTION_DAYS, UPLOAD_MAX_MB, ROUTING config, frontend VITE_API_URL.
 - Commands (Makefile): `make up`, `make down`, `make migrate`, `make dev-backend`, `make dev-frontend`, `make test`, `make test-unit`, `make test-integration`, `make evals`, `make lint`, `make typecheck`, `make models-pull`, `make demo-setup`.
 - Never commit `.env`.
 

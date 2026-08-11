@@ -37,7 +37,9 @@ class Document(Base, TimestampMixin):
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    status: Mapped[DocumentStatus] = mapped_column(String(32), nullable=False, default=DocumentStatus.PENDING)
+    status: Mapped[DocumentStatus] = mapped_column(
+        String(32), nullable=False, default=DocumentStatus.PENDING
+    )
     parsed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     chunks: Mapped[list[DocumentChunk]] = relationship(

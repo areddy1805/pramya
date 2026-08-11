@@ -55,9 +55,11 @@ class Settings(BaseSettings):
     upload_storage_dir: str = ".runtime/uploads"
 
     # Observability (Langfuse optional)
+    # Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability platform.
+    # Langfuse Cloud and Enterprise-only features are NOT V1 dependencies.
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
-    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_host: str = "http://localhost:3000"
 
     # CORS
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])

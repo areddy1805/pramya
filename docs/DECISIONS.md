@@ -132,11 +132,11 @@
 **Status:** Accepted
 **Date:** 2026-08
 
-**Decision:** Langfuse v4 (self-hosted optional) for LLM traces; structured JSON logs with the spec's event set; PII-safe by design (IDs + redacted metadata; never raw resume/answer content).
+**Decision:** Langfuse OSS (self-hosted, MIT-licensed) for LLM traces; structured JSON logs with the spec's event set; PII-safe by design (IDs + redacted metadata; never raw resume/answer content). Langfuse Cloud and Enterprise-only features are NOT V1 dependencies.
 
 **Context:** Must trace interview → LangGraph → question gen/retrieval/eval/evidence/tools; must not leak candidate data.
 
-**Rationale:** Verified Langfuse v4 Python SDK (`@observe`); spec requires observability.
+**Rationale:** Verified Langfuse OSS v4 Python SDK (`@observe`); spec requires observability; self-hosted MIT platform avoids paid SaaS dependency.
 
 **Consequences:** Observability scaffolding in Phase 0; routing decisions always logged; redaction audit in Phase 11.
 
@@ -219,6 +219,41 @@
 **Consequences:** 1024-dim locked in schema (ADR-007); retrieval service + rerank; degraded mode if oMLX down.
 
 ---
+
+## Cost Policy (verified 2026-08, official sources)
+
+**Rule (project-wide):** V1 framework/infrastructure selection must prefer the
+strongest viable free/open-source/self-hosted option. Hosted paid services
+require explicit architectural approval and must not enter the dependency
+graph implicitly.
+
+**Langfuse** = Langfuse OSS (self-hosted, MIT-licensed) is the V1
+observability/evaluation platform. Verified: all product features MIT since
+June 2025 (evals, annotation queues, prompt experiments, playground);
+self-hosting first-class (Docker Compose); only `/ee` add-ons commercial
+(SCIM, extended audit logging, data retention policies, advanced RBAC) —
+none required by Pramya V1. Langfuse Cloud and Enterprise-only features are
+NOT V1 dependencies. No paid Langfuse subscription. OpenTelemetry remains
+the vendor-neutral instrumentation boundary.
+
+**External dependency classification (2026-08 audit):**
+
+| Dependency | Class | Note |
+|---|---|---|
+| DeepSeek V4 Flash (API) | PAID/COMMERCIAL | Explicitly approved cloud inference; keep (routing architecture, ADR-004/013) |
+| Langfuse OSS | FREE/OSS (self-hosted) | MIT; Cloud = OPTIONAL PAID, not V1 |
+| PostgreSQL 17 + pgvector | FREE/OSS | self-hosted Docker |
+| Redis | FREE/OSS (deferred) | only if Phase 10/11 measurement justifies |
+| LangGraph / LangChain / LlamaIndex | FREE/OSS | MIT |
+| DeepEval | FREE/OSS | Apache-2.0; judge = deepseek (approved) |
+| MLX / oMLX / local models | FREE/OSS | Apache/MIT/CC-BY-4.0 weights |
+| FastAPI / Pydantic / SQLAlchemy / Alembic / asyncpg / uv / pytest / ruff / mypy / pyright | FREE/OSS | MIT/BSD/Apache |
+| React / Vite / TS / Tailwind / TanStack Query / Zustand / Playwright | FREE/OSS | MIT |
+| Docker / GitHub Actions | FREE/OSS (free tier) | CI infra |
+| vLLM / Nemotron ASR Streaming | FREE/OSS (upgrade candidates) | not V1 deps |
+| Ollama / Supabase / LinkedIn | FREE/OSS or rejected | not adopted |
+
+No other paid/commercial SaaS enters the V1 dependency graph.
 
 # Implementation Notes (Phase 1, 2026-08)
 
