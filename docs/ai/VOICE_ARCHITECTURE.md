@@ -90,7 +90,7 @@ Server → client:
 
 - MLX models cannot run concurrently from multiple threads → single serialized inference worker for speech; VAD on CPU/ANE.
 - Speech stack is host-native (oMLX/parakeet-mlx/mlx-audio run on host; Docker cannot reach Metal).
-- Lifecycle: lazy load/unload, memory cap; one LLM (default = 4B `pramya-4b`; 9B deferred and never co-resident) + speech never over budget; oMLX handles LLM/embed/rerank lifecycle, voice service handles speech model lifecycle.
+- Lifecycle: lazy load/unload, memory cap; one LLM (default = 4B `pramya-4b`; 9B deferred and never co-resident) + speech never over budget; oMLX handles LLM/embed/rerank lifecycle, voice service handles speech model lifecycle. Artifacts may coexist on disk — residency is a runtime decision under the memory policy, not a disk constraint.
 
 ## 10. Failure Handling
 

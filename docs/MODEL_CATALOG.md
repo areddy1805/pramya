@@ -125,7 +125,7 @@ workloads where additional capability is justified.
 - **Compatibility note:** same mlx-lm `qwen3_5` arch support caveat as 4B.
 - **Source:** https://huggingface.co/Qwen/Qwen3.5-9B , https://huggingface.co/mlx-community/Qwen3.5-9B-OptiQ-4bit
 - **Fallback:** none in V1 — not part of any fallback chain.
-- **Memory budget note (if ever enabled):** 4B + 9B must not be loaded simultaneously with speech models on 16 GB; model lifecycle (lazy load, unload, oMLX memory cap) enforces. Default V1 concurrent set never includes 9B.
+- **Memory budget note (if ever enabled):** 4B + 9B must not be loaded simultaneously with speech models on 16 GB; model lifecycle (lazy load, unload, oMLX memory cap) enforces. Default V1 concurrent set never includes 9B. (Artifacts may coexist on disk; residency is managed dynamically by oMLX under its memory policy.)
 
 ### 2.4 BGE-M3
 
@@ -214,6 +214,12 @@ reranker (~4–6.5 GB total) OR speech stack (ASR + TTS, ~1.5–3 GB) + small LL
 never load 4B + 9B + ASR + TTS simultaneously; model lifecycle service enforces
 memory cap, lazy load, unload; speech runs on a single serialized MLX worker
 (MLX Metal workloads should not run concurrently from multiple threads).
+
+All installed model artifacts may coexist on disk; oMLX dynamically
+loads/manages models under its memory policy — residency is determined by
+demand, cache state, TTL/pinning, and the configured memory guard, not by
+what is installed. The budget rules above constrain resident sets, not disk
+presence.
 
 ---
 

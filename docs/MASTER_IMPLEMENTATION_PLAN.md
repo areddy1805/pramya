@@ -744,7 +744,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 | 4 | LangGraph/MCP/LangChain API churn | Medium | Low | Pin exact versions in pyproject; re-verify at Phase 3/11 start |
 | 5 | 30-day scope creep | High | High | §30 scope control; deferred features tracked; features classified MUST/SHOULD/NICE/V2/REJECT |
 | 6 | DeepSeek cost creep | Medium | Medium | Local-first routing; prompt minimization; caching; cost telemetry |
-| 7 | 16GB memory pressure with multiple local models | Medium | High | oMLX single process manages models; lazy load; 4-bit; don't load all simultaneously; lifecycle tests |
+| 7 | 16GB memory pressure with multiple local models | Medium | High | oMLX single process manages models; lazy load; 4-bit; artifacts coexist on disk, residency driven by demand/cache/TTL/pinning under the memory guard; lifecycle tests |
 | 8 | Auth absent → multi-user confusion | Low (V1) | Low | Deployment-dependent; single-user default; auth isolated behind boundary if added |
 | 9 | Model license drift | Low | Low | MODEL_CATALOG tracked; pre-release license audit (§57) |
 | 10 | E2E voice tests flaky | Medium | Medium | Separate voice matrix script tier; deterministic fixtures; CI split |
