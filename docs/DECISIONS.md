@@ -1,130 +1,287 @@
 # Pramya — Architectural Decisions
 
-> Authoritative decision log for Pramya.
->
-> Full ADRs live in `docs/architecture/` as `ADR-001…ADR-014` (canonical numbering,
-> matches master plan §23 and spec §32). Project-foundation decisions are recorded
-> inline below (they precede the architecture work). This file is the decision
-> index + foundation record; it must stay consistent with the ADR files.
->
-> Numbering rule: architecture ADRs are numbered by FILE (`ADR-NNN-*.md`).
-> Do not renumber files to match older plan text — update the plan text instead.
+> Authoritative decision log. Full ADRs live in `docs/architecture/` (files ADR-001..ADR-014).
+> Product-level decisions recorded inline as ADR-015..019.
+> Only meaningful architectural/product decisions belong here.
+> Decision numbering follows the spec's mandated ADR list (spec §32) for 001-010, plus model/runtime ADRs 011-014.
 
 ---
 
-## Project Foundation Decisions
+## Decision Index
 
-Recorded here (not as separate ADR files) because they are project-level
-starting points rather than architectural layers.
+| ADR | Title | Status | Location |
+|---|---|---|---|
+| ADR-001 | Framework boundaries | Accepted | docs/architecture/ADR-001-framework-boundaries.md |
+| ADR-002 | LangGraph interview workflow | Accepted | docs/architecture/ADR-002-langgraph-workflow.md |
+| ADR-003 | LlamaIndex knowledge layer | Accepted | docs/architecture/ADR-003-llamaindex-knowledge-layer.md |
+| ADR-004 | Model routing | Accepted | docs/architecture/ADR-004-model-routing.md |
+| ADR-005 | Evidence-first evaluation + deterministic readiness | Accepted | docs/architecture/ADR-005-evidence-first-evaluation.md |
+| ADR-006 | MCP boundary | Accepted | docs/architecture/ADR-006-mcp-boundary.md |
+| ADR-007 | PostgreSQL + pgvector persistence | Accepted | docs/architecture/ADR-007-pgvector.md |
+| ADR-008 | Observability (Langfuse + structured logs, PII-safe) | Accepted | docs/architecture/ADR-008-observability.md |
+| ADR-009 | AI evaluation strategy (DeepEval + golden datasets) | Accepted | docs/architecture/ADR-009-evaluation.md |
+| ADR-010 | Security & PII model | Accepted | docs/architecture/ADR-010-security-and-pii.md |
+| ADR-011 | MLX local runtime + oMLX server | Accepted | docs/architecture/ADR-011-mlx-runtime-omlx.md |
+| ADR-012 | Voice model stack (Parakeet live / Qwen3-ASR recorded / Qwen3-TTS) | Accepted | docs/architecture/ADR-012-voice-models.md |
+| ADR-013 | deepseek-v4-flash cloud reasoning + thinking policy | Accepted | docs/architecture/ADR-013-deepseek-cloud.md |
+| ADR-014 | Retrieval models: BGE-M3 + Qwen3-Reranker-0.6B | Accepted | docs/architecture/ADR-014-retrieval-models.md |
+| ADR-015 | Greenfield project | Accepted | inline below |
+| ADR-016 | Evidence-driven product architecture | Accepted | inline below |
+| ADR-017 | Model-routed AI architecture | Accepted | inline below |
+| ADR-018 | Apple Silicon local AI (MLX/oMLX) | Accepted | inline below |
+| ADR-019 | Voice as a first-class capability | Accepted | inline below |
 
-### Foundation-1 — Greenfield Project
+---
+
+# Decisions
+
+## ADR-001 — Framework Boundaries
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** LangChain = model/tool/structured-output/prompt primitives; LangGraph = stateful interview orchestration; LlamaIndex = knowledge/retrieval layer; MCP = bounded external interoperability surface. Each behind clear boundaries; removable without rewriting domain logic.
+
+**Context:** Spec requires real framework experience without framework-for-framework's-sake.
+
+**Rationale:** Small well-defined integrations beat deep coupling.
+
+**Consequences:** Layering rules in master plan §8/§9; ADR-002/003/006 detail boundaries.
+
+## ADR-002 — LangGraph as Interview Orchestration Engine
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Interview workflow is a typed LangGraph 1.2 StateGraph with Postgres checkpointing, `interrupt()`/`Command(resume=...)` for turn boundaries, node timeouts, streaming events.
+
+**Context:** Interview is inherently stateful, adaptive, resumable, conditional.
+
+**Rationale:** Durable execution, pause/resume, browser-refresh survival, idempotent resume — verified current API (LangGraph 1.2.x).
+
+**Consequences:** Session ↔ thread_id; interrupts at LISTENING; no duplicated questions/evaluations; tests for recovery.
+
+## ADR-003 — LlamaIndex as Knowledge/Retrieval Layer
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** LlamaIndex 0.14 `IngestionPipeline` owns document parsing→chunking→metadata→embedding→pgvector write; retrieval pipeline uses hybrid search + rerank. Dedup handled explicitly (known 0.14 gotcha: no vector-store dedup).
+
+**Context:** Resume/JD/evidence/history retrieval needs indexing and metadata.
+
+**Rationale:** Real RAG experience; verified current version 0.14.x.
+
+**Consequences:** Knowledge layer only; never owns workflow state; explicit docstore tracking.
+
+## ADR-004 — Model Routing
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** InferenceRouter with provider abstraction (deepseek-v4-flash / oMLX / speech); task→capability→provider→model→mode→fallback policy; observable routing decisions; cost control.
+
+**Context:** Reasoning, retrieval, reranking, ASR, TTS, embeddings have different latency/quality/cost/hardware profiles.
+
+**Rationale:** Local-first cost control + quality where needed.
+
+**Consequences:** Providers behind capability interface (`generate/embed/rerank/transcribe/synthesize`); routing telemetry; fallback chains.
+
+## ADR-005 — Evidence-First Evaluation + Deterministic Readiness
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Evaluation = dimensions + confidence + strengths/weaknesses + evidence refs + missing evidence + hints used + evaluator version. Readiness/progress/queue aggregation is deterministic application logic; LLM provides semantic judgments only.
+
+**Context:** "LLM → 8/10" is prohibited by spec.
+
+**Rationale:** Scores must have observable reasons; no fabricated progress.
+
+**Consequences:** Readiness calculator, priority engine, progress aggregation are pure functions with golden tests.
+
+## ADR-006 — MCP Boundary
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** MCP server is a bounded read-oriented external surface (tools: candidate profile lookup, evidence search, role requirements, interview/practice history; resources: profile/role/prep plan). Application never routes through MCP internally.
+
+**Context:** MCP must be interoperability, not internal architecture (spec §8).
+
+**Rationale:** Genuine external use case: MCP-compatible agents + eval harness can query Pramya's evidence state.
+
+**Consequences:** Standalone server process; contract tests; no write tools in V1.
+
+## ADR-007 — PostgreSQL + pgvector Persistence
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** PostgreSQL 17 authoritative V1 database (SQLAlchemy 2.x async + psycopg3 + Alembic); pgvector 0.8 HNSW for vectors; hybrid dense + FTS retrieval. SQLite tests-only; Redis deferred until measurement justifies.
+
+**Context:** Spec mandates PostgreSQL; Redis only when it solves a real requirement.
+
+**Rationale:** Verified current stack; keeps infra proportional.
+
+**Consequences:** 1024-dim BGE-M3 locked in schema from day one; framework tables namespaced in same DB; deletion/retention support.
+
+## ADR-008 — Observability (Langfuse + structured logs)
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Langfuse v4 (self-hosted optional) for LLM traces; structured JSON logs with the spec's event set; PII-safe by design (IDs + redacted metadata; never raw resume/answer content).
+
+**Context:** Must trace interview → LangGraph → question gen/retrieval/eval/evidence/tools; must not leak candidate data.
+
+**Rationale:** Verified Langfuse v4 Python SDK (`@observe`); spec requires observability.
+
+**Consequences:** Observability scaffolding in Phase 0; routing decisions always logged; redaction audit in Phase 11.
+
+## ADR-009 — AI Evaluation Strategy (DeepEval + golden datasets)
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Golden datasets for all major pipelines; DeepEval 4.1 for semantic metrics with judge = deepseek-v4-flash (temperature 0), not cloud gpt default; deterministic tests for validity/math/state.
+
+**Context:** "Output looks good" is not evidence (spec).
+
+**Rationale:** Verified DeepEval 4.1 current; cost/privacy favor DeepSeek judge.
+
+**Consequences:** `tests/evals/` + CI gate; evaluator versioning; any prompt change reruns affected evals.
+
+## ADR-010 — Security & PII Model
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Documents are untrusted input; prompt-injection defenses; LLM output → structured proposal → validation → application logic → persistence; candidate data sensitive; secrets never committed; retention/deletion supported; rate limiting; CORS/headers.
+
+**Context:** Resumes/JDs/answers/audio are sensitive; adversarial content expected.
+
+**Rationale:** Spec §23/§46; security cannot be weakened for convenience.
+
+**Consequences:** Upload guards, separation of system/user/document/evidence/model-output, PII scrubbers, adversarial fixtures in tests.
+
+## ADR-011 — MLX Local Runtime + oMLX Server
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** oMLX (Apache-2.0) is the single local inference server for LLM/embeddings/reranker via OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`, `/v1/rerank`); multi-model serving with LRU eviction, pinning, per-model TTL, SSD-tiered KV cache. Speech models are NOT served by oMLX — dedicated lifecycle managers in voice service. Provider abstraction: `InferenceProvider` → DeepSeekProvider / MLXProvider. Model selection is configuration, not code.
+
+**Context:** M4 16GB needs resource-aware multi-model serving; avoid GPL `mlx-embeddings` linkage (serve embeddings via oMLX instead).
+
+**Rationale:** Verified oMLX capabilities; Apache license; active maintenance.
+
+**Consequences:** `packages/ai/providers/`; degraded-mode matrix; ADR-012/013/014 for model specifics.
+
+## ADR-012 — Voice Model Stack (ASR/TTS)
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** Live ASR = Parakeet-TDT-0.6B-v3 via `parakeet-mlx` streaming (`transcribe_stream`, draft/final token phases, partial transcripts, 16 kHz mono); recorded/archival ASR = Qwen3-ASR-1.7B via `mlx-audio` (never the live default); TTS = Qwen3-TTS-12Hz-0.6B-Base (4-bit ~981 MB) streaming MLX with sentence/chunk segmentation; explicit voice state machine (listening/processing/speaking/paused/interrupted/cancelled/error); cancellation at every boundary; stale TTS after interruption is a correctness bug. Lifecycle: Parakeet + TTS + one LLM = peak live envelope (~10 GB).
+
+**Context:** Voice is first-class; spec mandates Parakeet live / Qwen3-ASR recorded distinction; M4 16GB budget.
+
+**Rationale:** Verified models + MLX paths; spec §10-13.
+
+**Consequences:** `packages/voice/`: capture protocol, ASR/TTS adapters, state machine, cancellation tokens, retention policy; voice test matrix (spec §42).
+
+## ADR-013 — deepseek-v4-flash Cloud Reasoning + Thinking Policy
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** deepseek-v4-flash is the cloud reasoning model (spec-mandated; legacy IDs deprecated 2026-07-24). Verified: model ID `deepseek-v4-flash` (V4-Flash-0731); 1M context / 384K max output; thinking toggle via `thinking: {type: enabled|disabled}` or `reasoning_effort`; OpenAI-compatible base URL `https://api.deepseek.com`; pricing $0.14/M in (miss), $0.0028/M (hit), $0.28/M out. Task policy: thinking mode for complex evaluation/adaptive reasoning/system design/synthesis; non-thinking for latency-sensitive ops; mode observable in telemetry.
+
+**Context:** Complex reasoning must not be routed to local models; cost control required.
+
+**Rationale:** Verified current API; spec §6.1.
+
+**Consequences:** DeepSeekProvider behind InferenceRouter; prompt minimization; no indiscriminate calls; cost telemetry.
+
+## ADR-014 — Retrieval Models: BGE-M3 + Qwen3-Reranker-0.6B
+
+**Status:** Accepted
+**Date:** 2026-08
+
+**Decision:** BGE-M3 (MIT, 1024-dim, 8192 seq, 100+ langs) for embeddings — serve via oMLX `/v1/embeddings` (MLX 4-bit ~321 MB), never via GPL `mlx-embeddings` library. Qwen3-Reranker-0.6B (Apache-2.0, MLX 4-bit ~331 MB) for reranking via oMLX `/v1/rerank` (yes/no logit scoring). Pipeline: query → candidate retrieval (BGE-M3 dense + FTS hybrid) → top-K → rerank → evidence selection → LLM.
+
+**Context:** Evidence retrieval across resumes/JDs/transcripts/competencies/history; spec mandates both models.
+
+**Rationale:** Verified licenses + MLX paths; licensing trap (GPL mlx-embeddings) avoided.
+
+**Consequences:** 1024-dim locked in schema (ADR-007); retrieval service + rerank; degraded mode if oMLX down.
+
+---
+
+# Product-Level Decisions (inline)
+
+## ADR-015 — Greenfield Project
 
 **Status:** Accepted
 **Date:** 2026-08
 
 **Decision:** Pramya is built as a new greenfield project rather than adapted from an existing application.
 
-**Context:** The repository starts with no application implementation.
+**Context:** Repository starts with no application implementation.
 
-**Rationale:** The architecture can be deliberately designed around product requirements rather than inherited from unrelated code.
+**Rationale:** Architecture deliberately designed around product requirements.
 
-**Consequences:** Project structure, tooling, testing strategy, and development workflow are established from scratch.
+**Consequences:** Project structure, tooling, testing, workflow established from scratch.
 
-### Foundation-2 — Evidence-Driven Product Architecture
-
-**Status:** Accepted
-**Date:** 2026-08
-
-**Decision:** Evidence is a first-class domain concept.
-
-**Context:** Pramya must provide substantially more value than generic conversational AI.
-
-**Rationale:** The product needs to understand candidate claims, demonstrated capability, supporting evidence, target-role requirements, weaknesses, and longitudinal progress.
-
-**Consequences:** Evaluation, retrieval, candidate memory, and practice recommendations are designed around structured evidence (ledger, statuses claimed/observed/demonstrated/inferred/unknown, provenance).
-
-### Foundation-3 — Model-Routed AI Architecture
+## ADR-016 — Evidence-Driven Product Architecture
 
 **Status:** Accepted
 **Date:** 2026-08
 
-**Decision:** Pramya uses specialized models per workload through an InferenceRouter rather than routing every task through a single LLM.
+**Decision:** Evidence is a first-class domain concept: ledger, provenance statuses (claimed/observed/demonstrated/inferred/unknown), append-only evaluations and snapshots.
 
-**Context:** Reasoning, retrieval, reranking, ASR, TTS, and embeddings have different latency/quality/cost/hardware profiles.
+**Context:** Pramya must provide more value than generic conversational AI.
 
-**Rationale:** Local-first cost control + cloud quality where needed (spec §28).
+**Rationale:** Product must understand claims, demonstrated capability, evidence, role requirements, weaknesses, longitudinal progress.
 
-**Consequences:** Providers sit behind a capability interface (`generate/embed/rerank/transcribe/synthesize`); routing decisions are observable; fallback chains exist per task class.
+**Consequences:** Evaluation, retrieval, memory, practice recommendations designed around structured evidence.
 
-### Foundation-4 — Apple Silicon Local AI (MLX/oMLX)
-
-**Status:** Accepted
-**Date:** 2026-08
-
-**Decision:** Local AI development targets the M4 16 GB machine using MLX/oMLX-compatible inference where appropriate.
-
-**Context:** Primary development environment is an Apple Silicon MacBook Pro (M4, 16 GB, 512 GB).
-
-**Rationale:** Native Apple Silicon inference provides practical local development without a GPU server.
-
-**Consequences:** Model lifecycle management, quantization, resource awareness, bounded concurrency, lazy loading (ADR-011).
-
-### Foundation-5 — Voice as a First-Class Capability
+## ADR-017 — Model-Routed AI Architecture
 
 **Status:** Accepted
 **Date:** 2026-08
 
-**Decision:** Voice interviewing is part of V1, not a late-stage add-on.
+**Decision:** Specialized models per workload via InferenceRouter (local-first; cloud only where quality demands).
 
-**Context:** Real interview preparation requires natural spoken interaction; spec makes voice first-class.
+**Context:** Reasoning, retrieval, reranking, ASR, TTS, embeddings have different profiles.
 
-**Rationale:** Spoken interaction is a materially different experience from text chat.
+**Rationale:** Cost control + quality where needed.
 
-**Consequences:** ASR/TTS/streaming/interruption/cancellation/pause/resume/audio state are core architecture; explicit voice state machine; stale-TTS prohibition (ADR-012).
+**Consequences:** Capability interfaces; observable routing; fallback chains (ADR-004).
 
----
+## ADR-018 — Apple Silicon Local AI
 
-## Architecture Decision Records — Index
+**Status:** Accepted
+**Date:** 2026-08
 
-Canonical ADRs in `docs/architecture/`:
+**Decision:** Local AI optimized for M4 16GB via MLX/oMLX; model lifecycle management; 4-bit quantization; bounded concurrency; lazy loading; serialized MLX inference (no concurrent Metal runs).
 
-| ADR | Title | File | Status |
-|---|---|---|---|
-| ADR-001 | Framework Boundaries | `ADR-001-framework-boundaries.md` | Accepted |
-| ADR-002 | LangGraph Interview Workflow | `ADR-002-langgraph-workflow.md` | Accepted |
-| ADR-003 | LlamaIndex Knowledge Layer | `ADR-003-llamaindex-knowledge-layer.md` | Accepted |
-| ADR-004 | Model Routing | `ADR-004-model-routing.md` | Accepted |
-| ADR-005 | Evidence-First Evaluation | `ADR-005-evidence-first-evaluation.md` | Accepted |
-| ADR-006 | MCP Boundary | `ADR-006-mcp-boundary.md` | Accepted |
-| ADR-007 | pgvector | `ADR-007-pgvector.md` | Accepted |
-| ADR-008 | Observability | `ADR-008-observability.md` | Accepted |
-| ADR-009 | Evaluation | `ADR-009-evaluation.md` | Accepted |
-| ADR-010 | Security and PII | `ADR-010-security-and-pii.md` | Accepted |
-| ADR-011 | MLX Runtime + oMLX | `ADR-011-mlx-runtime-omlx.md` | Accepted |
-| ADR-012 | Voice Model Stack (ASR/TTS) | `ADR-012-voice-models.md` | Accepted |
-| ADR-013 | deepseek-v4-flash Cloud Reasoning + Thinking Policy | `ADR-013-deepseek-cloud.md` | Accepted |
-| ADR-014 | Retrieval Models (BGE-M3 + Qwen3-Reranker-0.6B) | `ADR-014-retrieval-models.md` | Accepted |
+**Context:** Primary dev machine is M4 16GB/512GB.
 
-Persistence, modular monolith, deployment, and API-first versioning decisions
-are covered by the foundation decisions above + master plan §8/§9/§16/§19 +
-ADR-001/ADR-007/ADR-010 — no separate ADR files were needed for those layers
-(V1 scope discipline; can be split later if warranted).
+**Rationale:** Native Apple Silicon inference without GPU server.
 
----
+**Consequences:** Resource-aware runtime; degraded-mode matrix; oMLX + host-native speech (ADR-011/012).
 
-## Decision Log
+## ADR-019 — Voice as a First-Class Capability
 
-| Date | Decision | Reason | Impact |
-|---|---|---|---|
-| 2026-08 | All 8 definitive models verified compatible; no replacements | Verified licenses/runtimes/memory (MODEL_CATALOG.md, ADR-011..014) | Stack locked |
-| 2026-08 | `mcp>=1.27,<2` pinned for V1 | MCP SDK v2.0.0 renamed FastMCP→MCPServer; protocol change too fresh | Stable FastMCP API (ADR-006) |
-| 2026-08 | Embeddings/rerank via oMLX HTTP, not `mlx-embeddings` | `mlx-embeddings` reported GPL-3.0 — license conflict | License-clean retrieval (ADR-011) |
-| 2026-08 | deepseek-v4-flash only (no legacy IDs) | Legacy `deepseek-chat`/`deepseek-reasoner` deprecated 2026-07-24 | API correctness (ADR-013) |
-| 2026-08 | FastAPI native SSE (≥0.135) | Built-in `fastapi.sse`; no sse-starlette | Fewer deps |
-| 2026-08 | SQLAlchemy 2 async + asyncpg + Alembic | Standard 2026 FastAPI pattern | Async persistence |
-| 2026-08 | Redis default off | Spec: only when justified | Simpler ops |
-| 2026-08 | Langfuse v4 + OpenInference for LlamaIndex | Native callbacks deprecated in v4 | Correct tracing (ADR-008) |
-| 2026-08 | QueryFusionRetriever over pgvector built-in hybrid | Known top-k/alpha limitation in PGVectorStore hybrid | Hybrid retrieval quality (ADR-007/014) |
-| 2026-08 | Text interview first; voice layered on same LangGraph | Voice is critical path but shares the engine | Phases 4 vs 7–9 (ADR-002/012) |
+**Status:** Accepted
+**Date:** 2026-08
 
-Full change history: `docs/CHANGELOG.md`. Execution state: `docs/MASTER_IMPLEMENTATION_PLAN.md`.
+**Decision:** Voice interviewing is core V1, not an add-on; explicit audio state machine; streaming ASR/TTS; interruption/pause/resume/cancellation; stale-TTS prohibition.
+
+**Context:** Real interview preparation requires spoken interaction.
+
+**Rationale:** Voice provides materially different experience from text-only chat.
+
+**Consequences:** Voice architecture (ADR-012, docs/ai/VOICE_ARCHITECTURE.md); voice test matrix; critical-path schedule protection.

@@ -1,6 +1,6 @@
 # Pramya — Security
 
-> ADR-013 (docs/architecture/0013-security-and-pii.md). Threat model + controls. Published posture for users.
+> ADR-010 (docs/architecture/ADR-010-security-and-pii.md). Threat model + controls. Published posture for users.
 
 ## Data We Process
 

@@ -759,7 +759,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 - DeepSeek Responses API not required; Chat Completions API used (legacy model IDs `deepseek-chat`/`deepseek-reasoner` discontinued 2026-07-24 — do not use).
 - Authentication optional per deployment; default single-user local deployment.
 - Performance thresholds documented after measurement, not fabricated upfront.
-- MLX models cannot run concurrently from multiple threads → serialized speech inference worker (ADR-016).
+- MLX models cannot run concurrently from multiple threads → serialized speech inference worker (ADR-012).
 - oMLX audio endpoints (STT/TTS) support must be verified at Phase 7; direct parakeet-mlx/mlx-audio paths are the fallback.
 
 ---
