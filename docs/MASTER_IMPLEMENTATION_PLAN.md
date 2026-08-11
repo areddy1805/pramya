@@ -257,7 +257,7 @@ backend/app/
 
 ---
 
-## 9. Framework Boundaries (summary — see ADR-006, ADR-007, ADR-008)
+## 9. Framework Boundaries (summary — see ADR-001, ADR-002, ADR-003)
 
 | Technology | Responsibility | Boundary rule |
 |---|---|---|
@@ -315,7 +315,7 @@ Routing decision recorded as structured log event per call. Health checks per pr
 
 ---
 
-## 12. RAG / Retrieval Architecture (see ADR-008, ADR-010, docs/ai/RETRIEVAL_ARCHITECTURE.md)
+## 12. RAG / Retrieval Architecture (see ADR-003, ADR-007, ADR-014, docs/ai/RETRIEVAL_ARCHITECTURE.md)
 
 - **Ingestion** (LlamaIndex `IngestionPipeline`): documents → parsing (PDF/DOCX via pypdf/python-docx/markdown-it; untrusted-input guards) → chunking (text-splitters) → metadata → embed (BGE-M3 via oMLX, 1024-dim) → write to pgvector (document_chunks + vector index). Persistent docstore tracking to avoid re-indexing duplicates (known LlamaIndex 0.14 gotcha: `IngestionPipeline` does NOT dedupe against the vector store).
 - **Retrieval pipeline**: query → BGE-M3 embedding → hybrid search (pgvector cosine + PostgreSQL FTS, RRF fusion) → Qwen3-Reranker-0.6B → top-K evidence selection → LLM. Never dump the whole profile into context.
@@ -325,7 +325,7 @@ Routing decision recorded as structured log event per call. Health checks per pr
 
 ---
 
-## 13. LangGraph Design (see ADR-007, docs/ai/AI_ARCHITECTURE.md)
+## 13. LangGraph Design (see ADR-002, docs/ai/AI_ARCHITECTURE.md)
 
 **Interview graph** (typed `StateGraph`, mandatory `state_schema`), nodes:
 
@@ -401,7 +401,7 @@ Every endpoint: Pydantic request/response models, validation, idempotency keys o
 
 ---
 
-## 17. Database Design (see ADR-010, §7)
+## 17. Database Design (see ADR-007, §7)
 
 - PostgreSQL 17 (Docker `pgvector/pgvector:pg17`), extension `vector`; pgvector 0.8 features (HNSW, `halfvec` optional, `sparsevec` optional).
 - HNSW index on embeddings (`vector_cosine_ops`, m=16, ef_construction=64, tune `hnsw.ef_search` per query); GIN on FTS.
@@ -423,7 +423,7 @@ Every endpoint: Pydantic request/response models, validation, idempotency keys o
 
 ---
 
-## 19. Security Model (see ADR-013, docs/operations/DEPLOYMENT.md)
+## 19. Security Model (see ADR-010, docs/operations/DEPLOYMENT.md)
 
 - Uploads: allowed types (pdf, docx, txt, md), size limit (e.g., 5MB), content-hash, parse in isolated worker with timeouts; reject archives/scripts.
 - Prompt injection: system/user/document/evidence separation; delimiters; validation of extracted claims as data (never instructions); structured-output gate for any persistence.
@@ -435,7 +435,7 @@ Every endpoint: Pydantic request/response models, validation, idempotency keys o
 
 ---
 
-## 20. Observability (see ADR-011)
+## 20. Observability (see ADR-008)
 
 - Langfuse v4 (self-hosted optional in Compose; Python SDK `@observe`); traces: interview → LangGraph run → question gen, retrieval, evaluation, evidence extraction, tool calls.
 - Structured JSON logs (request_id, session_id, turn_id, graph_node, model, provider, latency, tokens, cache_hit, retrieval_count, reranker_count, ASR latency, TTS latency, TTFA, interruption_count, error, fallback).
@@ -445,7 +445,7 @@ Every endpoint: Pydantic request/response models, validation, idempotency keys o
 
 ---
 
-## 21. Evaluation Strategy (see ADR-012, docs/ai/EVALUATION.md)
+## 21. Evaluation Strategy (see ADR-009, docs/ai/EVALUATION.md)
 
 - **Golden datasets** (deterministic fixtures) for: role analysis, candidate extraction, question generation, answer evaluation, evidence extraction, adaptive routing, RAG grounding, final report, transcript analysis, debrief analysis.
 - **DeepEval 4.1** (judge = deepseek-v4-flash at temperature 0; avoid gpt default for cost/privacy) for semantic metrics: Faithfulness, AnswerRelevancy, ContextualPrecision/Recall/Relevancy; custom metrics for evidence relevance, evaluation consistency, question relevance, adaptive routing quality, hallucination risk.
