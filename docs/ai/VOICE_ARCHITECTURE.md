@@ -3,6 +3,23 @@
 > Companion to master plan §16 and ADR-012.
 > Voice is a first-class feature: explicit state machine, streaming ASR/TTS, correctness-grade interruption.
 
+## 0. Implementation Status (2026-08-12, H.1–H.9 committed)
+
+| Item | Status | Notes |
+|---|---|---|
+| H.1 concurrent engine | ✅ | `VoiceEngine.run()` receive loop never awaits TTS/ASR/DeepSeek/DB; work runs in `_tts_task` / `_answer_task` / `_start_session_task` |
+| H.2 turn finalization | ✅ | auto (RMS speech → silence watchdog, `voice_silence_seconds`) + manual (`end_turn` / Done speaking) |
+| H.3 answer loop | ✅ | end_turn → final ASR → `submit_answer` (DeepSeek) → evaluation event → next question → TTS |
+| H.4 model routing | ✅ | `voice_live_asr_model` (Parakeet), `voice_offline_asr_model` (Qwen3-ASR), `voice_tts_model`; live ASR ≠ offline ASR |
+| H.5 concurrency tests | ✅ | 10 unit tests: hot-loop interrupt mid-TTS, generation bump, no stale chunks, auto+manual end_turn, pause/resume/stop |
+| H.6 playback lifecycle | ✅ | AudioContext created synchronously in click; playback gated on `state==='running'` |
+| H.7 generation IDs | ✅ | `generation` on tts_start/tts_stop; server skips stale generations; client drops stale chunks |
+| H.8 persistence | ✅ | `TranscriptSegment` rows per turn (question + final answer); `max_seq_for_turn`/`latest_for_session` |
+| H.9 mic permission | ✅ | typed `micErrorMessage`: permission_denied / device_unavailable / mic_unavailable |
+| Real-model E2E | ⏳ PENDING | blocked on Mac memory pressure; run the acceptance contract (below) when authorized |
+
+**Observable event contract (acceptance):** `state` (idle→starting→speaking→listening→processing…) → `question` → `tts_start{generation}` → binary chunks → `tts_stop{generation}` → `partial_transcript` → `turn_ended` → `final_transcript` → `answer_submitted` → `evaluation` → next `question` → … Interrupt: `interrupt` control → `state: interrupted` → `state: listening`, generation bumped, zero stale chunks.
+
 ---
 
 ## 1. Pipeline

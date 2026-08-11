@@ -83,3 +83,13 @@
 - Makefile targets planned: up/down/migrate/dev-backend/dev-frontend/test/evals/lint/typecheck/models-pull/demo-setup.
 - Local AI runs on host (oMLX), not in Docker (Metal access).
 - Never commit `.env`; never log candidate content; observability = IDs + redacted metadata.
+
+## Voice engine concurrency lesson (2026-08-12, H.1–H.9)
+
+- **Bug class:** the original VoiceEngine awaited `_speak_next_question()` inline in `run()`, so the WS receive loop was deaf during TTS streaming — Interrupt/Pause did nothing mid-speech. `_tts_task` was never assigned, so `_cancel_tts` cancelled nothing.
+- **Fix pattern:** `run()` is a permanently hot receive loop; long work (`_start_session`, `_speak_next_question` TTS stream, `_process_answer` ASR→DeepSeek) runs in `asyncio.create_task` background tasks. Every cancellation path (interrupt/pause/stop/cancel) cancels tasks + bumps `_generation` before any state transition.
+- **Turn finalization needs a watchdog, not inline-only logic:** checking `_speech_ended_at` only on subsequent audio frames fails when the client stops sending audio. The engine now runs a `_silence_task` loop (100ms tick) that auto-finalizes when silence exceeds `voice_silence_seconds` — plus manual `end_turn` from a Done-speaking button.
+- **Stale-audio correctness:** every TTS stream has a `generation` id (`tts_start{generation}` / `tts_stop{generation}`); server skips chunks whose generation no longer matches; client drops binary frames unless `state==='speaking'` AND generation is current; interrupt invalidates both.
+- **Model roles (H.4):** live ASR = Parakeet-TDT (`voice_live_asr_model`), offline/archival ASR = Qwen3-ASR (`voice_offline_asr_model`), TTS = Qwen3-TTS (`voice_tts_model`). Do not let config churn flip Qwen3-ASR back into the live path.
+- **Mic permission errors** map to typed codes (`permission_denied` / `device_unavailable` / `mic_unavailable`) surfaced as actionable UI text, not generic "something went wrong".
+- **Real-model E2E is still pending** — blocked on Mac memory pressure (oMLX churn). Run the observable event contract from `docs/ai/VOICE_ARCHITECTURE.md` §0 when authorized.
