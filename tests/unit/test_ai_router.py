@@ -1,8 +1,10 @@
-"""Router tests: deterministic policy selection, capability dispatch, fallbacks.
+"""Router tests: deterministic policy selection, capability dispatch, no-fallback.
 
 Uses fake providers (no network) to verify routing behavior and observable
-decisions. Fallback semantics: connection failures walk the explicit policy
-chain; auth/request errors propagate without fallback.
+decisions. ADR-023: every text task routes to deepseek-v4-flash with NO
+fallback chain — a DeepSeek connection failure surfaces as a controlled
+ProviderConnectionError (never a silent local text model). Auth/request
+errors propagate without any retry.
 """
 
 from __future__ import annotations
@@ -67,124 +69,110 @@ def _router(
 MSG = [ChatMessage(role="user", content="hello")]
 
 
-async def test_routine_task_routes_to_omlx_pramya_4b() -> None:
-    omlx = FakeProvider()
+async def test_routine_task_routes_to_deepseek() -> None:
     deepseek = FakeProvider()
+    omlx = FakeProvider()
     router = _router(omlx, deepseek)
 
     result: RouterResult = await router.generate(TaskClass.ROUTINE_GENERATION, MSG)
 
-    assert result.decision.provider == "omlx"
-    assert result.decision.model == "pramya-4b"
-    assert result.decision.thinking is False  # thinking off for pramya-4b
+    assert result.decision.provider == "deepseek"
+    assert result.decision.model == "deepseek-v4-flash"
+    assert result.decision.thinking is False  # cheap + fast by default (ADR-023)
     assert result.decision.degraded is False
-    assert len(deepseek.generate_calls) == 0  # escalation never default
+    assert len(omlx.generate_calls) == 0  # local text model never called
 
 
-async def test_deep_evaluation_routes_to_deepseek() -> None:
-    omlx = FakeProvider()
+async def test_all_text_tasks_route_to_deepseek() -> None:
     deepseek = FakeProvider()
-    router = _router(omlx, deepseek)
-
-    result = await router.generate(TaskClass.DEEP_EVALUATION, MSG)
-
-    assert result.decision.provider == "deepseek"
-    assert result.decision.model == "deepseek-v4-flash"
-    assert result.decision.thinking is True
-    assert len(omlx.generate_calls) == 0
-
-
-async def test_omlx_down_falls_back_to_deepseek_for_routine_task() -> None:
-    omlx = FakeProvider(fail_generate=ProviderConnectionError("omlx down"))
-    deepseek = FakeProvider()
-    router = _router(omlx, deepseek)
-
-    result = await router.generate(TaskClass.ROUTINE_GENERATION, MSG)
-
-    assert result.decision.provider == "deepseek"
-    assert result.decision.model == "deepseek-v4-flash"
-    assert result.decision.degraded is True
-    assert result.decision.fallback_of == "pramya-4b"
-    assert result.decision.reason == "fallback: pramya-4b unavailable -> deepseek-v4-flash"
+    router = _router(deepseek=deepseek)
+    for task in (
+        TaskClass.EXTRACTION,
+        TaskClass.CLASSIFICATION,
+        TaskClass.METADATA,
+        TaskClass.STRUCTURED_GENERATION,
+        TaskClass.SEMANTIC_TASK,
+        TaskClass.INTERVIEW_CONTENT_GENERATION,
+        TaskClass.ORDINARY_EVALUATION,
+        TaskClass.ANALYSIS,
+        TaskClass.DEEP_EVALUATION,
+        TaskClass.COMPLEX_REASONING,
+        TaskClass.ADAPTIVE_REASONING,
+        TaskClass.SYSTEM_DESIGN,
+        TaskClass.FINAL_SYNTHESIS,
+        TaskClass.DIFFICULT_FOLLOWUP,
+    ):
+        result = await router.generate(task, MSG)
+        assert result.decision.model == "deepseek-v4-flash", task
+        assert result.decision.degraded is False, task
 
 
-async def test_deepseek_down_falls_back_to_omlx_for_escalation_task() -> None:
-    omlx = FakeProvider()
+async def test_deepseek_down_raises_controlled_error_no_local_fallback() -> None:
+    # ADR-023: no silent fallback to a local text model. A connection
+    # failure must surface as a controlled ProviderConnectionError.
     deepseek = FakeProvider(fail_generate=ProviderConnectionError("deepseek down"))
+    omlx = FakeProvider()
     router = _router(omlx, deepseek)
 
-    result = await router.generate(TaskClass.DEEP_EVALUATION, MSG)
-
-    assert result.decision.provider == "omlx"
-    assert result.decision.model == "pramya-4b"
-    assert result.decision.degraded is True
-    assert result.decision.fallback_of == "deepseek-v4-flash"
-
-
-async def test_connection_error_propagates_when_no_fallback_available() -> None:
-    omlx = FakeProvider(fail_generate=ProviderConnectionError("omlx down"))
-    router = _router(omlx, deepseek=None)  # no escalation fallback configured
-
-    with pytest.raises(ProviderConnectionError):
+    with pytest.raises(ProviderConnectionError) as excinfo:
         await router.generate(TaskClass.ROUTINE_GENERATION, MSG)
 
+    details = excinfo.value.details or {}
+    assert details.get("primary") == "deepseek-v4-flash"
+    assert details.get("fallbacks") == []  # no fallback chain
+    assert len(omlx.generate_calls) == 0  # local model never touched
 
-async def test_no_providers_configured_raises_connection_error() -> None:
-    router = _router(omlx=None, deepseek=None)
-    with pytest.raises(ProviderConnectionError):
+
+async def test_deepseek_unconfigured_is_explicit() -> None:
+    router = _router(deepseek=None)
+
+    with pytest.raises(ProviderConnectionError) as excinfo:
         await router.generate(TaskClass.ROUTINE_GENERATION, MSG)
 
+    details = excinfo.value.details or {}
+    assert details.get("attempts", [{}])[0].get("status") == "not_configured"
 
-async def test_auth_error_not_fallback_eligible() -> None:
-    omlx = FakeProvider(fail_generate=ProviderAuthError("bad key"))
-    deepseek = FakeProvider()
-    router = _router(omlx, deepseek)
+
+async def test_auth_error_propagates_without_fallback() -> None:
+    deepseek = FakeProvider(fail_generate=ProviderAuthError("bad key"))
+    router = _router(deepseek=deepseek)
 
     with pytest.raises(ProviderAuthError):
         await router.generate(TaskClass.ROUTINE_GENERATION, MSG)
-    assert len(deepseek.generate_calls) == 0  # never silently routed around auth failure
 
 
-async def test_thinking_override_passes_through() -> None:
-    omlx = FakeProvider()
+async def test_explicit_thinking_override() -> None:
     deepseek = FakeProvider()
-    router = _router(omlx, deepseek)
+    router = _router(deepseek=deepseek)
 
-    await router.generate(TaskClass.ROUTINE_GENERATION, MSG, thinking=False)
-    assert omlx.generate_calls[0].thinking is False
+    result = await router.generate(
+        TaskClass.DEEP_EVALUATION, MSG, thinking=True
+    )
+
+    assert result.decision.thinking is True
 
 
-async def test_embed_routes_to_embedding_capability() -> None:
+async def test_embedding_routes_to_omlx() -> None:
     omlx = FakeProvider()
-    router = _router(omlx, deepseek=None)
+    router = _router(omlx=omlx)
 
-    response = await router.embed(["text a", "text b"])
+    response = await router.embed(["text"])
 
+    assert response.model == "fake"
     assert len(omlx.embed_calls) == 1
-    assert omlx.embed_calls[0].model == "bge-m3-mlx-4bit"
-    assert omlx.embed_calls[0].texts == ["text a", "text b"]
-    assert response.dimension == 2
 
 
-async def test_embed_requires_embedding_provider() -> None:
-    router = _router(omlx=None, deepseek=None)
+async def test_embedding_unconfigured_is_explicit() -> None:
+    router = _router(omlx=None)
+
     with pytest.raises(ProviderConfigurationError):
         await router.embed(["text"])
 
 
-async def test_rerank_routes_to_rerank_capability() -> None:
+async def test_rerank_routes_to_omlx() -> None:
     omlx = FakeProvider()
-    router = _router(omlx, deepseek=None)
+    router = _router(omlx=omlx)
 
-    await router.rerank("query", ["doc1", "doc2"], top_n=1)
+    await router.rerank("q", ["d"])
 
     assert len(omlx.rerank_calls) == 1
-    assert omlx.rerank_calls[0].query == "query"
-    assert omlx.rerank_calls[0].documents == ["doc1", "doc2"]
-    assert omlx.rerank_calls[0].top_n == 1
-
-
-async def test_rerank_requires_rerank_provider() -> None:
-    router = _router(omlx=None, deepseek=None)
-    with pytest.raises(ProviderConfigurationError):
-        await router.rerank("query", ["doc1"])

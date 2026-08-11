@@ -40,11 +40,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://pramya:pramya@localhost:5432/pramya"
     db_echo: bool = False
 
-    # DeepSeek (cloud reasoning; escalation-only per model policy)
+    # DeepSeek (production text LLM; ADR-023 — all textual inference)
     deepseek_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_timeout_seconds: float = 60.0
+
+    # Provider topology (ADR-023): TEXT -> DeepSeek, AUDIO -> local oMLX.
+    llm_provider: str = "deepseek"
+    voice_provider: str = "omlx"
 
     # Local AI runtime (oMLX)
     local_ai_enabled: bool = True
@@ -55,19 +59,20 @@ class Settings(BaseSettings):
     omlx_base_url: str = "http://127.0.0.1:8000/v1"
     omlx_api_key: str | None = None
     # Canonical model IDs registered in the running oMLX (/v1/models):
-    # `pramya-4b` (Qwen3.5-4B alias), `bge-m3-mlx-4bit`, `Qwen3-Reranker-0.6B-4bit`
-    # (docs/MODEL_CATALOG.md; baseline re-verification at Phase 4, catalog §6).
-    omlx_chat_model: str = "pramya-4b"
+    # audio (Qwen3-ASR / parakeet / Qwen3-TTS) + retrieval (bge-m3,
+    # Qwen3-Reranker). Local text generation is PROHIBITED in production
+    # (ADR-023); OMLX_CHAT_MODEL is construction-compat only.
+    omlx_chat_model: str = "pramya-4b"  # UNUSED by routing (ADR-023); construction compat only
     omlx_embedding_model: str = "bge-m3-mlx-4bit"
     omlx_rerank_model: str = "Qwen3-Reranker-0.6B-4bit"
-    # Explicit thinking-off for the pramya-4b workhorse. Never rely on the
-    # model's default thinking behavior: the request always carries
-    # chat_template_kwargs.enable_thinking mirroring this flag (catalog §2.2).
+    # Thinking-off for any local text model. Never relied on: text routing
+    # targets DeepSeek (ADR-023); local text generation is prohibited.
     omlx_pramya_thinking_enabled: bool = False
     omlx_timeout_seconds: float = 120.0
 
     # Voice (oMLX speech models registered in the running runtime)
-    omlx_asr_model: str = "parakeet-tdt-0.6b-v3-int8"
+    omlx_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # primary ASR
+    omlx_asr_optional_model: str = "parakeet-tdt-0.6b-v3-int8"  # fallback ASR
     omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"
     voice_retention_days: int = 30
     audio_storage_dir: str = ".runtime/audio"

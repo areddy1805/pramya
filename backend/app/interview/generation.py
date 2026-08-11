@@ -23,7 +23,7 @@ _HINT_PROMPT = "question_generation/hint.txt"
 
 
 class QuestionGenerator:
-    """Adaptive question generation (pramya-4b, INTERVIEW_CONTENT_GENERATION)."""
+    """Adaptive question generation (deepseek-v4-flash, INTERVIEW_CONTENT_GENERATION)."""
 
     def __init__(self, router: InferenceRouter, *, logger: logging.Logger | None = None) -> None:
         self.router = router

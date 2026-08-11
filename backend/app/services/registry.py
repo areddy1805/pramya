@@ -45,7 +45,7 @@ class EvaluationVersionService:
             name=VERSION_NAME,
             version="1.0",
             prompt_hash=digest,
-            model_policy={"default": "pramya-4b", "escalation": "deepseek-v4-flash"},
+            model_policy={"default": "deepseek-v4-flash"},
         )
         await self.repo.add(record)
         await self.session.commit()

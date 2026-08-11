@@ -1,12 +1,14 @@
-"""MLXProvider — oMLX local runtime via OpenAI-compatible HTTP (ADR-011).
+"""MLXProvider — oMLX local runtime via OpenAI-compatible HTTP (ADR-011, ADR-023).
 
-Serves chat generation (`pramya-4b`), embeddings (BGE-M3), and reranking
-(Qwen3-Reranker-0.6B) through the verified oMLX endpoints under `/v1`
-(chat/completions, embeddings, rerank). Implemented over httpx — no OpenAI SDK.
+Production role (ADR-023): local AUDIO + RETRIEVAL only.
+- Embeddings (BGE-M3) and reranking (Qwen3-Reranker-0.6B) — DeepSeek has
+  no equivalent, so these stay local.
+- Chat generation (`chat_model`) is retained for provider-construction
+  compatibility only and is UNUSED by routing: every text task in the task
+  policy table targets deepseek-v4-flash. Local text generation is
+  prohibited in the production inference path.
 
-pramya-4b thinking is EXPLICITLY disabled on every request via
-``chat_template_kwargs: {"enable_thinking": <config flag>}`` — never rely on
-the model's default thinking behavior (MODEL_CATALOG §2.2, ADR-020).
+Implemented over httpx — no OpenAI SDK.
 """
 
 from __future__ import annotations

@@ -104,7 +104,7 @@ async def interview_env(db_session: AsyncSession) -> dict[str, Any]:
 
 async def _svc(env: dict[str, Any], contents: list[str]) -> tuple[InterviewService, QueueProvider]:
     provider = QueueProvider(contents)
-    router = InferenceRouter(policy=TaskPolicyTable(), omlx=provider, deepseek=None)
+    router = InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
     svc = InterviewService(env["db"], router)
     return svc, provider
 

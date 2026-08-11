@@ -30,7 +30,10 @@
 | ADR-017 | Model-routed AI architecture | Accepted | inline below |
 | ADR-018 | Apple Silicon local AI (MLX/oMLX) | Accepted | inline below |
 | ADR-019 | Voice as a first-class capability | Accepted | inline below |
-| ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Accepted | inline below |
+| ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Superseded by ADR-023 (text routing) | inline below |
+| ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Accepted | inline below |
+| ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Accepted | inline below |
+| ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
 
 ---
 
@@ -417,3 +420,34 @@ deterministic-first; dependency risk register (plan §29 #4) avoided.
 SSE events streamed from an in-memory per-session event bus (single-process
 dev runtime; state rebuildable from rows). LangGraph remains a documented
 upgrade path behind the InterviewService interface.
+
+## ADR-023 — Production Text Inference: DeepSeek Only; Local oMLX for Audio + Retrieval
+
+Full ADR: `docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md`.
+
+**Decision (2026-08-12):** all textual/LLM inference routes through
+`deepseek-v4-flash` (sole production text provider). Local oMLX is retained
+for audio (Parakeet-TDT live ASR, Qwen3-ASR primary/recorded ASR,
+Qwen3-TTS) and retrieval (BGE-M3 embeddings, Qwen3-Reranker-0.6B). Local
+text-generation models (pramya-4b / qwen3.5-4b / qwen2.5-coder-7b) are
+prohibited in the production inference path; text tasks have no fallback
+chain (a DeepSeek failure is a controlled provider error/retry path, never a
+silent local text fallback). Thinking defaults off; reasoning is requested
+deliberately per operation.
+
+**Context:** local text model load/unload churn on a 16 GB M4 caused severe
+memory pressure and user-visible lag during voice sessions. A single remote
+text provider gives deterministic cost, predictable latency, and zero local
+text memory. The provider abstraction (InferenceRouter → provider contracts →
+DeepSeekProvider/MLXProvider) is unchanged; future text providers implement
+the same interface. Supersedes the local-text-LLM-first interpretation of
+ADR-004/ADR-011/ADR-013/ADR-020 for text routing.
+
+**Consequences:** `LLM_PROVIDER=deepseek`, `VOICE_PROVIDER=omlx`;
+`OMLX_ASR_MODEL=Qwen3-ASR-1.7B-4bit` (primary) with
+`OMLX_ASR_OPTIONAL_MODEL=parakeet-tdt-0.6b-v3`; task policy table maps every
+text task to `deepseek-v4-flash` with no fallback; `/models/status` reports
+provider roles (text LLM vs audio + retrieval); model catalog rewritten
+(§0/§1/§2.1). No L1/L2 inference cache exists yet — any future cache key must
+include provider/model so old local-model entries cannot masquerade as
+DeepSeek results.

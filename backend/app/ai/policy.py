@@ -1,16 +1,19 @@
-"""Deterministic task-class model policy (ADR-004, ADR-020, AI_ARCHITECTURE §2).
+"""Deterministic task-class model policy (ADR-004, ADR-020, ADR-023).
 
-Canonical model roles (finalized 2026-08):
-- Qwen3.5-4B (oMLX alias `pramya-4b`) = primary local workhorse (default,
-  thinking off, majority of workload).
-- deepseek-v4-flash = escalation only (never default; reserved for workloads
-  that materially benefit from stronger reasoning/capability/context).
-- BGE-M3 = embeddings; Qwen3-Reranker-0.6B = reranking.
+Canonical model roles (finalized 2026-08, ADR-023 — production architecture):
+- deepseek-v4-flash = the ONLY production text LLM (all textual/LLM
+  inference; never routed to a local text model).
+- Local oMLX = audio only (Parakeet-TDT ASR, Qwen3-ASR, Qwen3-TTS) plus
+  retrieval capabilities that DeepSeek does not provide (BGE-M3 embeddings,
+  Qwen3-Reranker-0.6B reranking).
+- Local text-generation models (pramya-4b / qwen3.5-4b / qwen2.5-coder-7b)
+  are PROHIBITED in the production inference path.
 - Qwen3.5-9B is DEFERRED: absent from this module by design.
 
-Routing decision flow: 4B local first -> task-class decision -> can 4B handle
-this adequately? yes -> 4B; no -> deepseek-v4-flash. No "complexity = cloud"
-heuristic beyond this table. Strongest model is never the default.
+Fallback semantics: text tasks have NO fallback chain. A DeepSeek failure
+produces a controlled ProviderConnectionError (retry at the caller) — it is
+never silently degraded to a local text model. Retrieval capabilities keep
+no fallback either (caller degrades: FTS-only / skip rerank).
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ class ProviderKind(StrEnum):
 class TaskClass(StrEnum):
     """Task classes that application code routes on (initial policy)."""
 
-    # Local workhorse (pramya-4b, thinking off)
+    # Text generation (deepseek-v4-flash)
     ROUTINE_GENERATION = "routine_generation"
     EXTRACTION = "extraction"
     CLASSIFICATION = "classification"
@@ -37,25 +40,37 @@ class TaskClass(StrEnum):
     INTERVIEW_CONTENT_GENERATION = "interview_content_generation"
     ORDINARY_EVALUATION = "ordinary_evaluation"
     ANALYSIS = "analysis"  # transcript/debrief analysis (Phase 10)
-    # Escalation (deepseek-v4-flash)
     DEEP_EVALUATION = "deep_evaluation"
     COMPLEX_REASONING = "complex_reasoning"
     ADAPTIVE_REASONING = "adaptive_reasoning"
     SYSTEM_DESIGN = "system_design"
     FINAL_SYNTHESIS = "final_synthesis"
     DIFFICULT_FOLLOWUP = "difficult_followup"
-    # Retrieval capabilities
+    # Retrieval capabilities (local oMLX — no DeepSeek equivalent)
     EMBEDDING = "embedding"
     RERANKING = "reranking"
 
 
 class ModelId(StrEnum):
-    """Canonical model IDs (docs/MODEL_CATALOG.md). No 9B entry — deferred."""
+    """Canonical model IDs (docs/MODEL_CATALOG.md). No local text models.
 
-    PRAMYA_4B = "pramya-4b"  # Qwen3.5-4B via oMLX
+    Only production models are registered: deepseek-v4-flash for text,
+    BGE-M3 embeddings + Qwen3-Reranker reranking locally, and the audio
+    models (registered under oMLX audio; referenced by the voice engine).
+    """
+
     DEEPSEEK_V4_FLASH = "deepseek-v4-flash"
     BGE_M3 = "bge-m3-mlx-4bit"  # embeddings via oMLX
     QWEN3_RERANKER_0_6B = "Qwen3-Reranker-0.6B-4bit"  # reranking via oMLX
+
+
+# Audio model IDs (not routed through the InferenceRouter; the voice engine
+# calls the local oMLX /v1/audio/* endpoints directly — see app/voice/).
+AUDIO_MODEL_IDS: tuple[str, ...] = (
+    "Qwen3-ASR-1.7B-4bit",
+    "parakeet-tdt-0.6b-v3-int8",
+    "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit",
+)
 
 
 @dataclass(frozen=True)
@@ -64,24 +79,18 @@ class ModelSpec:
 
     id: str
     provider: ProviderKind
-    # Explicit thinking policy. For pramya-4b this MUST stay off — never rely
-    # on the model's default thinking behavior (catalog §2.2, ADR-020).
+    # Explicit thinking policy. Production default is thinking OFF (cheap +
+    # fast); callers may deliberately request thinking per request.
     thinking: bool
     capability: str  # "generate" | "embed" | "rerank"
 
 
 # Canonical model registry. The sole source of model facts for routing.
 MODEL_REGISTRY: dict[ModelId, ModelSpec] = {
-    ModelId.PRAMYA_4B: ModelSpec(
-        id=ModelId.PRAMYA_4B,
-        provider=ProviderKind.OMLX,
-        thinking=False,
-        capability="generate",
-    ),
     ModelId.DEEPSEEK_V4_FLASH: ModelSpec(
         id=ModelId.DEEPSEEK_V4_FLASH,
         provider=ProviderKind.DEEPSEEK,
-        thinking=True,
+        thinking=False,  # cheap + fast by default; reasoning only on request
         capability="generate",
     ),
     ModelId.BGE_M3: ModelSpec(
@@ -106,8 +115,8 @@ class TaskPolicy:
     task: TaskClass
     model: ModelId
     # Fallback chain (primary first, then fallbacks in order). Empty for
-    # capabilities without a degradation path (embeddings/rerank: caller
-    # degrades, e.g. FTS-only retrieval / skip rerank).
+    # text tasks (DeepSeek failure is explicit, never silently local) and
+    # for capabilities without a degradation path (embeddings/rerank).
     fallback_models: tuple[ModelId, ...] = ()
     # Fallback is degraded (quality/user-visible state) — logged on decision.
     fallback_degraded: bool = False
@@ -122,55 +131,33 @@ def _policy(task: TaskClass, model: ModelId, *fallback: ModelId) -> TaskPolicy:
     )
 
 
-# Initial task policy table (AI_ARCHITECTURE §2). 4B local first; escalation
-# only for task classes that materially benefit from stronger reasoning.
+# Task policy table (AI_ARCHITECTURE §2). Every text task routes to
+# deepseek-v4-flash with NO fallback (controlled error path). Embedding and
+# reranking stay local (no DeepSeek equivalent; caller degrades).
 TASK_POLICIES: dict[TaskClass, TaskPolicy] = {
-    # --- Local workhorse (pramya-4b, thinking off) ---
-    TaskClass.ROUTINE_GENERATION: _policy(
-        TaskClass.ROUTINE_GENERATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
-    ),
-    TaskClass.EXTRACTION: _policy(
-        TaskClass.EXTRACTION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
-    ),
-    TaskClass.CLASSIFICATION: _policy(
-        TaskClass.CLASSIFICATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
-    ),
-    TaskClass.METADATA: _policy(TaskClass.METADATA, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH),
+    # --- Text generation (deepseek-v4-flash; no fallback) ---
+    TaskClass.ROUTINE_GENERATION: _policy(TaskClass.ROUTINE_GENERATION, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.EXTRACTION: _policy(TaskClass.EXTRACTION, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.CLASSIFICATION: _policy(TaskClass.CLASSIFICATION, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.METADATA: _policy(TaskClass.METADATA, ModelId.DEEPSEEK_V4_FLASH),
     TaskClass.STRUCTURED_GENERATION: _policy(
-        TaskClass.STRUCTURED_GENERATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
+        TaskClass.STRUCTURED_GENERATION, ModelId.DEEPSEEK_V4_FLASH
     ),
-    TaskClass.SEMANTIC_TASK: _policy(
-        TaskClass.SEMANTIC_TASK, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
-    ),
+    TaskClass.SEMANTIC_TASK: _policy(TaskClass.SEMANTIC_TASK, ModelId.DEEPSEEK_V4_FLASH),
     TaskClass.INTERVIEW_CONTENT_GENERATION: _policy(
-        TaskClass.INTERVIEW_CONTENT_GENERATION,
-        ModelId.PRAMYA_4B,
-        ModelId.DEEPSEEK_V4_FLASH,
+        TaskClass.INTERVIEW_CONTENT_GENERATION, ModelId.DEEPSEEK_V4_FLASH
     ),
     TaskClass.ORDINARY_EVALUATION: _policy(
-        TaskClass.ORDINARY_EVALUATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
+        TaskClass.ORDINARY_EVALUATION, ModelId.DEEPSEEK_V4_FLASH
     ),
-    TaskClass.ANALYSIS: _policy(TaskClass.ANALYSIS, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH),
-    # --- Escalation (deepseek-v4-flash; thinking on by default) ---
-    TaskClass.DEEP_EVALUATION: _policy(
-        TaskClass.DEEP_EVALUATION, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    TaskClass.COMPLEX_REASONING: _policy(
-        TaskClass.COMPLEX_REASONING, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    TaskClass.ADAPTIVE_REASONING: _policy(
-        TaskClass.ADAPTIVE_REASONING, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    TaskClass.SYSTEM_DESIGN: _policy(
-        TaskClass.SYSTEM_DESIGN, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    TaskClass.FINAL_SYNTHESIS: _policy(
-        TaskClass.FINAL_SYNTHESIS, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    TaskClass.DIFFICULT_FOLLOWUP: _policy(
-        TaskClass.DIFFICULT_FOLLOWUP, ModelId.DEEPSEEK_V4_FLASH, ModelId.PRAMYA_4B
-    ),
-    # --- Retrieval capabilities (no fallback: caller degrades) ---
+    TaskClass.ANALYSIS: _policy(TaskClass.ANALYSIS, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.DEEP_EVALUATION: _policy(TaskClass.DEEP_EVALUATION, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.COMPLEX_REASONING: _policy(TaskClass.COMPLEX_REASONING, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.ADAPTIVE_REASONING: _policy(TaskClass.ADAPTIVE_REASONING, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.SYSTEM_DESIGN: _policy(TaskClass.SYSTEM_DESIGN, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.FINAL_SYNTHESIS: _policy(TaskClass.FINAL_SYNTHESIS, ModelId.DEEPSEEK_V4_FLASH),
+    TaskClass.DIFFICULT_FOLLOWUP: _policy(TaskClass.DIFFICULT_FOLLOWUP, ModelId.DEEPSEEK_V4_FLASH),
+    # --- Retrieval capabilities (local oMLX; no fallback) ---
     TaskClass.EMBEDDING: _policy(TaskClass.EMBEDDING, ModelId.BGE_M3),
     TaskClass.RERANKING: _policy(TaskClass.RERANKING, ModelId.QWEN3_RERANKER_0_6B),
 }

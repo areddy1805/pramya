@@ -37,7 +37,7 @@ class QueueProvider:
 
 
 def _router(provider: QueueProvider) -> InferenceRouter:
-    return InferenceRouter(policy=TaskPolicyTable(), omlx=provider, deepseek=None)
+    return InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
 
 
 MSG = [ChatMessage(role="user", content="extract")]
@@ -51,7 +51,7 @@ async def test_structured_happy_path() -> None:
 
     assert parsed.title == "T"
     assert parsed.score == 8
-    assert result.decision.model == "pramya-4b"
+    assert result.decision.model == "deepseek-v4-flash"
     # Schema is embedded in the system prompt.
     assert "JSON Schema" in provider.calls[0][0].content
 

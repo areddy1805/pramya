@@ -93,6 +93,7 @@ class VoiceEngine:
         self._last_question_id: int | None = None
         self._turns_completed = 0
         self._running = True
+        self._disconnected = False
 
     # -- state ---------------------------------------------------------------
 
@@ -103,13 +104,21 @@ class VoiceEngine:
                 await self._emit({"type": "state", "state": state.value})
 
     async def _emit(self, payload: dict[str, Any]) -> None:
-        if self.ws is not None:
+        if self.ws is None:
+            return
+        try:
             await self.ws.send_json(payload)
+        except Exception:  # noqa: BLE001 — client disconnect is normal
+            self._disconnected = True
 
     async def _send_bytes(self, payload: bytes) -> None:
         if self.ws is None:
             raise RuntimeError("websocket not connected")
-        await self.ws.send_bytes(payload)
+        try:
+            await self.ws.send_bytes(payload)
+        except Exception:  # noqa: BLE001
+            self._disconnected = True
+            raise
 
     # -- main loop -----------------------------------------------------------
 
@@ -119,7 +128,7 @@ class VoiceEngine:
         try:
             await self._set_state(VoiceState.IDLE)
             await self._start_session()
-            while self._running:
+            while self._running and not self._disconnected:
                 try:
                     kind, payload = await ws.receive()
                 except Exception:
@@ -129,13 +138,24 @@ class VoiceEngine:
                 else:
                     await self._on_control(payload)
         except PramyaError as exc:
-            await self._emit({"type": "error", "code": exc.code, "message": exc.message})
+            if not self._disconnected:
+                await self._emit({"type": "error", "code": exc.code, "message": exc.message})
         except Exception as exc:  # noqa: BLE001 — surface actionable error
             _logger.exception("voice engine error")
-            await self._emit({"type": "error", "code": "internal_error", "message": str(exc)})
+            if not self._disconnected:
+                await self._emit(
+                    {
+                        "type": "error",
+                        "code": "internal_error",
+                        "message": str(exc),
+                    }
+                )
         finally:
             await self._cancel_tts()
-            await ws.close()
+            try:
+                await ws.close()
+            except Exception:  # noqa: BLE001 — client already gone
+                _logger.debug("websocket already closed on session end")
 
     async def _start_session(self) -> None:
         """Begin session if needed and ask the first question."""

@@ -84,7 +84,7 @@ class QueueProvider:
 
 
 def _router(provider: QueueProvider) -> InferenceRouter:
-    return InferenceRouter(policy=TaskPolicyTable(), omlx=provider, deepseek=None)
+    return InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
 
 
 @pytest.fixture

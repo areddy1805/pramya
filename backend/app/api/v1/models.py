@@ -29,6 +29,7 @@ class ProviderStatusOut(BaseModel):
     healthy: bool | None = None
     base_url: str | None = None
     models: list[str] = []
+    role: str | None = None  # "text LLM" | "audio + retrieval" (ADR-023)
 
 
 class ModelStatusOut(BaseModel):
@@ -70,11 +71,14 @@ async def models_status() -> ModelsStatusResponse:
         providers.append(
             ProviderStatusOut(
                 name="omlx",
+                role="audio + retrieval",
                 configured=True,
                 healthy=omlx_healthy,
                 base_url=settings.omlx_base_url,
                 models=[
-                    settings.omlx_chat_model,
+                    settings.omlx_asr_model,
+                    settings.omlx_asr_optional_model,
+                    settings.omlx_tts_model,
                     settings.omlx_embedding_model,
                     settings.omlx_rerank_model,
                 ],
@@ -83,9 +87,11 @@ async def models_status() -> ModelsStatusResponse:
     providers.append(
         ProviderStatusOut(
             name="deepseek",
+            role="text LLM",
             configured=bool(settings.deepseek_api_key),
             healthy=bool(settings.deepseek_api_key),
             base_url=settings.deepseek_base_url if settings.deepseek_api_key else None,
+            models=[settings.deepseek_model] if settings.deepseek_api_key else [],
         )
     )
 

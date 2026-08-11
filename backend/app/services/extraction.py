@@ -1,8 +1,8 @@
 """Candidate extraction pipeline (Phase 2.4).
 
 Resume text -> structured extraction (InferenceRouter, TaskClass.EXTRACTION,
-pramya-4b local first, deepseek escalation fallback) -> evidence ledger
-entries with CLAIMED status + candidate profile enrichment.
+deepseek-v4-flash) -> evidence ledger entries with CLAIMED status +
+candidate profile enrichment. Text inference is DeepSeek-only (ADR-023).
 
 Evidence provenance rule (project principle): extraction output is the
 candidate's own claims — persisted as `claimed`, never as observed/
