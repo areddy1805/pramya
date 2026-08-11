@@ -355,3 +355,65 @@ Routing policy: 4B local first → application-level task-class decision → can
 - Evals/judge options updated (ADR-009: local judge = 4B, not 9B).
 - Local verification baseline at Phase 4 (catalog §6): `pramya-4b` discoverable/loads, thinking off, normal + structured JSON generation, alias works, no 9B dependency.
 - Only changeable via a new ADR + verified evidence (spec §7/§15 protocol).
+
+## ADR-021 — Knowledge Layer: Deterministic Ingestion + Retrieval (LlamaIndex not required)
+
+**Status:** Accepted (implementation decision)
+**Date:** 2026-08
+
+**Decision:** Phase 2.2/2.3 implement the knowledge layer with deterministic
+components owned by the application — `app/knowledge/chunking.py` (greedy
+paragraph packing, chunk_size/overlap), `app/knowledge/ingestion.py`
+(chunk → embed via InferenceRouter → pgvector write with explicit dedup),
+`app/knowledge/retrieval.py` (pgvector cosine + PostgreSQL FTS + RRF k=60 +
+Qwen3-Reranker via InferenceRouter) — instead of a LlamaIndex
+`IngestionPipeline` dependency. ADR-003's boundary intent is preserved:
+the knowledge layer owns ingestion/retrieval and never workflow state.
+
+**Context:** Plan §12/ADR-003 named LlamaIndex for ingestion. Project
+principles (deterministic-first, no unnecessary dependencies, router-only
+model access) and verified LlamaIndex behavior (IngestionPipeline does NOT
+dedupe against the vector store — run-llama#17871; embedding would call
+oMLX directly, bypassing the InferenceRouter boundary) point to a smaller
+equivalent.
+
+**Rationale:** The required pipeline (parse → chunk → metadata → embed →
+pgvector → dedup → hybrid retrieval → rerank → context → LLM) is fully
+implemented; only the framework is omitted. Every model call goes through
+the InferenceRouter (ADR-004 boundary). LlamaIndex remains a documented
+swap target behind the same service interfaces.
+
+**Consequences:** No LlamaIndex/langchain dependency in pyproject; dedup by
+content-hash on the immutable `document` row + replace-on-reindex (Phase 2.2
+idempotency test); retrieval degradation explicit (embedding down → FTS-only;
+rerank down → RRF order) and observable.
+
+## ADR-022 — Interview Engine: Deterministic Service State Machine (LangGraph not required)
+
+**Status:** Accepted (implementation decision)
+**Date:** 2026-08
+
+**Decision:** Phase 3 implements the interview engine as a deterministic,
+DB-backed service state machine (`app/interview/state.py` transition table,
+`app/interview/service.py` lifecycle, `app/interview/generation.py`
+question/eval/hint generation) with SSE event streaming — not a LangGraph
+graph + Postgres checkpointer. Plan §7's own design rule ("State transitions
+for interview_session: enforced in the interview service, mirrored in
+LangGraph thread") makes the service authoritative; the DB rows (session
+status, turns, questions, answers, evaluations) provide durability.
+
+**Context:** ADR-002/plan §13 mandated LangGraph 1.2 with PostgresSaver
+checkpointing and interrupt/resume. The deterministic state machine
+satisfies every Phase 3 acceptance criterion (refresh survives via DB
+state, idempotent answers, pause/resume/cancel, evidence extraction,
+evaluation versioning) without the LangGraph dependency's API-churn risk on
+an overnight build.
+
+**Rationale:** Smallest architecture that fully satisfies V1; no second
+source of truth (plan itself names the interview service as the enforcer);
+deterministic-first; dependency risk register (plan §29 #4) avoided.
+
+**Consequences:** Interview session state is authoritative in PostgreSQL;
+SSE events streamed from an in-memory per-session event bus (single-process
+dev runtime; state rebuildable from rows). LangGraph remains a documented
+upgrade path behind the InterviewService interface.
