@@ -21,6 +21,12 @@ from app.knowledge.parsing import (
     parse_document,
     parse_document_with_timeout,
 )
+from app.knowledge.retrieval import (
+    RRF_K,
+    RetrievalResult,
+    RetrievalService,
+    RetrievedChunk,
+)
 
 __all__ = [
     "Chunk",
@@ -34,6 +40,10 @@ __all__ = [
     "MIME_PDF",
     "MIME_PLAIN",
     "ParsedDocument",
+    "RRF_K",
+    "RetrievalResult",
+    "RetrievalService",
+    "RetrievedChunk",
     "chunk_text",
     "parse_document",
     "parse_document_with_timeout",

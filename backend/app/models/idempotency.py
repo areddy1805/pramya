@@ -21,9 +21,7 @@ class IdempotencyRecord(Base):
     """One processed idempotency key within a scope."""
 
     __tablename__ = "idempotency_record"
-    __table_args__ = (
-        UniqueConstraint("scope", "key", name="uq_idempotency_record_scope_key"),
-    )
+    __table_args__ = (UniqueConstraint("scope", "key", name="uq_idempotency_record_scope_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     scope: Mapped[str] = mapped_column(String(128), nullable=False)

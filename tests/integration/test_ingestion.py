@@ -37,9 +37,7 @@ class FakeEmbedRouter1024:
 
 
 @pytest.fixture
-async def uploaded_doc(
-    db_session: AsyncSession, tmp_path: Path
-) -> AsyncIterator[Document]:
+async def uploaded_doc(db_session: AsyncSession, tmp_path: Path) -> AsyncIterator[Document]:
     svc = DocumentService(db_session, storage_dir=tmp_path)
     text = "Senior Software Engineer with 6 years of backend experience.\n\n" + (
         "Built distributed systems using Python, FastAPI, and PostgreSQL.\n\n" * 20

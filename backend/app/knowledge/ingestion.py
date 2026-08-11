@@ -66,9 +66,7 @@ class IngestionService:
         await self.chunks_repo.delete_for_document(document.id)
         await self.chunks_repo.flush()
 
-        chunks = chunk_text(
-            content, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap
-        )
+        chunks = chunk_text(content, chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         if not chunks:
             raise ValidationFailedError(
                 "document text produced no chunks",

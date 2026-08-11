@@ -134,9 +134,7 @@ TASK_POLICIES: dict[TaskClass, TaskPolicy] = {
     TaskClass.CLASSIFICATION: _policy(
         TaskClass.CLASSIFICATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
     ),
-    TaskClass.METADATA: _policy(
-        TaskClass.METADATA, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
-    ),
+    TaskClass.METADATA: _policy(TaskClass.METADATA, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH),
     TaskClass.STRUCTURED_GENERATION: _policy(
         TaskClass.STRUCTURED_GENERATION, ModelId.PRAMYA_4B, ModelId.DEEPSEEK_V4_FLASH
     ),

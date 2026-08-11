@@ -57,12 +57,8 @@ async def test_structured_happy_path() -> None:
 
 
 async def test_structured_retries_with_feedback_then_succeeds() -> None:
-    provider = QueueProvider(
-        ["not json at all", '{"title": "T", "score": 9}']
-    )
-    parsed, _ = await generate_structured(
-        _router(provider), TaskClass.EXTRACTION, MSG, Extraction
-    )
+    provider = QueueProvider(["not json at all", '{"title": "T", "score": 9}'])
+    parsed, _ = await generate_structured(_router(provider), TaskClass.EXTRACTION, MSG, Extraction)
 
     assert parsed.title == "T"
     assert len(provider.calls) == 2

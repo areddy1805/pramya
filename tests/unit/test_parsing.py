@@ -28,9 +28,7 @@ HASH = "a" * 64
 
 def _minimal_pdf(text: str) -> bytes:
     """Build a minimal single-page PDF with one text line (valid xref)."""
-    stream = (
-        b"BT /F1 24 Tf 72 720 Td (" + text.encode("latin-1") + b") Tj ET"
-    )
+    stream = b"BT /F1 24 Tf 72 720 Td (" + text.encode("latin-1") + b") Tj ET"
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",

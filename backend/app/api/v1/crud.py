@@ -246,9 +246,7 @@ async def index_document(
     )
     rows = await ingestion.index_document(doc, parsed.content)
     dimension = len(rows[0].embedding) if rows and rows[0].embedding else 0
-    return DocumentIndexOut(
-        document_id=doc.id, chunk_count=len(rows), dimension=dimension
-    )
+    return DocumentIndexOut(document_id=doc.id, chunk_count=len(rows), dimension=dimension)
 
 
 @router.get("/candidates/{user_id}/evidence", response_model=list[EvidenceOut])

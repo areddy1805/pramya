@@ -41,8 +41,10 @@ class DocumentChunkRepository(BaseRepository[DocumentChunk]):
         return (await self.session.scalars(stmt)).all()
 
     async def count_for_document(self, document_id: int) -> int:
-        stmt = select(func.count()).select_from(DocumentChunk).where(
-            DocumentChunk.document_id == document_id
+        stmt = (
+            select(func.count())
+            .select_from(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
         )
         return int((await self.session.scalar(stmt)) or 0)
 
