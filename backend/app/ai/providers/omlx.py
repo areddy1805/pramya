@@ -110,6 +110,14 @@ class MLXProvider:
         )
         return _parse_rerank(payload, fallback_model=self.rerank_model)
 
+    async def health(self) -> bool:
+        """Advisory liveness probe: /v1/models reachable (not a routing input)."""
+        try:
+            response = await self._client.get(f"{self.base_url}/models", headers=self._headers())
+            return response.status_code < 500
+        except httpx.HTTPError:
+            return False
+
 
 def _parse_embeddings(payload: dict[str, Any], *, fallback_model: str) -> EmbedResponse:
     data_raw = payload.get("data")
