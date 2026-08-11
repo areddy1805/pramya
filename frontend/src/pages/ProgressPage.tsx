@@ -13,7 +13,7 @@ export function ProgressPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Progress</h1>
-        <p className="mt-1 text-sm text-ink-500">Movement measured only from completed evaluations — nothing is estimated or padded.</p>
+        <p className="mt-1 text-sm text-fg-2">Movement measured only from completed evaluations — nothing is estimated or padded.</p>
       </header>
 
       {!progress.data?.total_evaluations ? (
@@ -37,8 +37,8 @@ export function ProgressPage() {
                 {series.map((s) => (
                   <li key={s.name}>
                     <div className="mb-1 flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-ink-800">{s.name}</span>
-                      <span className="flex items-center gap-2 text-xs text-ink-400">
+                      <span className="text-sm font-medium text-fg">{s.name}</span>
+                      <span className="flex items-center gap-2 text-xs text-fg-3">
                         {s.latest?.toFixed(1)}
                         {s.trend != null ? (
                           <Pill tone={s.trend >= 0 ? 'ok' : 'danger'}>{s.trend >= 0 ? `▲ +${s.trend.toFixed(1)}` : `▼ ${s.trend.toFixed(1)}`}</Pill>
@@ -46,7 +46,7 @@ export function ProgressPage() {
                       </span>
                     </div>
                     <Meter value={s.latest ?? 0} />
-                    <p className="mt-1 text-xs text-ink-400">{s.points.length} evaluation{s.points.length === 1 ? '' : 's'}</p>
+                    <p className="mt-1 text-xs text-fg-3">{s.points.length} evaluation{s.points.length === 1 ? '' : 's'}</p>
                   </li>
                 ))}
               </ul>
@@ -55,14 +55,14 @@ export function ProgressPage() {
             <Surface className="p-6">
               <SectionHeading>Interview history</SectionHeading>
               {!sessions.data?.length ? (
-                <p className="text-sm text-ink-500">No sessions yet.</p>
+                <p className="text-sm text-fg-2">No sessions yet.</p>
               ) : (
-                <ul className="divide-y divide-ink-100">
+                <ul className="divide-y divide-line">
                   {sessions.data.map((s) => (
                     <li key={s.id} className="flex items-center justify-between py-3">
                       <div>
-                        <p className="text-sm font-medium text-ink-800">{s.kind}</p>
-                        <p className="text-xs text-ink-400">
+                        <p className="text-sm font-medium text-fg">{s.kind}</p>
+                        <p className="text-xs text-fg-3">
                           {s.started_at ? new Date(s.started_at).toLocaleString() : ''}
                         </p>
                       </div>

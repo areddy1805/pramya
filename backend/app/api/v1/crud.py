@@ -123,6 +123,7 @@ async def create_candidate(
         headline=body.headline,
         timezone=body.timezone,
     )
+    await session.commit()
     return CandidateProfileOut.model_validate(profile)
 
 
@@ -139,6 +140,7 @@ async def update_candidate(
         headline=body.headline,
         timezone=body.timezone,
     )
+    await session.commit()
     return CandidateProfileOut.model_validate(profile)
 
 
@@ -146,6 +148,7 @@ async def update_candidate(
 async def delete_candidate(user_id: int, session: SessionDep) -> None:
     svc = CandidateService(session)
     await svc.delete_user(user_id)  # cascades to all owned data
+    await session.commit()
 
 
 @router.get("/documents", response_model=list[DocumentOut])
@@ -182,6 +185,7 @@ async def upload_document(
         mime=file.content_type or "application/octet-stream",
         data=data,
     )
+    await session.commit()
     return DocumentOut.model_validate(doc)
 
 
@@ -206,6 +210,7 @@ async def delete_document(
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
     await svc.delete_document(user_id, document_id)
+    await session.commit()
 
 
 class DocumentIndexOut(BaseModel):
@@ -275,6 +280,7 @@ async def patch_evidence(
     item = await svc.patch(
         user_id, evidence_id, status=body.status, strength=body.strength, notes=body.notes
     )
+    await session.commit()
     return EvidenceOut.model_validate(item)
 
 
@@ -325,7 +331,16 @@ async def analyze_role(
     role = await svc.analyze(body.user_id, body.jd_text, source_document_id=body.source_document_id)
     competencies = await svc.roles.list_competencies(role.id)
     await session.commit()
-    detail = RoleDetailOut.model_validate(role)
+    # Build manually: model_validate(role) would lazy-load the competencies
+    # relationship outside the async greenlet (MissingGreenlet).
+    detail = RoleDetailOut(
+        id=role.id,
+        user_id=role.user_id,
+        title=role.title,
+        seniority=role.seniority,
+        summary=role.summary,
+        created_at=role.created_at,
+    )
     detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
     return detail
 
@@ -343,7 +358,14 @@ async def get_role(
     if role.user_id != user_id:
         raise NotFoundError("role not found")
     competencies = await svc.roles.list_competencies(role.id)
-    detail = RoleDetailOut.model_validate(role)
+    detail = RoleDetailOut(
+        id=role.id,
+        user_id=role.user_id,
+        title=role.title,
+        seniority=role.seniority,
+        summary=role.summary,
+        created_at=role.created_at,
+    )
     detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
     return detail
 

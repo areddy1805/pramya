@@ -14,7 +14,7 @@ cp .env.example .env        # edit: DATABASE_URL, DEEPSEEK_API_KEY, OMLX_BASE_UR
 docker compose up -d        # postgres+pgvector (+ optional langfuse OSS profile)
 make models-pull            # downloads pinned local models via oMLX (see MODEL_CATALOG)
 make migrate
-make dev-backend            # uvicorn on :8000
+make dev-backend            # uvicorn on :8001 (oMLX owns :8000)
 make dev-frontend           # vite on :5173
 make demo-setup             # synthetic Senior Full Stack Engineer demo
 ```

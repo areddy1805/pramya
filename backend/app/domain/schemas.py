@@ -118,7 +118,9 @@ class RoleCompetency(BaseModel):
     name: str
     category: str = "other"  # CompetencyCategory value
     level: int = Field(ge=1, le=5)
-    importance: str = "preferred"  # CompetencyImportance value
+    # Importance is REQUIRED (no default): the schema must not mask what
+    # the model decided. Retry-with-feedback covers transient omissions.
+    importance: str  # CompetencyImportance value
     weight: float = Field(default=0.1, ge=0, le=1)
 
 
@@ -151,7 +153,9 @@ class AnswerEvaluation(BaseModel):
 
     dimensions: EvaluationDimensions
     overall: float = Field(ge=0, le=10)
-    confidence: float = Field(ge=0, le=1)
+    # LLM output is untrusted: optional numeric fields get safe defaults
+    # rather than failing the whole evaluation on a missing field.
+    confidence: float = Field(default=0.5, ge=0, le=1)
     strengths: list[str] = Field(default_factory=lambda: [])
     weaknesses: list[str] = Field(default_factory=lambda: [])
     missing_evidence: list[str] = Field(default_factory=lambda: [])

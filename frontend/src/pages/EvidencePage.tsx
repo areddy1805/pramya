@@ -23,7 +23,7 @@ export function EvidencePage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Evidence ledger</h1>
-        <p className="mt-1 text-sm text-ink-500">
+        <p className="mt-1 text-sm text-fg-2">
           Everything the system knows about you, and how it knows it — claims, observations, and demonstrated signals.
         </p>
       </header>
@@ -41,7 +41,7 @@ export function EvidencePage() {
             </option>
           ))}
         </Select>
-        <p className="text-xs text-ink-400">{items.length} records</p>
+        <p className="text-xs text-fg-3">{items.length} records</p>
       </div>
 
       {evidence.isLoading ? <Spinner label="Loading evidence…" /> : null}
@@ -65,23 +65,23 @@ export function EvidencePage() {
               <Surface key={item.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-relaxed text-ink-800">{item.claim}</p>
-                    <p className="mt-1.5 text-xs text-ink-400">
+                    <p className="text-sm leading-relaxed text-fg">{item.claim}</p>
+                    <p className="mt-1.5 text-xs text-fg-3">
                       {item.source_kind} · {item.source_ref ?? '—'}
                       {item.competency_id ? ` · competency #${item.competency_id}` : ''}
                     </p>
                   </div>
                   <Pill tone={meta.tone}>{meta.label}</Pill>
                 </div>
-                <p className="mt-2 text-xs text-ink-400">{meta.blurb}</p>
+                <p className="mt-2 text-xs text-fg-3">{meta.blurb}</p>
                 {item.status !== 'demonstrated' ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-3">
-                    <p className="text-xs font-medium text-ink-500">Correction:</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                    <p className="text-xs font-medium text-fg-2">Correction:</p>
                     {(['demonstrated', 'observed', 'claimed', 'inferred'] as const).map((target) => (
                       <button
                         key={target}
                         className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                          item.status === target ? 'bg-accent-600 text-white' : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
+                          item.status === target ? 'bg-accent-600 text-white' : 'bg-track text-fg-2 hover:bg-track'
                         }`}
                         onClick={() => patch.mutate({ evidenceId: item.id, patch: { status: target } })}
                       >

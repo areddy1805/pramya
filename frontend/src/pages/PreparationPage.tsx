@@ -27,7 +27,7 @@ export function PreparationPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Preparation map</h1>
-        <p className="mt-1 text-sm text-ink-500">Your competency model against the target role, and the practice queue it generates.</p>
+        <p className="mt-1 text-sm text-fg-2">Your competency model against the target role, and the practice queue it generates.</p>
       </header>
 
       {compute.isError ? <ErrorState title="Readiness computation failed" body={compute.error instanceof Error ? compute.error.message : undefined} onRetry={() => void compute.mutateAsync(roleId)} /> : null}
@@ -39,7 +39,7 @@ export function PreparationPage() {
             <SectionHeading>Overall readiness</SectionHeading>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-semibold tracking-tight">{ready?.overall?.toFixed(1) ?? '—'}</span>
-              <span className="text-sm text-ink-400">/ 10</span>
+              <span className="text-sm text-fg-3">/ 10</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-8 gap-y-2">
               <Stat label="Confidence" value={`${Math.round((ready?.confidence ?? 0) * 100)}%`} />
@@ -57,8 +57,8 @@ export function PreparationPage() {
           </div>
         </div>
         {!roleId ? (
-          <p className="mt-4 text-sm text-ink-500">
-            No target role yet — <button className="font-medium text-accent-700 underline" onClick={() => navigate('/setup')}>analyze a JD in Profile & Role</button> first.
+          <p className="mt-4 text-sm text-fg-2">
+            No target role yet — <button className="font-medium text-accent underline" onClick={() => navigate('/setup')}>analyze a JD in Profile & Role</button> first.
           </p>
         ) : null}
       </Surface>
@@ -82,16 +82,16 @@ export function PreparationPage() {
                 return (
                   <li key={comp.name}>
                     <div className="mb-1 flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-ink-800">
+                      <span className="text-sm font-medium text-fg">
                         {comp.name}{' '}
                         <Pill tone={comp.importance === 'required' ? 'warn' : 'neutral'}>{targetLevel}</Pill>
                       </span>
-                      <span className="text-xs text-ink-400">
+                      <span className="text-xs text-fg-3">
                         level {comp.demonstrated_level}/5 · {comp.score.toFixed(1)}/10
                       </span>
                     </div>
                     <Meter value={comp.score} />
-                    <p className="mt-1 text-xs text-ink-400">evidence coverage {Math.round(comp.evidence_coverage * 100)}%</p>
+                    <p className="mt-1 text-xs text-fg-3">evidence coverage {Math.round(comp.evidence_coverage * 100)}%</p>
                   </li>
                 )
               })}
@@ -113,21 +113,21 @@ export function PreparationPage() {
               {queue.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center gap-4 rounded-lg border border-ink-200 bg-white p-3.5"
+                  className="flex items-center gap-4 rounded-lg border border-line bg-surface p-3.5"
                   style={{ opacity: 0.55 + 0.45 * (item.priority / Math.max(1, maxPriority)) }}
                 >
                   <div className="w-12 shrink-0 text-center">
-                    <p className="text-lg font-semibold tracking-tight text-ink-800">{item.priority}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-ink-400">priority</p>
+                    <p className="text-lg font-semibold tracking-tight text-fg">{item.priority}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-fg-3">priority</p>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-ink-800">{item.competency_name ?? 'Practice'}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-ink-500">{item.reason}</p>
+                    <p className="text-sm font-semibold text-fg">{item.competency_name ?? 'Practice'}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-fg-2">{item.reason}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <Pill tone="accent">≈ {item.estimated_minutes ?? 15} min</Pill>
                     {item.expected_improvement ? (
-                      <p className="mt-1 text-[11px] text-ink-400">+{Math.round(item.expected_improvement * 100)}% expected</p>
+                      <p className="mt-1 text-[11px] text-fg-3">+{Math.round(item.expected_improvement * 100)}% expected</p>
                     ) : null}
                   </div>
                 </li>

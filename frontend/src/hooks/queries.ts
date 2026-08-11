@@ -163,6 +163,7 @@ export function useInterview(interviewId: number, userId: number) {
     queryFn: () =>
       api.get<InterviewSession>(`/api/v1/interviews/${interviewId}${qs({ user_id: userId })}`),
     refetchInterval: 5000,
+    enabled: interviewId > 0,
   })
 }
 

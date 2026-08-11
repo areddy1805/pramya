@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useHealth, DEFAULT_USER_ID } from '../hooks/queries'
+import { useTheme } from '../stores/theme'
 import { Button, ErrorState, KeyValue, Pill, SectionHeading, Spinner, Surface, TextArea } from '../components/ui'
+
+type ThemeMode = 'dark' | 'light' | 'system'
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; hint: string }[] = [
+  { value: 'dark', label: 'Dark', hint: "Pramya's signature theme" },
+  { value: 'light', label: 'Light', hint: 'Bright, luminous surfaces' },
+  { value: 'system', label: 'System', hint: 'Follow your OS preference' },
+]
 
 interface TranscriptResult {
   questions: string[]
@@ -13,6 +22,7 @@ interface TranscriptResult {
 
 export function SettingsPage() {
   const health = useHealth()
+  const theme = useTheme()
   const [transcriptText, setTranscriptText] = useState('')
   const [result, setResult] = useState<TranscriptResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -39,10 +49,41 @@ export function SettingsPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-ink-500">Application status and analysis tools.</p>
+        <p className="mt-1 text-sm text-fg-2">Application status and analysis tools.</p>
       </header>
 
       {error ? <ErrorState title="That didn't work" body={error} /> : null}
+
+      <Surface className="p-6">
+        <SectionHeading>Appearance</SectionHeading>
+        <p className="mb-4 text-sm text-fg-2">Choose how Pramya looks. Changes apply instantly and persist.</p>
+        <div className="grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Theme">
+          {THEME_OPTIONS.map((option) => {
+            const selected = theme.mode === option.value
+            return (
+              <button
+                key={option.value}
+                role="radio"
+                aria-checked={selected}
+                onClick={() => theme.setMode(option.value)}
+                className={`rounded-xl border p-4 text-left transition-all duration-[var(--dur-fast)] ${
+                  selected
+                    ? 'border-accent-line bg-accent-soft shadow-[var(--shadow-1)]'
+                    : 'border-line bg-surface hover:border-fg-3'
+                }`}
+              >
+                <span className="flex items-center justify-between">
+                  <span className={`text-sm font-semibold ${selected ? 'text-accent' : 'text-fg'}`}>
+                    {option.label}
+                  </span>
+                  {selected ? <span aria-hidden className="h-2 w-2 rounded-full bg-accent" /> : null}
+                </span>
+                <span className="mt-1 block text-xs text-fg-3">{option.hint}</span>
+              </button>
+            )
+          })}
+        </div>
+      </Surface>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Surface className="p-6">
@@ -52,14 +93,14 @@ export function SettingsPage() {
             <KeyValue k="Environment" v={health.data?.env ?? '—'} />
             <KeyValue k="Status" v={<Pill tone={health.data?.status === 'ok' ? 'ok' : 'danger'}>{health.data?.status ?? 'unknown'}</Pill>} />
           </dl>
-          <p className="mt-4 text-xs leading-relaxed text-ink-400">
+          <p className="mt-4 text-xs leading-relaxed text-fg-3">
             Candidate data stays on your machine. Runtime and model health live under <span className="font-medium">Runtime</span>.
           </p>
         </Surface>
 
         <Surface className="p-6">
           <SectionHeading>Transcript analysis</SectionHeading>
-          <p className="mb-3 text-sm text-ink-500">
+          <p className="mb-3 text-sm text-fg-2">
             Paste a real interview transcript (TXT/MD) to extract questions, answers, weaknesses, and strengths for your own review.
           </p>
           <TextArea
@@ -76,22 +117,22 @@ export function SettingsPage() {
           {analyzing ? <div className="mt-3"><Spinner label="Analyzing transcript…" /></div> : null}
           {result ? (
             <div className="mt-4 space-y-3 text-sm">
-              <p className="font-medium text-ink-800">
+              <p className="font-medium text-fg">
                 {result.questions.length} questions · {result.answers.length} answers
                 {result.follow_ups.length ? ` · ${result.follow_ups.length} follow-ups` : ''}
               </p>
               {result.weaknesses.length ? (
-                <div className="rounded-lg border border-danger-100 bg-danger-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-danger-700">Weaknesses</p>
-                  <ul className="mt-1 list-inside list-disc text-danger-700/90">
+                <div className="rounded-lg border border-line bg-danger-soft p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-danger">Weaknesses</p>
+                  <ul className="mt-1 list-inside list-disc text-danger/90">
                     {result.weaknesses.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
                 </div>
               ) : null}
               {result.strengths.length ? (
-                <div className="rounded-lg border border-ok-100 bg-ok-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ok-700">Strengths</p>
-                  <ul className="mt-1 list-inside list-disc text-ok-700/90">
+                <div className="rounded-lg border border-line bg-ok-soft p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ok">Strengths</p>
+                  <ul className="mt-1 list-inside list-disc text-ok/90">
                     {result.strengths.map((s, i) => <li key={i}>{s}</li>)}
                   </ul>
                 </div>

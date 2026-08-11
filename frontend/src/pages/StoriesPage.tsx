@@ -29,7 +29,7 @@ export function StoriesPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Story bank</h1>
-        <p className="mt-1 text-sm text-ink-500">Your reusable evidence in STAR form — mapped to competencies, ready for behavioral interviews.</p>
+        <p className="mt-1 text-sm text-fg-2">Your reusable evidence in STAR form — mapped to competencies, ready for behavioral interviews.</p>
       </header>
 
       <Surface className="p-6">
@@ -59,12 +59,12 @@ export function StoriesPage() {
         ) : (
           <ul className="space-y-3">
             {stories.data.map((story) => (
-              <li key={story.id} className="rounded-lg border border-ink-200 p-4">
+              <li key={story.id} className="rounded-lg border border-line p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <p className="text-sm text-ink-800"><span className="font-semibold">S</span> {story.situation}</p>
-                  <p className="text-sm text-ink-800"><span className="font-semibold">T</span> {story.task}</p>
-                  <p className="text-sm text-ink-800"><span className="font-semibold">A</span> {story.action}</p>
-                  <p className="text-sm text-ink-800"><span className="font-semibold">R</span> {story.result}</p>
+                  <p className="text-sm text-fg"><span className="font-semibold">S</span> {story.situation}</p>
+                  <p className="text-sm text-fg"><span className="font-semibold">T</span> {story.task}</p>
+                  <p className="text-sm text-fg"><span className="font-semibold">A</span> {story.action}</p>
+                  <p className="text-sm text-fg"><span className="font-semibold">R</span> {story.result}</p>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {story.metrics ? <Pill tone="ok">📈 {story.metrics}</Pill> : null}

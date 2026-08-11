@@ -46,7 +46,7 @@ typecheck:
 # --- Dev -------------------------------------------------------------------
 
 dev-backend:
-	cd backend && uv run uvicorn app.main:app --reload --port 8000
+	cd backend && uv run uvicorn app.main:app --reload --port 8001
 
 dev-frontend:
 	cd frontend && pnpm dev

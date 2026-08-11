@@ -132,12 +132,12 @@ export function InterviewPage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Practice interview</h1>
-          <p className="mt-1 text-sm text-ink-500">Adaptive questioning, evidence-backed evaluation, no interruptions by the system.</p>
+          <p className="mt-1 text-sm text-fg-2">Adaptive questioning, evidence-backed evaluation, no interruptions by the system.</p>
         </div>
         {status ? (
-          <div className="flex items-center gap-2 rounded-full border border-ink-200 bg-white px-3 py-1.5">
+          <div className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5">
             <StatusDot tone={meta.tone} />
-            <span className="text-xs font-semibold text-ink-700">{meta.label}</span>
+            <span className="text-xs font-semibold text-fg">{meta.label}</span>
           </div>
         ) : null}
       </header>
@@ -161,7 +161,7 @@ export function InterviewPage() {
                   type="number"
                   min={5}
                   max={120}
-                  className="w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                   value={duration}
                   onChange={(e) => setDuration(Number(e.target.value))}
                 />
@@ -169,7 +169,7 @@ export function InterviewPage() {
               <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
                 {create.isPending ? 'Creating…' : 'Start interview'}
               </Button>
-              <p className="text-xs leading-relaxed text-ink-400">
+              <p className="text-xs leading-relaxed text-fg-3">
                 Questions adapt to your demonstrated evidence. Answers are evaluated against 13 dimensions and update your readiness.
               </p>
             </div>
@@ -180,16 +180,16 @@ export function InterviewPage() {
             {!sessions.data?.length ? (
               <EmptyState icon="🎙️" title="No sessions yet" body="Start a practice interview. Every answered question produces an evaluation and evidence." />
             ) : (
-              <ul className="divide-y divide-ink-100">
+              <ul className="divide-y divide-line">
                 {sessions.data.slice(0, 10).map((s) => (
                   <li key={s.id} className="flex items-center justify-between py-3">
                     <div>
-                      <p className="text-sm font-medium text-ink-800">{s.kind}</p>
-                      <p className="text-xs text-ink-400">
+                      <p className="text-sm font-medium text-fg">{s.kind}</p>
+                      <p className="text-xs text-fg-3">
                         {s.started_at ? new Date(s.started_at).toLocaleDateString() : ''} · {s.status}
                       </p>
                     </div>
-                    <Link className="text-sm font-medium text-accent-700 hover:underline" to={`/interview/${s.id}/report`}>
+                    <Link className="text-sm font-medium text-accent hover:underline" to={`/interview/${s.id}/report`}>
                       Report →
                     </Link>
                   </li>
@@ -206,7 +206,7 @@ export function InterviewPage() {
               <SectionHeading>Current question</SectionHeading>
               {currentQuestion ? (
                 <>
-                  <p className="text-xl font-semibold leading-relaxed tracking-tight text-ink-900">{currentQuestion.text}</p>
+                  <p className="text-xl font-semibold leading-relaxed tracking-tight text-fg">{currentQuestion.text}</p>
                   <div className="mt-3 flex gap-2">
                     <Pill tone="accent">{currentQuestion.difficulty}</Pill>
                     <Pill>{currentQuestion.type}</Pill>
@@ -221,7 +221,7 @@ export function InterviewPage() {
               <SectionHeading>Your answer</SectionHeading>
               <textarea
                 aria-label="Your answer"
-                className="min-h-36 w-full resize-y rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-sm leading-relaxed focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20"
+                className="min-h-36 w-full resize-y rounded-lg border border-line bg-surface px-3 py-2.5 text-sm leading-relaxed focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 placeholder="Answer as you would in a real interview — specifics, tradeoffs, examples…"
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
@@ -247,9 +247,9 @@ export function InterviewPage() {
                 <Button variant="danger" onClick={() => void actions.stop.mutateAsync(DEFAULT_USER_ID)}>End</Button>
               </div>
               {lastHint ? (
-                <div className="mt-4 rounded-lg border border-warn-100 bg-warn-50 p-3.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-warn-700">Hint</p>
-                  <p className="mt-1 text-sm text-warn-800">{lastHint}</p>
+                <div className="mt-4 rounded-lg border border-line bg-warn-soft p-3.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-warn">Hint</p>
+                  <p className="mt-1 text-sm text-warn">{lastHint}</p>
                 </div>
               ) : null}
             </Surface>
@@ -257,16 +257,16 @@ export function InterviewPage() {
             <Surface className="p-6">
               <SectionHeading>Transcript</SectionHeading>
               {!transcript.length ? (
-                <p className="text-sm text-ink-400">The live transcript appears here as the interview unfolds.</p>
+                <p className="text-sm text-fg-3">The live transcript appears here as the interview unfolds.</p>
               ) : (
                 <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
                   {transcript.map((line, i) => (
                     <div key={i} className={`flex gap-3 ${line.role === 'candidate' ? 'justify-end' : ''}`}>
-                      <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${line.role === 'interviewer' ? 'bg-ink-100' : 'bg-accent-50'}`}>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                      <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${line.role === 'interviewer' ? 'bg-track' : 'bg-accent-soft'}`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-fg-3">
                           {line.role === 'interviewer' ? 'Interviewer' : 'You'}
                         </p>
-                        <p className="mt-0.5 text-sm leading-relaxed text-ink-800">{line.text}</p>
+                        <p className="mt-0.5 text-sm leading-relaxed text-fg">{line.text}</p>
                       </div>
                     </div>
                   ))}
@@ -279,12 +279,12 @@ export function InterviewPage() {
           <Surface className="h-fit p-5 lg:sticky lg:top-20">
             <SectionHeading>Session</SectionHeading>
             <dl className="text-sm">
-              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Mode</dt><dd className="font-medium capitalize">{String(session.data?.config?.mode ?? 'text')}</dd></div>
-              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Duration</dt><dd className="font-medium">{String(session.data?.config?.duration_minutes ?? duration)} min</dd></div>
-              <div className="flex justify-between py-1.5"><dt className="text-ink-500">Status</dt><dd className="font-medium capitalize">{status}</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-fg-2">Mode</dt><dd className="font-medium capitalize">{String(session.data?.config?.mode ?? 'text')}</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-fg-2">Duration</dt><dd className="font-medium">{String(session.data?.config?.duration_minutes ?? duration)} min</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-fg-2">Status</dt><dd className="font-medium capitalize">{status}</dd></div>
             </dl>
             <Divider className="my-3" />
-            <p className="text-xs leading-relaxed text-ink-400">
+            <p className="text-xs leading-relaxed text-fg-3">
               Each answer is evaluated on 13 dimensions; evidence-backed claims update your ledger, and readiness reflects what you demonstrate — not what you claim.
             </p>
             <Divider className="my-3" />

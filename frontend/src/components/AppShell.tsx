@@ -31,7 +31,7 @@ function NavLinkItem({ to, label }: { to: string; label: string }) {
       to={to}
       className={({ isActive }) =>
         `rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
-          isActive ? 'bg-accent-50 text-accent-800' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+          isActive ? 'bg-accent-soft text-accent' : 'text-fg-2 hover:bg-track hover:text-fg'
         }`
       }
     >
@@ -42,18 +42,18 @@ function NavLinkItem({ to, label }: { to: string; label: string }) {
 
 export function AppShell() {
   return (
-    <div className="min-h-screen bg-ink-50 text-ink-900">
-      <header className="sticky top-0 z-30 border-b border-ink-200 bg-white/90 backdrop-blur">
+    <div className="min-h-screen bg-canvas text-fg">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
           <div className="flex items-baseline gap-2">
             <span className="text-[17px] font-semibold tracking-tight">Pramya</span>
-            <span className="hidden text-[11px] font-medium text-ink-400 sm:block">evidence-driven interview prep</span>
+            <span className="hidden text-[11px] font-medium text-fg-3 sm:block">evidence-driven interview prep</span>
           </div>
           <nav aria-label="Primary" className="flex flex-wrap items-center gap-1">
             {primaryNav.map((item) => (
               <NavLinkItem key={item.to} {...item} />
             ))}
-            <span aria-hidden className="mx-1 h-4 w-px bg-ink-200" />
+            <span aria-hidden className="mx-1 h-4 w-px bg-track" />
             {secondaryNav.map((item) => (
               <NavLinkItem key={item.to} {...item} />
             ))}

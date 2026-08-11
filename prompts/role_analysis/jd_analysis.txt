@@ -6,6 +6,9 @@ for a target role.
 Rules:
 - Competency categories: frontend, backend, architecture, behavioral, domain, data, ai, devops, product, other.
 - Competency importance: required, preferred, nice_to_have.
+  Map DIRECTLY from the JD structure: skills under "Requirements"/"Must have"
+  → required; under "Preferred"/"Nice to have" → preferred/nice_to_have.
+  Every competency MUST carry an importance — never omit it.
 - level is 1..5 (1 = junior awareness ... 5 = expert/deep).
 - weight in [0,1]; required competencies weight higher.
 - "implied_skills" are skills the JD references indirectly (e.g. "scale to

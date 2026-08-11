@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   useAnalyzeRole,
   useCandidate,
+  useCreateCandidate,
   useDocuments,
   useExtractResume,
   useIndexDocument,
@@ -15,6 +16,7 @@ import { Button, ErrorState, Field, Pill, SectionHeading, Select, Spinner, Surfa
 export function SetupPage() {
   const candidate = useCandidate(DEFAULT_USER_ID)
   const updateCandidate = useUpdateCandidate(DEFAULT_USER_ID)
+  const createCandidate = useCreateCandidate()
   const documents = useDocuments(DEFAULT_USER_ID)
   const upload = useUploadDocument()
   const index = useIndexDocument()
@@ -65,7 +67,13 @@ export function SetupPage() {
   async function onSaveProfile() {
     setError(null)
     try {
-      await updateCandidate.mutateAsync({ headline: headline || undefined, seniority_target: seniority || undefined })
+      const patch = { headline: headline || undefined, seniority_target: seniority || undefined }
+      if (candidate.data) {
+        await updateCandidate.mutateAsync(patch)
+      } else {
+        // First run: create the single-user profile (fresh install).
+        await createCandidate.mutateAsync(patch)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     }
@@ -95,14 +103,14 @@ export function SetupPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Profile & role</h1>
-        <p className="mt-1 text-sm text-ink-500">Three inputs unlock everything else: who you are, what you've done, where you're going.</p>
+        <p className="mt-1 text-sm text-fg-2">Three inputs unlock everything else: who you are, what you've done, where you're going.</p>
       </header>
 
       {/* Setup progress */}
       <div aria-label="Setup progress" className="flex items-center gap-2">
         {steps.map((step, i) => (
           <div key={step.key} className="flex items-center gap-2">
-            {i > 0 ? <span aria-hidden className="h-px w-6 bg-ink-200" /> : null}
+            {i > 0 ? <span aria-hidden className="h-px w-6 bg-track" /> : null}
             <Pill tone={step.done ? 'ok' : 'neutral'}>{step.done ? '✓ ' : ''}{step.label}</Pill>
           </div>
         ))}
@@ -138,14 +146,14 @@ export function SetupPage() {
         <SectionHeading aside={resumeDoc ? <Pill tone={resumeDoc.status === 'parsed' ? 'ok' : 'warn'}>{resumeDoc.status}</Pill> : undefined}>
           Resume
         </SectionHeading>
-        <p className="mb-4 text-sm text-ink-500">
+        <p className="mb-4 text-sm text-fg-2">
           Pramya parses your resume, indexes it into your knowledge base, and extracts the claims that seed your evidence ledger.
         </p>
         {resumeDoc ? (
-          <div className="mb-4 flex items-center justify-between rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-line bg-canvas px-4 py-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink-800">{resumeDoc.filename}</p>
-              <p className="text-xs text-ink-400">{resumeDoc.size.toLocaleString()} bytes · {resumeDoc.kind}</p>
+              <p className="truncate text-sm font-medium text-fg">{resumeDoc.filename}</p>
+              <p className="text-xs text-fg-3">{resumeDoc.size.toLocaleString()} bytes · {resumeDoc.kind}</p>
             </div>
             {extract.data ? <Pill tone="ok">{extract.data.evidence_count} claims extracted</Pill> : null}
           </div>
@@ -155,7 +163,7 @@ export function SetupPage() {
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md"
-            className="block w-full cursor-pointer text-sm text-ink-500 file:mr-3 file:rounded-lg file:border-0 file:bg-accent-700 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white file:cursor-pointer hover:file:bg-accent-800"
+            className="block w-full cursor-pointer text-sm text-fg-2 file:mr-3 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-white file:cursor-pointer hover:file:bg-accent"
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) void onUploadResume(file)
@@ -169,15 +177,15 @@ export function SetupPage() {
         <SectionHeading aside={activeRole ? <Pill tone="ok">{activeRole.competencies?.length ?? 0} competencies</Pill> : undefined}>
           Target role
         </SectionHeading>
-        <p className="mb-4 text-sm text-ink-500">
+        <p className="mb-4 text-sm text-fg-2">
           Paste a job description or upload one. Pramya builds the competency model — required vs preferred — that drives readiness and preparation.
         </p>
         {activeRole ? (
-          <div className="mb-4 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3">
-            <p className="text-sm font-medium text-ink-800">
+          <div className="mb-4 rounded-lg border border-line bg-canvas px-4 py-3">
+            <p className="text-sm font-medium text-fg">
               {activeRole.title} {activeRole.seniority ? `· ${activeRole.seniority}` : ''}
             </p>
-            {activeRole.summary ? <p className="mt-0.5 text-xs text-ink-500">{activeRole.summary}</p> : null}
+            {activeRole.summary ? <p className="mt-0.5 text-xs text-fg-2">{activeRole.summary}</p> : null}
           </div>
         ) : null}
         <TextArea
@@ -190,12 +198,12 @@ export function SetupPage() {
           <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
             {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
           </Button>
-          <label className="text-sm text-ink-500">
+          <label className="text-sm text-fg-2">
             or{' '}
             <input
               type="file"
               accept=".pdf,.docx,.txt,.md"
-              className="cursor-pointer text-xs text-ink-500 file:mr-2 file:rounded-lg file:border-0 file:bg-ink-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
+              className="cursor-pointer text-xs text-fg-2 file:mr-2 file:rounded-lg file:border-0 file:bg-track file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (file) void onUploadJd(file)

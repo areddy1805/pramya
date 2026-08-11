@@ -1,29 +1,34 @@
-// Pramya UI primitives — one system, no per-page reinvention.
-// Editorial surfaces, restrained borders, 4px rhythm, deliberate accents.
+// Pramya UI primitives — one material system, both themes.
+// Components consume semantic tokens (--surface, --fg, --accent…); no raw
+// colors. Dark is the flagship theme; light shares the same architecture.
 
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 
-// --- Surface ---------------------------------------------------------------
+// --- Surface -----------------------------------------------------------------
 
 export function Surface({ children, className = '', tone = 'default' }: { children: ReactNode; className?: string; tone?: 'default' | 'inset' | 'accent' }) {
   const tones = {
-    default: 'border border-ink-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
-    inset: 'border border-ink-200 bg-ink-50',
-    accent: 'border border-accent-200 bg-accent-50/40',
+    default: 'border border-line bg-surface shadow-[var(--shadow-1)]',
+    inset: 'border border-line bg-surface-2',
+    accent: 'border border-accent-line bg-accent-soft',
   }[tone]
   return <div className={`rounded-xl ${tones} ${className}`}>{children}</div>
+}
+
+export function GlassSurface({ children, className = '', elevated = false }: { children: ReactNode; className?: string; elevated?: boolean }) {
+  return <div className={`rounded-xl ${elevated ? 'glass-2' : 'glass-1'} ${className}`}>{children}</div>
 }
 
 export function SectionHeading({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">{children}</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-3">{children}</h2>
       {aside}
     </div>
   )
 }
 
-// --- Buttons ---------------------------------------------------------------
+// --- Buttons -----------------------------------------------------------------
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -32,10 +37,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ children, variant = 'primary', size = 'md', className = '', ...rest }: ButtonProps) {
   const variants = {
-    primary: 'bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900 disabled:bg-ink-200 disabled:text-ink-400',
-    secondary: 'bg-white text-ink-700 border border-ink-200 hover:border-ink-300 hover:bg-ink-50 disabled:opacity-50',
-    ghost: 'text-accent-700 hover:bg-accent-50 disabled:opacity-50',
-    danger: 'bg-danger-700 text-white hover:bg-danger-800 disabled:bg-ink-200 disabled:text-ink-400',
+    primary: 'bg-accent text-white hover:bg-accent-hover active:brightness-95 disabled:bg-track disabled:text-fg-disabled',
+    secondary: 'bg-surface text-fg border border-line hover:border-fg-3 hover:bg-surface-2 disabled:opacity-50',
+    ghost: 'text-accent hover:bg-accent-soft disabled:opacity-50',
+    danger: 'bg-danger text-white hover:brightness-110 disabled:bg-track disabled:text-fg-disabled',
   }[variant]
   const sizes = {
     sm: 'px-2.5 py-1.5 text-xs',
@@ -45,7 +50,7 @@ export function Button({ children, variant = 'primary', size = 'md', className =
   return (
     <button
       type="button"
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed ${variants} ${sizes} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-all duration-[var(--dur-fast)] disabled:cursor-not-allowed ${variants} ${sizes} ${className}`}
       {...rest}
     >
       {children}
@@ -53,10 +58,10 @@ export function Button({ children, variant = 'primary', size = 'md', className =
   )
 }
 
-// --- Form controls ----------------------------------------------------------
+// --- Form controls -----------------------------------------------------------
 
 const fieldClass =
-  'w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-600/20 disabled:bg-ink-50'
+  'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-disabled focus:border-accent focus:outline-none focus:shadow-[var(--focus-ring)] disabled:bg-surface-2 disabled:text-fg-disabled'
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   const { className = '', ...rest } = props
@@ -80,74 +85,74 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-[13px] font-medium text-ink-700">{label}</span>
+      <span className="mb-1 block text-[13px] font-medium text-fg-2">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-xs text-ink-400">{hint}</span> : null}
+      {hint ? <span className="mt-1 block text-xs text-fg-3">{hint}</span> : null}
     </label>
   )
 }
 
-// --- Status -----------------------------------------------------------------
+// --- Status ------------------------------------------------------------------
 
 export function StatusDot({ tone }: { tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active' }) {
   const tones = {
-    ok: 'bg-ok-700',
-    warn: 'bg-warn-700',
-    danger: 'bg-danger-700',
-    neutral: 'bg-ink-300',
-    active: 'bg-accent-600 animate-pulse',
+    ok: 'bg-ok',
+    warn: 'bg-warn',
+    danger: 'bg-danger',
+    neutral: 'bg-fg-disabled',
+    active: 'bg-accent animate-pulse',
   }[tone]
   return <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${tones}`} />
 }
 
 export function Pill({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'ok' | 'warn' | 'danger' | 'accent' }) {
   const tones = {
-    neutral: 'bg-ink-100 text-ink-600',
-    ok: 'bg-ok-50 text-ok-700 border border-ok-100',
-    warn: 'bg-warn-50 text-warn-700 border border-warn-100',
-    danger: 'bg-danger-50 text-danger-700 border border-danger-100',
-    accent: 'bg-accent-50 text-accent-700 border border-accent-100',
+    neutral: 'bg-track text-fg-2',
+    ok: 'bg-ok-soft text-ok',
+    warn: 'bg-warn-soft text-warn',
+    danger: 'bg-danger-soft text-danger',
+    accent: 'bg-accent-soft text-accent',
   }[tone]
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tones}`}>{children}</span>
 }
 
-// --- Progress ---------------------------------------------------------------
+// --- Progress ----------------------------------------------------------------
 
 export function Meter({ value, max = 10, tone = 'accent' }: { value: number; max?: number; tone?: 'accent' | 'ok' | 'danger' }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100))
   const tones = {
-    accent: 'bg-accent-600',
-    ok: 'bg-ok-700',
-    danger: 'bg-danger-700',
+    accent: 'bg-accent',
+    ok: 'bg-ok',
+    danger: 'bg-danger',
   }[tone]
   return (
-    <div role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max} className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100">
+    <div role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max} className="h-1.5 w-full overflow-hidden rounded-full bg-track">
       <div className={`h-full rounded-full transition-all duration-500 ${tones}`} style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
-// --- States -----------------------------------------------------------------
+// --- States ------------------------------------------------------------------
 
 export function Spinner({ label = 'Working…', subtle = false }: { label?: string; subtle?: boolean }) {
   return (
-    <div role="status" className={`flex items-center gap-2 text-sm ${subtle ? 'text-ink-400' : 'text-ink-500'}`}>
-      <span aria-hidden className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-ink-200 border-t-accent-600" />
+    <div role="status" className={`flex items-center gap-2 text-sm ${subtle ? 'text-fg-3' : 'text-fg-2'}`}>
+      <span aria-hidden className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-track border-t-accent" />
       {label}
     </div>
   )
 }
 
 export function Skeleton({ className = '' }: { className?: string }) {
-  return <div aria-hidden className={`animate-pulse rounded-lg bg-ink-100 ${className}`} />
+  return <div aria-hidden className={`animate-pulse rounded-lg bg-track ${className}`} />
 }
 
 export function EmptyState({ icon, title, body, action }: { icon?: string; title: string; body?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-300 bg-ink-50/60 px-6 py-12 text-center">
-      {icon ? <span aria-hidden className="mb-3 text-2xl">{icon}</span> : null}
-      <p className="text-sm font-semibold text-ink-800">{title}</p>
-      {body ? <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-500">{body}</p> : null}
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-surface-2 px-6 py-12 text-center">
+      {icon ? <span aria-hidden className="mb-3 text-2xl opacity-70">{icon}</span> : null}
+      <p className="text-sm font-semibold text-fg">{title}</p>
+      {body ? <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-fg-2">{body}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   )
@@ -155,11 +160,11 @@ export function EmptyState({ icon, title, body, action }: { icon?: string; title
 
 export function ErrorState({ title = 'Something went wrong', body, onRetry }: { title?: string; body?: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="rounded-xl border border-danger-100 bg-danger-50 px-4 py-4">
-      <p className="text-sm font-semibold text-danger-700">{title}</p>
-      {body ? <p className="mt-1 text-sm text-danger-700/80">{body}</p> : null}
+    <div role="alert" className="rounded-xl border border-danger-line bg-danger-soft px-4 py-4">
+      <p className="text-sm font-semibold text-danger">{title}</p>
+      {body ? <p className="mt-1 text-sm text-fg-2">{body}</p> : null}
       {onRetry ? (
-        <button className="mt-2 text-sm font-medium text-danger-700 underline hover:text-danger-800" onClick={onRetry}>
+        <button className="mt-2 text-sm font-medium text-danger underline hover:brightness-125" onClick={onRetry}>
           Try again
         </button>
       ) : null}
@@ -167,13 +172,13 @@ export function ErrorState({ title = 'Something went wrong', body, onRetry }: { 
   )
 }
 
-// --- Data display -----------------------------------------------------------
+// --- Data display ------------------------------------------------------------
 
 export function KeyValue({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
-      <dt className="text-ink-500">{k}</dt>
-      <dd className="text-right font-medium text-ink-800">{v}</dd>
+      <dt className="text-fg-2">{k}</dt>
+      <dd className="text-right font-medium text-fg">{v}</dd>
     </div>
   )
 }
@@ -181,13 +186,13 @@ export function KeyValue({ k, v }: { k: string; v: ReactNode }) {
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-ink-900">{value}</p>
-      {sub ? <p className="mt-0.5 truncate text-xs text-ink-400">{sub}</p> : null}
+      <p className="text-xs font-medium uppercase tracking-wide text-fg-3">{label}</p>
+      <p className="tabular mt-1 text-2xl font-semibold tracking-tight text-fg">{value}</p>
+      {sub ? <p className="mt-0.5 truncate text-xs text-fg-3">{sub}</p> : null}
     </div>
   )
 }
 
 export function Divider({ className = '' }: { className?: string }) {
-  return <div role="separator" className={`h-px bg-ink-100 ${className}`} />
+  return <div role="separator" className={`h-px bg-line ${className}`} />
 }

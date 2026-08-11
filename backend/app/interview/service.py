@@ -352,10 +352,14 @@ class InterviewService:
         if not evals:
             raise ValidationFailedError("no evaluations to report")
         transcript = await self._history_text(session_id)
-        summary_lines = [
-            f"Q: {e.answer.question.text}\nA: {e.answer.text}\nOverall: {e.overall}/10"
-            for e in evals
-        ]
+        summary_lines: list[str] = []
+        for ev in evals:
+            answer = await self.answers.get(ev.answer_id)
+            if answer is None:
+                continue
+            q = await self.questions.get(answer.question_id) if answer.question_id else None
+            question_text = q.text if q else "(question unavailable)"
+            summary_lines.append(f"Q: {question_text}\nA: {answer.text}\nOverall: {ev.overall}/10")
         messages = [
             ChatMessage(
                 role="system",
