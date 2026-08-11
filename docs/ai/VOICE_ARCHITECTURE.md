@@ -50,7 +50,7 @@ Rules: no stale TTS after interrupt (tested); interruption during generation can
 
 - `parakeet-mlx` `transcribe_stream(context_size=(256,256))`; feed ~1s PCM chunks; partial text per chunk; finalize with local-agreement commit (N chunks agree) for turn boundaries.
 - **VAD-gated pseudo-streaming** (verified constraint, ADR-012): Parakeet v3 is an offline (full-context) model — no cache-aware streaming; sherpa-onnx has no true streaming for it either (k2-fsa/sherpa-onnx#2918). Live path = short decode windows + Silero VAD gating + local-agreement partials (emit partials, finalize on segment boundaries).
-- **Fallback live path**: if pseudo-streaming latency/quality is insufficient in Phase 8 measurement, switch live transcription to Qwen3-ASR-1.7B native streaming (same runtime family) — documented fallback, not a default change.
+- **Fallback live path**: if Parakeet pseudo-streaming latency/quality is insufficient in Phase 8 measurement, chunked/offline Qwen3-ASR transcription (same runtime family) is the documented fallback, not a default change. MLX Qwen3-ASR is NOT native streaming; native streaming requires the vLLM backend and is not part of the MLX deployment.
 - **Serialized speech inference**: MLX models cannot run concurrently from multiple threads — one serialized inference worker for speech; VAD on CPU/ANE; speech stack runs host-native (Docker cannot reach Metal).
 - Word timestamps → communication analysis (duration, pauses, filler detection).
 - Quantization: int8 recommended (~1.3GB), int4 for headroom.
@@ -58,8 +58,8 @@ Rules: no stale TTS after interrupt (tested); interruption during generation can
 
 ## 5. ASR: Qwen3-ASR-1.7B (recorded/archival)
 
-- Offline reprocessing of uploaded recordings / transcript correction; multilingual; NOT in live loop (spec §12); native streaming supported — documented live fallback if Parakeet pseudo-streaming insufficient (Phase 8 measurement).
-- Runtime: host-native MLX (mlx-audio 8-bit ~1.7GB / 4-bit ~0.9GB) or official `qwen_asr`; MLX path verified at Phase 7/8 (GGUF/transcribe.cpp fallback).
+- Offline reprocessing of uploaded recordings / transcript correction; multilingual; NOT in live loop (spec §12); MLX path is offline/chunked only — not native streaming (native streaming requires vLLM backend).
+- Runtime: host-native MLX (mlx-audio 8-bit ~2.35GB / 4-bit ~1.5GB) or official `qwen_asr`; MLX path verified at Phase 7/8 (GGUF/transcribe.cpp fallback).
 
 ## 6. TTS: Qwen3-TTS-0.6B
 

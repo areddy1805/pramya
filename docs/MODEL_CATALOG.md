@@ -59,7 +59,7 @@ workloads where additional capability is justified.
 | 4 | BGE-M3 | Embeddings (dense retrieval, multilingual) | MLX via oMLX | MIT | Local |
 | 5 | Qwen3-Reranker-0.6B | Reranking candidate evidence | MLX via oMLX | Apache-2.0 | Local |
 | 6 | Parakeet-TDT-0.6B-v3 | Live ASR (chunked/pseudo-streaming) | Host-native MLX (parakeet-mlx) | CC-BY-4.0 | Local |
-| 7 | Qwen3-ASR-1.7B | Recorded/multilingual ASR + native-streaming fallback | Host-native MLX (mlx-audio) | Apache-2.0 | Local |
+| 7 | Qwen3-ASR-1.7B | Recorded/multilingual ASR + offline/chunked fallback | Host-native MLX (mlx-audio) | Apache-2.0 | Local |
 | 8 | Qwen3-TTS-0.6B | Interviewer TTS (streaming) | Host-native MLX (mlx-audio) | Apache-2.0 | Local |
 
 ---
@@ -91,7 +91,7 @@ workloads where additional capability is justified.
 
 - **Model:** Qwen/Qwen3.5-4B (MLX: `mlx-community/Qwen3.5-4B-OptiQ-4bit` ~2.8–3.0 GB)
 - **oMLX alias/profile:** `pramya-4b` (canonical alias configured in oMLX pointing at the 4B model; used by all routing/config code instead of raw HF names).
-- **Role in stack:** primary local workhorse. Default local model; handles the majority of Pramya workload. Thinking OFF by default. Local-first.
+- **Role in stack:** primary local workhorse. Default local model; handles the majority of Pramya workload. Thinking is EXPLICITLY DISABLED on load/request for the default workhorse configuration (`enable_thinking: false` in the oMLX profile/settings, mirrored in the task policy) — never rely on the model's default thinking behavior. Local-first.
 - **Purpose:** routine generation, extraction, classification, metadata analysis, structured generation, normal semantic tasks, interview content generation, ordinary evaluation/support workloads, background processing, simple transformations.
 - **Runtime:** MLX via oMLX (`/v1/chat/completions`, streaming, JSON-schema structured output, tool calling).
 - **License:** Apache-2.0.
@@ -158,7 +158,7 @@ workloads where additional capability is justified.
 - **Runtime:** host-native MLX (`parakeet-mlx`), 16 kHz mono.
 - **License:** CC-BY-4.0 (attribution required; commercial OK). sherpa-onnx exports inherit it (some community pages mislabel Apache-2.0 — upstream is CC-BY-4.0).
 - **Streaming constraint (verified):** upstream model is offline/non-chunked; sherpa-onnx has no true streaming for it (issue #2918) — only simulated/pseudo-streaming (re-decode growing buffer). MLX path (`parakeet-mlx`) supports chunked streaming with finalized/draft token phases; NVIDIA supports real streaming via NeMo chunked inference. Pramya V1: chunked/pseudo-streaming with VAD-gated short windows + partial transcript agreement pattern (see ADR-012, VOICE_ARCHITECTURE).
-- **Fallback live path:** Qwen3-ASR-1.7B (native streaming) → manual text input.
+- **Fallback live path:** Parakeet chunked streaming → manual text input. (Qwen3-ASR on MLX is offline/chunked only — NOT a native-streaming live fallback; native streaming requires vLLM backend.)
 - **Memory expectation:** ~0.5–0.8 GB (INT8/INT4).
 - **Latency expectation:** ~100× realtime on M-series (community); measure at Phase 7.
 - **Source:** https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3 , https://github.com/senstella/parakeet-mlx , https://github.com/k2-fsa/sherpa-onnx/issues/2918
@@ -167,12 +167,12 @@ workloads where additional capability is justified.
 
 ### 2.7 Qwen3-ASR-1.7B (recorded / high-quality ASR)
 
-- **Model:** Qwen/Qwen3-ASR-1.7B (30 languages + 22 Chinese dialects; offline AND streaming inference supported; `pip install qwen-asr`; MLX: `mlx-community/Qwen3-ASR-1.7B-8bit` ~2.35 GB, `-4bit` ~0.9 GB via mlx-audio)
+- **Model:** Qwen/Qwen3-ASR-1.7B (30 languages + 22 Chinese dialects; offline AND streaming inference supported via official vLLM backend; `pip install qwen-asr`; MLX: `mlx-community/Qwen3-ASR-1.7B-8bit` ~2.35 GB, `-4bit` ~1.5 GB via mlx-audio)
 - **Purpose:** uploaded recordings, archival audio, high-quality transcription, multilingual transcription, offline reprocessing, transcript correction, non-live audio analysis. NOT the default live path (spec §11/§12).
 - **Runtime:** host-native MLX (`mlx-audio` STT).
 - **License:** Apache-2.0.
 - **Memory expectation:** ~0.9–2.4 GB (4-bit/8-bit).
-- **Streaming:** native streaming supported — usable as live fallback if Parakeet chunked streaming proves insufficient (documented decision, ADR-012).
+- **Streaming:** MLX path is offline/chunked (single-pass per chunk) — NOT native streaming. Native streaming requires the official vLLM backend (`qwen-asr[vllm]`), which is not part of the MLX deployment. MLX Qwen3-ASR serves as offline/chunked fallback only (documented decision, ADR-012).
 - **Source:** https://huggingface.co/Qwen/Qwen3-ASR-1.7B , https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit
 - **Why selected:** spec-mandated secondary ASR; distinct responsibility (recorded/high-quality vs live).
 
@@ -256,7 +256,7 @@ baseline must be verified (no 9B dependency):
 
 - [ ] `pramya-4b` is discoverable through oMLX (model alias/profile exists)
 - [ ] `pramya-4b` loads successfully on M4 16 GB
-- [ ] thinking is disabled by default (task policy `thinking: off`)
+- [ ] thinking is disabled by default — explicitly on load/request (`enable_thinking: false` in oMLX profile + task policy), not reliant on model default
 - [ ] normal generation works (`/v1/chat/completions`)
 - [ ] structured JSON generation works (JSON-schema response_format)
 - [ ] model alias/profile (`pramya-4b`) works through the router config

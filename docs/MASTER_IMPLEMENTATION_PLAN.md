@@ -739,7 +739,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
 | 1 | Voice streaming latency/polish on 16GB M4 (ASR+TTS+LLM contention) | Medium | High | Resource-aware lifecycle; oMLX model pinning/TTL; chunk tuning; fallbacks; measure early (Phase 7/8) |
-| 2 | Parakeet streaming = chunked (no true streaming) | Certain (verified) | Low | VAD-gated pseudo-streaming + local-agreement commit; Qwen3-ASR native-streaming fallback; acceptable TTFA for interviews |
+| 2 | Parakeet streaming = chunked (no true streaming) | Certain (verified) | Low | VAD-gated pseudo-streaming + local-agreement commit; Qwen3-ASR chunked/offline fallback (native streaming requires vLLM, not MLX); acceptable TTFA for interviews |
 | 3 | LlamaIndex dedup gotcha (no vector-store dedup) | Certain (verified) | Medium | Persistent docstore + explicit dedup logic in ingestion service |
 | 4 | LangGraph/MCP/LangChain API churn | Medium | Low | Pin exact versions in pyproject; re-verify at Phase 3/11 start |
 | 5 | 30-day scope creep | High | High | §30 scope control; deferred features tracked; features classified MUST/SHOULD/NICE/V2/REJECT |
@@ -753,7 +753,7 @@ Phases are logical milestones, not equal calendar blocks. 30-day constraint appl
 
 ## 30. Known Limitations (V1)
 
-- Parakeet live ASR is chunked/buffered streaming, not cache-aware true streaming (acceptable for interview pacing; Qwen3-ASR native streaming as fallback; noted upgrade candidate: NVIDIA Nemotron-3.5 ASR Streaming).
+- Parakeet live ASR is chunked/buffered streaming, not cache-aware true streaming (acceptable for interview pacing; Qwen3-ASR on MLX as offline/chunked fallback — native streaming requires vLLM backend; noted upgrade candidate: NVIDIA Nemotron-3.5 ASR Streaming).
 - No executable coding sandbox; coding = code-reading/review/debugging/algo reasoning discussions.
 - No video/whiteboard/anti-cheating/recruiter/multi-tenant/payments.
 - No official LinkedIn integration.
@@ -890,7 +890,7 @@ Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
 | 2026-08 | LangGraph 1.2 + Postgres checkpointer | durable interview state, interrupts | Phase 3 |
 | 2026-08 | LlamaIndex 0.14 ingestion + pgvector hybrid RRF | retrieval quality; dedup handled explicitly | Phase 2 |
 | 2026-08 | DeepEval judge = deepseek-v4-flash (not gpt default) | cost + privacy | Phase 11 evals |
-| 2026-08 | Parakeet chunked streaming accepted; Qwen3-ASR native-streaming fallback; Nemotron streaming documented as upgrade candidate | verified limitation | Voice matrix accounts for it |
+| 2026-08 | Parakeet chunked streaming accepted; Qwen3-ASR MLX = offline/chunked fallback only (native streaming requires vLLM, not MLX); Nemotron streaming documented as upgrade candidate | verified limitation | Voice matrix accounts for it |
 | 2026-08 | Voice = WebSocket (control+audio); text events = SSE | bidirectional/interrupt needs | §16 |
 | 2026-08 | Model stack finalization: 4B (`pramya-4b`) = primary local workhorse; deepseek-v4-flash = escalation only; 9B DEFERRED (not required/fallback/routing target) | 4B handles majority of workload; cloud reserved for justified escalation; strongest ≠ default | Routing tables/fallbacks/setup/evals updated repo-wide; ADR-004/013 amended; catalog §0/§2.3/§6; baseline verification at Phase 4 |
 
