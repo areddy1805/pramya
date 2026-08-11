@@ -1,202 +1,66 @@
 # Pramya — Project Memory
 
-> Persistent engineering memory for Pramya.
->
-> This file is maintained by the engineering agent across development sessions.
-> It is not a session transcript and should contain only durable, useful knowledge.
+> Persistent engineering memory. Maintained across sessions. Not a transcript.
+> Read at session start. Verify before relying on stale notes.
 
 ---
 
 ## Current State
 
-Project status: Greenfield — planning
+- Project status: **Planning complete, implementation not started** (2026-08).
+- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 0 ready to begin after user approval.
+- Last verified commit: `8947ff2 start Pramya`.
 
-Current phase: Not started
+## Verified Environment Facts (2026-08)
 
-Current implementation milestone: Not started
+- Dev machine: MacBook Pro M4, 16GB unified, 512GB. Node v24.11.1, Python 3.14.6 (pin project to 3.12/3.13 in pyproject), Docker 27.5.1.
+- DeepSeek API: model `deepseek-v4-flash` (V4-Flash-0731 public beta 2026-07-31). 1M ctx, thinking via `reasoning_effort`. Legacy IDs `deepseek-chat`/`deepseek-reasoner` DISCONTINUED 2026-07-24 — never use. `frequency_penalty`/`presence_penalty` unsupported. OpenAI-compatible at `https://api.deepseek.com`. Pricing: $0.14/M in (miss), $0.0028/M (hit), $0.28/M out.
+- Framework versions (verified): LangChain 1.3.x, langchain-core 1.4.x, LangGraph 1.2.x (create_react_agent deprecated → `langchain.agents.create_agent`; `StateGraph(state_schema=...)` mandatory; `interrupt()`+`Command(resume=...)`; `langgraph.types`), LlamaIndex 0.14.x (QueryPipeline removed in 0.13), MCP Python SDK 2.0 (`MCPServer`, FastMCP renamed; v1 pinned `mcp>=1.28,<2` alternative), DeepEval 4.1.x (judge default gpt-5.4 → override to deepseek), Langfuse v4 server / Python SDK 4.14.x (OTel-based, `@observe`), FastAPI 0.139.x, Pydantic 2.13.x, SQLAlchemy 2.0.51 async, pgvector 0.8.x (HNSW, sparsevec), PostgreSQL 17, React 19.x, Vite 8, TS 5.7+ strict.
+- oMLX v0.5.x = local inference server (Apache-2.0). OpenAI-compatible: chat/embeddings/rerank/audio endpoints. SSD KV-cache, model pinning/TTL. Audio endpoint support for Parakeet/Qwen3-ASR/Qwen3-TTS must be VERIFIED at Phase 7; direct `parakeet-mlx` + `mlx-audio` are the fallback.
 
----
+## Verified Model Facts (see docs/MODEL_CATALOG.md)
 
-## Product
+- All 8 definitive models exist; no concrete incompatibility found. Do NOT reopen selection.
+- Licenses: Qwen3.5-4B/9B Apache-2.0; BGE-M3 MIT (mlx-embeddings library is GPLv3 — use oMLX /v1/embeddings instead); Qwen3-Reranker-0.6B Apache-2.0; Parakeet-TDT-0.6B-v3 CC-BY-4.0 (attribution); Qwen3-ASR-1.7B Apache-2.0; Qwen3-TTS-0.6B Apache-2.0; oMLX Apache-2.0.
+- Parakeet v3 = chunked pseudo-streaming only (no cache-aware streaming). Acceptable; Nemotron-3.5 ASR Streaming = documented upgrade candidate.
+- MLX weights: mlx-community/Qwen3.5-4B-MLX-4bit (~2.4GB), Qwen3.5-9B-MLX-4bit (~5.6GB), bge-m3-mlx-8bit (~592MB)/4bit (~321MB), Qwen3-TTS-12Hz-0.6B-Base-bf16 (~1.2GB)/CustomVoice-4bit (~960MB), parakeet-tdt-0.6b-v3 int8 (~1.3GB).
+- Qwen3.5 checkpoints are VLM — text-only inference needs correct chat template check (implementation caveat).
+- Qwen3-ASR-1.7B MLX path unverified — runtime decided at Phase 7/8 (official qwen_asr / GGUF fallback).
 
-Pramya is an evidence-driven interview preparation platform.
+## Framework Gotchas (learned from research — avoid re-learning)
 
-Primary positioning:
+- LlamaIndex `IngestionPipeline` does NOT dedupe against the vector store; node hash excludes metadata (run-llama#17871). Implement explicit docstore dedup by content hash.
+- DeepEval: `retrieval_context` must be list[str]; empty retrieval_context makes Faithfulness silently return 1.0; pin judge at temp 0.
+- LangGraph v2 streaming returns unified StreamPart/GraphOutput; agent event node renamed "agent"→"model"; durability modes sync/async/exit.
+- MCP SDK v2 (2026-07-28 protocol revision) = stateless request/response, `server/discover`; decide v2 vs pinned v1 at Phase 11.
+- Langfuse: metadata now dict[str,str] ≤200 chars; `start_span`/`start_generation` unified to `start_observation`; real-time ingestion needs Python SDK ≥4.7.
+- SSE vs WS: text events SSE; voice = WS (bidirectional + interrupt). AudioWorklet for low-latency playback; AbortController everywhere; rAF batching for token streams.
 
-> Pramya — prove you're ready.
+## Architecture Decisions (durable)
 
-The product must be genuinely useful to people preparing for interviews across different technical and professional roles.
+- Modular monolith, FastAPI + React 19; LangGraph owns interview orchestration (Postgres checkpointer, thread_id=session); LlamaIndex owns ingestion/retrieval; InferenceRouter (deepseek + oMLX providers) owns model access; MCP = read-only external surface only; readiness/priority/progress = deterministic pure functions; evaluation append-only + versioned.
+- 1024-dim BGE-M3 locked into schema from day one (dimension changes painful).
+- DeepEval judge = deepseek-v4-flash (not gpt default): cost + privacy.
+- Voice: Parakeet live / Qwen3-ASR recorded / Qwen3-TTS; explicit state machine server-side; stale-TTS prohibition; audio not stored by default.
 
-It must not be a generic AI chat application.
+## Known Problems / Blockers
 
----
-
-## Development Goal
-
-The project is intentionally designed to provide substantial real-world experience with modern AI application engineering, including:
-
-- LangGraph
-- LangChain
-- LlamaIndex
-- RAG
-- hybrid retrieval
-- reranking
-- structured AI outputs
-- model routing
-- local inference
-- MLX
-- speech-to-text
-- text-to-speech
-- streaming AI
-- interruption/cancellation
-- React AI UX
-- evaluation
-- observability
-- production engineering
-
-The product itself remains the primary concern.
-
----
-
-## Target Local Hardware
-
-Primary development machine:
-
-- Apple Silicon M4
-- 16 GB unified memory
-- 512 GB storage
-
-Local AI architecture must respect these constraints.
-
----
-
-## Definitive AI Stack
-
-The currently selected V1 model architecture is:
-
-### Cloud reasoning
-
-DeepSeek V4 Flash
-
-### Local LLM
-
-Qwen3.5-4B 4-bit
-
-Qwen3.5-9B 4-bit
-
-### Embeddings
-
-BGE-M3
-
-### Reranking
-
-Qwen3-Reranker-0.6B 4-bit
-
-### Live ASR
-
-Parakeet TDT 0.6B v3
-
-### Recorded / multilingual ASR
-
-Qwen3-ASR 1.7B
-
-### TTS
-
-Qwen3-TTS 0.6B
-
-These decisions are documented in the master planning material and should not be casually reopened.
-
----
-
-## Local Runtime
-
-The intended local AI architecture uses Apple-Silicon-native MLX/oMLX infrastructure where appropriate.
-
-Do not introduce Ollama merely for convenience.
-
-Speech workloads should use the appropriate MLX audio tooling rather than forcing speech models through an LLM serving layer.
-
----
-
-## Voice
-
-Voice is a first-class feature.
-
-The intended experience includes:
-
-- live transcription
-- spoken interviewer
-- streaming audio
-- interruption
-- pause
-- resume
-- stop
-- cancellation
-- transcript synchronization
-- graceful recovery
-
-The voice system must behave like an actual interactive interview rather than a batch transcription demo.
-
----
-
-## Product Differentiator
-
-Pramya is evidence-driven.
-
-The system should understand:
-
-- what the candidate claims
-- what the candidate has demonstrated
-- what evidence supports a claim
-- what the target role requires
-- where the candidate is weak
-- what should be practiced next
-- how the candidate changes over multiple sessions
-
----
-
-## Long-Term Memory Rules
-
-Only record information here that will materially help future engineering sessions.
-
-Good entries:
-
-- important architectural discoveries
-- persistent integration problems
-- environment constraints
-- non-obvious fixes
-- operational knowledge
-- important lessons
-- known limitations
-
-Bad entries:
-
-- every completed task
-- every command executed
-- temporary debugging output
-- conversation transcripts
-- trivial implementation details
-
----
-
-## Known Problems
-
-None yet.
-
----
-
-## Important Lessons
-
-None yet.
-
----
+- None. Awaiting user approval of master plan to start Phase 0.
 
 ## Deferred Decisions
 
-None yet.
+- Redis: only if Phase 10/11 measurement justifies (rate limiting/coordination/cache).
+- Auth: deployment-dependent; single-user local default; must not threaten deadline.
+- Langfuse self-host: optional Compose profile (heavy: pg+clickhouse+redis+s3); dev fallback = structured logs.
+- MCP SDK v2 vs pinned v1: decide at Phase 11.
 
----
+## Important Lessons
+
+- Research forks returned empty in one planning session → do research directly in parent context when forks fail silently.
+- Plan docs must be verified against framework reality (2026 versions differ wildly from 2024-era tutorials: chains removed, agents renamed, SDK renamed).
 
 ## Operational Notes
 
-None yet.
+- Makefile targets planned: up/down/migrate/dev-backend/dev-frontend/test/evals/lint/typecheck/models-pull/demo-setup.
+- Local AI runs on host (oMLX), not in Docker (Metal access).
+- Never commit `.env`; never log candidate content; observability = IDs + redacted metadata.
