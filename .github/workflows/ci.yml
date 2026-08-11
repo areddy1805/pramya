@@ -23,8 +23,40 @@ jobs:
         run: uv run ruff check app ../tests
       - name: Typecheck (mypy)
         run: uv run mypy app
-      - name: Unit tests
-        run: uv run pytest ../tests/unit -q
+      - name: Unit + contract tests
+        run: uv run pytest -c pyproject.toml ../tests/unit ../tests/contract -q
+
+  backend-integration:
+    name: Backend (integration, pgvector)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: pramya
+          POSTGRES_PASSWORD: pramya
+          POSTGRES_DB: pramya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pramya"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.x"
+      - name: Install dependencies
+        run: uv sync
+      - name: Integration tests
+        run: uv run pytest -c pyproject.toml ../tests/integration -q
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://pramya:pramya@localhost:5432/pramya_test
 
   frontend:
     name: Frontend (lint, typecheck, build)

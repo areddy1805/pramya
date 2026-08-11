@@ -103,7 +103,8 @@ temp/
 # AI / model artifacts
 # -------------------------
 
-models/
+# Root-anchored: only repo-root `models/` is AI artifacts; backend/app/models is the ORM package.
+/models/
 model-cache/
 hf-cache/
 huggingface/

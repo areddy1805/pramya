@@ -19,10 +19,13 @@ ps:
 
 # --- Tests -----------------------------------------------------------------
 
-test: test-unit
+test: test-unit test-contract
 
 test-unit:
 	cd backend && uv run pytest -c pyproject.toml ../tests/unit -q
+
+test-contract:
+	cd backend && uv run pytest -c pyproject.toml ../tests/contract -q
 
 test-integration:
 	cd backend && uv run pytest -c pyproject.toml ../tests/integration -q
