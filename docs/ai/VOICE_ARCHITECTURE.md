@@ -19,7 +19,7 @@
 | H.10 audio persistence | ✅ | opt-in (`voice_store_audio`): candidate PCM16 → WAV under `audio_storage_dir`, `AudioSegment` row (kind/storage_key/duration_ms/retention_until); replay via `GET /interviews/{id}/voice/audio[/{segment_id}]` |
 | H.11 reconnect + heartbeat | ✅ | reconnect emits `resume` (authoritative state + last question); `heartbeat` control → `heartbeat_ack`; client pings every 15s |
 | H.12 communication analysis | ✅ | deterministic `CommunicationAnalyzer` (verbosity, fillers, speaking time, response latency, interruptions) from persisted transcript timestamps; never fabricated (`GET /interviews/{id}/communication`) |
-| Real-model E2E | ⏳ PENDING | blocked on Mac memory pressure; run the acceptance contract (below) when authorized |
+| Real-model E2E | ✅ | passed 2026-08-12 (sessions 39/40/41, Playwright fake-device mic + pre-recorded WAV): 20 ASR partials, 9 TTS syntheses, interrupt conceded zero stale chunks; re-run on demand via `frontend/scripts/voice_e2e_real.mjs` |
 
 **Observable event contract (acceptance):** `state` (idle→starting→speaking→listening→processing…) → `question` → `tts_start{generation}` → binary chunks → `tts_stop{generation}` → `partial_transcript` → `turn_ended` → `final_transcript` → `answer_submitted` → `evaluation` → next `question` → … Interrupt: `interrupt` control → `state: interrupted` → `state: listening`, generation bumped, zero stale chunks.
 

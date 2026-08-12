@@ -31,8 +31,8 @@
 | ADR-018 | Apple Silicon local AI (MLX/oMLX) | Accepted | inline below |
 | ADR-019 | Voice as a first-class capability | Accepted | inline below |
 | ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Superseded by ADR-023 (text routing) | inline below |
-| ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Accepted | inline below |
-| ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Accepted | inline below |
+| ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Superseded (framework realignment) | inline below |
+| ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Superseded (framework realignment) | inline below |
 | ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
 
 ---
@@ -361,7 +361,7 @@ Routing policy: 4B local first → application-level task-class decision → can
 
 ## ADR-021 — Knowledge Layer: Deterministic Ingestion + Retrieval (LlamaIndex not required)
 
-**Status:** Accepted (implementation decision)
+**Status:** Superseded — deterministic layer remains as the fallback/reference path; LlamaIndex is now the production ingestion/retrieval layer (realignment directive 2026-08, `app/knowledge/rag/service.py`).
 **Date:** 2026-08
 
 **Decision:** Phase 2.2/2.3 implement the knowledge layer with deterministic
@@ -393,7 +393,7 @@ rerank down → RRF order) and observable.
 
 ## ADR-022 — Interview Engine: Deterministic Service State Machine (LangGraph not required)
 
-**Status:** Accepted (implementation decision)
+**Status:** Superseded — the interview lifecycle now executes a real LangGraph StateGraph (realignment directive 2026-08, `app/interview/workflow.py`) while InterviewService stays the domain/invariant layer. (implementation decision)
 **Date:** 2026-08
 
 **Decision:** Phase 3 implements the interview engine as a deterministic,

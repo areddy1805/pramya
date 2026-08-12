@@ -310,7 +310,7 @@ Routing decision flow: task-class policy — every text task → deepseek-v4-fla
 path, never a silent local text fallback). TEXT → DeepSeek; AUDIO → local
 oMLX; RETRIEVAL → local oMLX.
 
-Fallbacks: DeepSeek down → local 4B (degraded quality) for non-critical tasks; TTS → text response; ASR → manual transcript; retrieval → degraded mode. (Qwen3.5-9B is NOT part of any fallback chain in V1.) Mode selection observable in telemetry.
+Fallbacks (ADR-023): DeepSeek failure is a controlled provider error/retry — there is NO silent local-text fallback. Voice degrades: TTS down → text interviewer response; ASR down → manual/typed transcript. Retrieval failure → continue without context (logged). Mode selection observable in telemetry.
 
 ---
 
@@ -868,8 +868,8 @@ Phase 7  Voice Infrastructure        NOT STARTED
 Phase 8  Streaming ASR/TTS           NOT STARTED
 Phase 9  Interrupt/Pause/Resume      COMPLETE (voice engine H.1-H.12; audio persistence, replay, reconnect/heartbeat, communication analysis)
 Phase 10 Progress/History/Practice   COMPLETE (progress aggregation, practice sessions, history page, interview record endpoint, debrief UI, story bank)
-Phase 11 MCP/Observability/Security  IN PROGRESS (Langfuse done; security done; demo mode done; MCP NOT STARTED)
-Phase 12 E2E/Deploy/Docs/Polish      IN PROGRESS (browser E2E done; fresh-clone verification done; release docs pending)
+Phase 11 MCP/Observability/Security  COMPLETE for V1 (Langfuse facade done; security done; demo done; evals done; MCP DEFERRED from V1 per ADR-006)
+Phase 12 E2E/Deploy/Docs/Polish      COMPLETE (browser E2E; fresh-clone verified; release acceptance matrix + final docs pass)
 ```
 
 - Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)

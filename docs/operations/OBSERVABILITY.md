@@ -6,17 +6,24 @@
 
 ## Runtime Status (Phase E — verified 2026-08-12)
 
-The self-hosted Langfuse stack is a **real production execution path**, not
-configuration-only. Verified end-to-end with a real DeepSeek operation:
+The self-hosted Langfuse stack is a **real execution path**, verified with a
+real DeepSeek operation. Trace ingestion uses the **official Langfuse Python
+SDK v4 directly** (native `/api/public/ingestion`); it is **not** an
+OpenTelemetry/OpenInference pipeline — there is no OTel exporter or LangChain
+callback handler in the codebase. The stack itself is the full Langfuse OSS
+composition:
 
 ```
-Pramya POST /interviews/{id}/questions
-  → LangChain pipeline inside trace_span (app.observability)
-  → Langfuse SDK v4 OTel exporter → /api/public/otel/v1/traces
-  → MinIO S3 events/otel/pramya-v1/...
-  → langfuse-worker (otel-ingestion-queue) → ClickHouse
-  → queryable via GET /api/public/traces  (trace name: question_generation)
+Pramya trace_span / record_event
+  → langfuse SDK v4 (direct ingestion)
+  → langfuse-web (3030) → worker → ClickHouse
+  → S3/MinIO event staging (events/otel/pramya-v1/…)
+  → queryable via GET /api/public/traces
 ```
+
+> Honest limitation: spans are sent only when `LANGFUSE_PUBLIC_KEY` +
+> `LANGFUSE_SECRET_KEY` are configured; otherwise the facade degrades to
+> structured JSON logs. OTel instrumentation is deferred.
 
 - `GET http://127.0.0.1:3030/api/public/health` → 200
 - Trace query with project API key (Basic auth) returned the real trace.
