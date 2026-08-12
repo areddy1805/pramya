@@ -26,12 +26,16 @@ class StubRouter:
         self.dimension = dimension
 
     async def embed(self, texts: list[str]) -> EmbedResponse:
-        # Deterministic pseudo-embedding: index of first char.
+        # Deterministic word-overlap pseudo-embedding: relevant texts score
+        # higher than irrelevant ones, independent of document/chunk ids.
+        # (A first-char-only embedding ties everything at zero similarity,
+        # which makes ranking depend on row ids and breaks when other tests
+        # shift the sequence.)
         emb = []
         for t in texts:
             v = [0.0] * self.dimension
-            if t:
-                v[ord(t[0]) % self.dimension] = 1.0
+            for word in t.lower().split():
+                v[sum(ord(c) for c in word) % self.dimension] += 1.0
             emb.append(v)
         return EmbedResponse(embeddings=emb, model="stub", dimension=self.dimension)
 
@@ -101,7 +105,12 @@ async def test_retrieval_finds_relevant_resume_chunks(
     db_session: AsyncSession, indexed_docs: dict[str, int]
 ) -> None:
     svc = RetrievalService(db_session, StubRouter(), top_k=3, fetch_per_side=10)
-    result = await svc.search(indexed_docs["user_id"], "python fastapi backend")
+    # Query touches BOTH resume blocks (backend/python + distributed/postgres)
+    # and no JD content, so the top-3 must be resume chunks regardless of
+    # accumulated ids from other test files in the shared test DB.
+    result = await svc.search(
+        indexed_docs["user_id"], "python fastapi backend distributed systems postgresql"
+    )
     assert result.chunks, "expected at least one chunk"
     assert all(c.kind == "resume" for c in result.chunks)
     assert all(c.document_id == indexed_docs["resume"] for c in result.chunks)

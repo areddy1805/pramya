@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, ApiError } from '../lib/api'
+import { api, ApiError, qs } from '../lib/api'
 import { useHealth, DEFAULT_USER_ID } from '../hooks/queries'
 import { useTheme } from '../stores/theme'
 import { Button, ErrorState, KeyValue, Pill, SectionHeading, Spinner, Surface, TextArea } from '../components/ui'
@@ -20,6 +20,14 @@ interface TranscriptResult {
   strengths: string[]
 }
 
+interface DemoSetupResult {
+  profile: string
+  roles: { key: string; chunks: number; evidence_count: number; competencies: number }[]
+  readiness: number
+  critical_gaps: number
+  preparation_items: number
+}
+
 export function SettingsPage() {
   const health = useHealth()
   const theme = useTheme()
@@ -27,6 +35,21 @@ export function SettingsPage() {
   const [result, setResult] = useState<TranscriptResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [demo, setDemo] = useState<DemoSetupResult | null>(null)
+  const [demoBusy, setDemoBusy] = useState(false)
+
+  async function loadDemoData() {
+    setError(null)
+    setDemoBusy(true)
+    try {
+      const res = await api.post<DemoSetupResult>(`/api/v1/demo/setup${qs({ user_id: DEFAULT_USER_ID })}`)
+      setDemo(res)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Demo setup failed')
+    } finally {
+      setDemoBusy(false)
+    }
+  }
 
   async function analyzeTranscript() {
     if (transcriptText.trim().length < 20) return
@@ -96,6 +119,27 @@ export function SettingsPage() {
           <p className="mt-4 text-xs leading-relaxed text-fg-3">
             Candidate data stays on your machine. Runtime and model health live under <span className="font-medium">Runtime</span>.
           </p>
+        </Surface>
+
+        <Surface className="p-6">
+          <SectionHeading>Demo data</SectionHeading>
+          <p className="mb-3 text-sm text-fg-2">
+            Populate a fresh install with four bundled demo roles (resumes, evidence, readiness, preparation) —
+            idempotent, safe to re-run.
+          </p>
+          <Button variant="secondary" onClick={loadDemoData} disabled={demoBusy}>
+            {demoBusy ? 'Loading demo data…' : 'Load demo data'}
+          </Button>
+          {demo ? (
+            <dl className="mt-4">
+              <KeyValue k="Roles" v={`${demo.roles.length} (${demo.roles.map((r) => r.key).join(', ')})`} />
+              <KeyValue k="Chunks indexed" v={demo.roles.reduce((n, r) => n + r.chunks, 0).toString()} />
+              <KeyValue k="Evidence" v={demo.roles.reduce((n, r) => n + r.evidence_count, 0).toString()} />
+              <KeyValue k="Readiness" v={`${demo.readiness}/10`} />
+              <KeyValue k="Critical gaps" v={demo.critical_gaps.toString()} />
+              <KeyValue k="Preparation items" v={demo.preparation_items.toString()} />
+            </dl>
+          ) : null}
         </Surface>
 
         <Surface className="p-6">

@@ -58,7 +58,7 @@ models-pull:
 	@echo "See docs/MODEL_CATALOG.md for model download commands (Phase 4/7)."
 
 demo-setup:
-	@echo "Demo setup lands in Phase 11 (POST /api/v1/demo/setup)."
+	cd backend && uv run python ../scripts/seed_demo.py
 
 # --- Install ---------------------------------------------------------------
 
