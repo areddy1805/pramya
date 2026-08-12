@@ -99,6 +99,7 @@ Real screenshots from the running application (dark flagship theme).
 | <img src="assets/screenshots/interview.png" width="380" alt="Interview workspace" /> | <img src="assets/screenshots/evidence.png" width="380" alt="Evidence ledger" /> | <img src="assets/screenshots/progress.png" width="380" alt="Progress" /> |
 | <img src="assets/screenshots/stories.png" width="380" alt="Story bank" /> | <img src="assets/screenshots/history.png" width="380" alt="History" /> | <img src="assets/screenshots/debriefs.png" width="380" alt="Debriefs" /> |
 | <img src="assets/screenshots/settings.png" width="380" alt="Settings" /> | <img src="assets/screenshots/runtime.png" width="380" alt="Runtime status" /> | <img src="assets/screenshots/transcript.png" width="380" alt="Interview record" /> |
+| <img src="assets/screenshots/voice.png" width="380" alt="Live voice interview" /> | <img src="assets/screenshots/report.png" width="380" alt="Interview report" /> | |
 
 A full-page gallery is at the end of this document: [Gallery](#gallery).
 
