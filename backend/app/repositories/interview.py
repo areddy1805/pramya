@@ -67,6 +67,14 @@ class InterviewTurnRepository(BaseRepository[InterviewTurn]):
 class AudioSegmentRepository(BaseRepository[AudioSegment]):
     model = AudioSegment
 
+    async def list_for_session(self, session_id: int) -> Sequence[AudioSegment]:
+        stmt = (
+            select(AudioSegment)
+            .where(AudioSegment.interview_session_id == session_id)
+            .order_by(AudioSegment.id)
+        )
+        return (await self.session.scalars(stmt)).all()
+
 
 class TranscriptSegmentRepository(BaseRepository[TranscriptSegment]):
     model = TranscriptSegment

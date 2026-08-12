@@ -139,6 +139,13 @@ export function InterviewPage() {
           setLastHint(null)
           setTranscript((t) => [...t, { role: 'interviewer', text: q.text }])
         },
+        onResume: (q) => {
+          // Phase H: reconnect resync — restore the active question from
+          // the server's authoritative state without duplicating it.
+          if (q && q.text) {
+            setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '' })
+          }
+        },
         onPartial: (text) =>
           setTranscript((t) => {
             const base = t.filter((l) => !(l.role === 'candidate' && l.partial))

@@ -86,7 +86,18 @@ class StubTranscripts:
     async def add(self, obj: object) -> None:
         turn_id = obj.turn_id  # type: ignore[attr-defined]
         text = obj.text  # type: ignore[attr-defined]
-        self.segments.append({"turn_id": turn_id, "text": text})
+        timestamps = getattr(obj, "timestamps", None)
+        self.segments.append({"turn_id": turn_id, "text": text, "timestamps": timestamps})
+
+
+class StubAudios:
+    """Captures AudioSegment rows written by the engine (Phase H)."""
+
+    def __init__(self) -> None:
+        self.added: list[object] = []
+
+    async def add(self, obj: object) -> None:
+        self.added.append(obj)
 
 
 class _Evaluations:
@@ -112,6 +123,12 @@ class StubInterview:
         self.answer_texts: list[str] = []
         self.overall = 6.5
         self.session = _AsyncNoopSession()
+        self.session_status = "created"
+        self.last_question_text = "Tell me about a hard problem you solved."
+        self.sessions = self._Sessions(self)
+        self.questions = self._Questions(self)
+        self.turns = self._Turns()
+        self.evaluations = _Evaluations()
 
     async def begin(self, session_id: int, user_id: int) -> object:
         self.started = True
@@ -149,16 +166,22 @@ class StubInterview:
         return object()
 
     class _Sessions:
+        def __init__(self, interview: StubInterview) -> None:
+            self._interview = interview
+
         async def get_or_raise(self, obj_id: int, *, name: str | None = None) -> object:
-            return type("S", (), {"user_id": 1, "status": "created"})()
+            return type("S", (), {"user_id": 1, "status": self._interview.session_status})()
 
     class _Turns:
         async def latest_for_session(self, session_id: int) -> object:
             return type("T", (), {"id": 99})()
 
-    sessions = _Sessions()
-    turns = _Turns()
-    evaluations = _Evaluations()
+    class _Questions:
+        def __init__(self, interview: StubInterview) -> None:
+            self._interview = interview
+
+        async def list_for_session(self, session_id: int) -> list[object]:
+            return [type("Q", (), {"text": self._interview.last_question_text})()]
 
 
 async def _async_noop() -> None:
@@ -383,4 +406,103 @@ async def test_cancel_reaches_cancelled() -> None:
     assert await _wait_state(engine, ws, VoiceState.LISTENING)
     ws.push_json({"type": "cancel"})
     assert await _wait_state(engine, ws, VoiceState.CANCELLED)
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_ack_returns_state() -> None:
+    """Phase H: heartbeat control is answered with the authoritative state."""
+    ws = StubWS()
+    engine = _engine(ws)
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_json({"type": "heartbeat"})
+    assert await _wait_event(ws, "heartbeat_ack", ms=3000)
+    ack = [e for e in ws.json_out if e.get("type") == "heartbeat_ack"][-1]
+    assert ack.get("state") == "listening"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_emits_resume_with_last_question() -> None:
+    """Phase H: connecting to an in-progress session resyncs the client."""
+    ws = StubWS()
+    engine = _engine(ws)
+    engine.interview.session_status = "questioning"  # type: ignore[attr-defined]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "resume", ms=5000)
+    resume = [e for e in ws.json_out if e.get("type") == "resume"][0]
+    assert resume.get("question") == "Tell me about a hard problem you solved."
+    assert engine.interview.started is False  # never re-begins an active session
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_answer_audio_persisted_when_store_enabled(tmp_path) -> None:
+    """Phase H: candidate audio is written as WAV + audio_segment row."""
+    ws = StubWS()
+    interview = StubInterview()
+    audios = StubAudios()
+    engine = VoiceEngine(
+        interview=interview,  # type: ignore[arg-type]
+        asr=StubASR(),  # type: ignore[arg-type]
+        tts=StubTTS(),  # type: ignore[arg-type]
+        session_id=7,
+        user_id=1,
+        ws=ws,
+        silence_seconds=0.05,
+        speech_rms=10.0,
+        transcripts=StubTranscripts(),  # type: ignore[arg-type]
+        audios=audios,  # type: ignore[arg-type]
+        audio_storage_dir=str(tmp_path),
+        store_audio=True,
+        retention_days=30,
+    )
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    ws.push_json({"type": "end_turn"})
+    assert await _wait_event(ws, "answer_submitted", ms=5000)
+    await asyncio.sleep(0.05)
+    assert len(audios.added) == 1
+    row = audios.added[0]
+    assert row.storage_key == "7/99.wav"  # type: ignore[attr-defined]
+    assert row.duration_ms == 200  # type: ignore[attr-defined]  # 3200 samples @16k
+    assert row.retention_until is not None  # type: ignore[attr-defined]
+    stored = tmp_path / "7" / "99.wav"
+    assert stored.is_file() and stored.stat().st_size > 44  # valid WAV header + data
+    # Answer transcript now carries measured timestamps (role + latency).
+    cand = [s for s in engine._transcripts.segments if s.get("text") == "my spoken answer"]
+    assert cand and cand[0]["timestamps"], "answer timestamps missing"
+    assert cand[0]["timestamps"]["role"] == "candidate"
+    assert "response_latency_ms" in cand[0]["timestamps"]
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_audio_not_stored_when_disabled(tmp_path) -> None:
+    """Phase H: store_audio=False skips disk + rows (opt-out path)."""
+    ws = StubWS()
+    audios = StubAudios()
+    engine = VoiceEngine(
+        interview=StubInterview(),  # type: ignore[arg-type]
+        asr=StubASR(),  # type: ignore[arg-type]
+        tts=StubTTS(),  # type: ignore[arg-type]
+        session_id=7,
+        user_id=1,
+        ws=ws,
+        silence_seconds=0.05,
+        speech_rms=10.0,
+        transcripts=StubTranscripts(),  # type: ignore[arg-type]
+        audios=audios,  # type: ignore[arg-type]
+        audio_storage_dir=str(tmp_path),
+        store_audio=False,
+    )
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    ws.push_json({"type": "end_turn"})
+    assert await _wait_event(ws, "answer_submitted", ms=5000)
+    await asyncio.sleep(0.05)
+    assert audios.added == []
     await _cancel_task(task)

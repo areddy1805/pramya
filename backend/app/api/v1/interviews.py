@@ -6,17 +6,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.factory import build_inference_router
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.domain.enums import InterviewKind
+from app.domain.enums import InterviewKind, InterviewTurnKind
 from app.interview.service import InterviewService
 from app.knowledge.retrieval import RetrievalService
+from app.repositories.interview import AudioSegmentRepository, TranscriptSegmentRepository
+from app.services.communication import SegmentInput, analyze_communication
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -75,6 +77,41 @@ class HintOut(BaseModel):
 
 class ReportOut(BaseModel):
     report: str
+
+
+class AudioSegmentOut(BaseModel):
+    """Stored voice recording for one turn (Phase H replay)."""
+
+    id: int
+    turn_id: int | None = None
+    kind: str
+    duration_ms: int | None = None
+    storage_key: str | None = None
+    retention_until: datetime | None = None
+    download_url: str | None = None
+
+
+class AudioSegmentsOut(BaseModel):
+    interview_id: int
+    segments: list[AudioSegmentOut]
+
+
+class CommunicationOut(BaseModel):
+    """Deterministic communication characteristics (measured only, never
+    fabricated: metrics without persisted data are reported as None)."""
+
+    answers_count: int = 0
+    total_speaking_seconds: float | None = None
+    avg_response_latency_ms: float | None = None
+    avg_words_per_answer: float | None = None
+    longest_answer_words: int = 0
+    avg_sentences_per_answer: float | None = None
+    filler_count: int = 0
+    fillers_per_1000_words: float = 0.0
+    interruption_count: int = 0
+    pauses_count: int = 0
+    total_pause_seconds: float = 0.0
+    notes: list[str] = Field(default_factory=lambda: [])
 
 
 def _service(session: AsyncSession) -> InterviewService:
@@ -234,3 +271,101 @@ async def interview_events(
     svc = _service(session)
     stream = svc.stream_events(interview_id, user_id)
     return StreamingResponse(stream, media_type="text/event-stream")
+
+
+# -- Phase H: voice replay + communication analysis -------------------------
+
+
+async def _require_owned_session(
+    session: AsyncSession, interview_id: int, user_id: int
+) -> None:
+    svc = _service(session)
+    row = await svc.sessions.get_or_raise(interview_id, name="interview session")
+    if row.user_id != user_id:
+        raise HTTPException(status_code=404, detail="interview session not found")
+
+
+@router.get("/interviews/{interview_id}/voice/audio", response_model=AudioSegmentsOut)
+async def list_voice_audio(
+    interview_id: int, session: SessionDep, user_id: int = Query(...)
+) -> AudioSegmentsOut:
+    """List stored candidate audio segments for a voice interview."""
+    await _require_owned_session(session, interview_id, user_id)
+    rows = await AudioSegmentRepository(session).list_for_session(interview_id)
+    segments = [
+        AudioSegmentOut(
+            id=r.id,
+            turn_id=r.turn_id,
+            kind=str(r.kind),
+            duration_ms=r.duration_ms,
+            storage_key=r.storage_key,
+            retention_until=r.retention_until,
+            download_url=(
+                f"/api/v1/interviews/{interview_id}/voice/audio/{r.id}" if r.storage_key else None
+            ),
+        )
+        for r in rows
+    ]
+    return AudioSegmentsOut(interview_id=interview_id, segments=segments)
+
+
+@router.get("/interviews/{interview_id}/voice/audio/{segment_id}")
+async def download_voice_audio(
+    interview_id: int, segment_id: int, session: SessionDep, user_id: int = Query(...)
+) -> FileResponse:
+    """Stream a stored WAV recording (replay)."""
+    await _require_owned_session(session, interview_id, user_id)
+    row = await AudioSegmentRepository(session).get_or_raise(segment_id, name="audio segment")
+    if row.interview_session_id != interview_id or not row.storage_key:
+        raise HTTPException(status_code=404, detail="audio segment not found")
+    settings = get_settings()
+    path = settings.audio_storage_path / row.storage_key
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="audio file missing on disk")
+    return FileResponse(
+        path,
+        media_type="audio/wav",
+        filename=f"pramya-interview-{interview_id}-turn-{row.turn_id or '?'}.wav",
+    )
+
+
+@router.get("/interviews/{interview_id}/communication", response_model=CommunicationOut)
+async def interview_communication(
+    interview_id: int, session: SessionDep, user_id: int = Query(...)
+) -> CommunicationOut:
+    """Deterministic communication analysis from persisted transcript data.
+
+    Only measured values are reported (see analyzer notes); nothing is
+    fabricated when timestamps are absent.
+    """
+    await _require_owned_session(session, interview_id, user_id)
+    segments = await TranscriptSegmentRepository(session).list_for_session(interview_id)
+    turns = await _service(session).turns.list_for_session(interview_id)
+    turn_kinds = {t.id: str(t.kind) for t in turns}
+    inputs: list[SegmentInput] = []
+    interruptions = 0
+    for seg in segments:
+        ts = seg.timestamps or {}
+        role = ts.get("role")
+        if not isinstance(role, str):
+            kind = turn_kinds.get(seg.turn_id or -1)
+            role = "candidate" if kind == str(InterviewTurnKind.ANSWER) else "interviewer"
+        raw_int = ts.get("interruptions")
+        if isinstance(raw_int, int):
+            interruptions = max(interruptions, raw_int)
+        inputs.append(SegmentInput(text=seg.text, role=role, timestamps=seg.timestamps))
+    analysis = analyze_communication(inputs, interruption_count=interruptions)
+    return CommunicationOut(
+        answers_count=analysis.answers_count,
+        total_speaking_seconds=analysis.total_speaking_seconds,
+        avg_response_latency_ms=analysis.avg_response_latency_ms,
+        avg_words_per_answer=analysis.avg_words_per_answer,
+        longest_answer_words=analysis.longest_answer_words,
+        avg_sentences_per_answer=analysis.avg_sentences_per_answer,
+        filler_count=analysis.filler_count,
+        fillers_per_1000_words=analysis.fillers_per_1000_words,
+        interruption_count=analysis.interruption_count,
+        pauses_count=analysis.pauses_count,
+        total_pause_seconds=analysis.total_pause_seconds,
+        notes=analysis.notes,
+    )

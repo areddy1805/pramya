@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     )
     omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"  # deprecated: use voice_tts_model
     voice_retention_days: int = 30
+    # Opt-in: persist candidate audio as WAV under audio_storage_dir and write
+    # audio_segment rows (replay/retention). Off disables audio persistence.
+    voice_store_audio: bool = True
     audio_storage_dir: str = ".runtime/audio"
     # Turn finalization: silence (s) after speech ends auto-ends the turn.
     voice_silence_seconds: float = 1.5
@@ -88,6 +91,14 @@ class Settings(BaseSettings):
     voice_speech_rms: float = 400.0
     # Streaming playback chunk (samples per PCM16 audio_chunk frame).
     voice_chunk_samples: int = 4800  # 200 ms @ 24 kHz
+
+    @property
+    def audio_storage_path(self) -> Path:
+        """Absolute audio storage dir (relative paths anchor to repo root)."""
+        p = Path(self.audio_storage_dir).expanduser()
+        if not p.is_absolute():
+            p = _ENV_FILE.parent / p
+        return p
 
     # Uploads
     upload_max_mb: int = 5

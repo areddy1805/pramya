@@ -92,6 +92,9 @@ def _engine(
         chunk_samples=settings.voice_chunk_samples,
         silence_seconds=settings.voice_silence_seconds,
         speech_rms=settings.voice_speech_rms,
+        audio_storage_dir=str(settings.audio_storage_path),
+        store_audio=settings.voice_store_audio,
+        retention_days=settings.voice_retention_days,
     )
 
 

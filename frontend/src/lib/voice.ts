@@ -35,6 +35,7 @@ export interface VoiceEvent {
   type: string
   state?: VoiceState
   text?: string
+  question?: string
   question_id?: number
   difficulty?: string
   overall?: number | null
@@ -67,6 +68,7 @@ export interface VoiceHandlers {
   onError?: (code: string, message: string) => void
   onTTSStart?: (generation?: number) => void
   onTTSStop?: (generation?: number) => void
+  onResume?: (q: VoiceQuestion | null) => void
   onClosed?: () => void
 }
 
@@ -107,6 +109,7 @@ export class VoiceClient {
   private playbackQueue: AudioBuffer[] = []
   private playing = false
   private closedByUser = false
+  private heartbeat?: ReturnType<typeof setInterval>
   public state: VoiceState = 'idle'
   private currentGeneration = -1
   private url: string
@@ -180,6 +183,9 @@ export class VoiceClient {
         this.handlers.onError?.('ws_closed', 'Voice connection lost. Reconnect to continue.')
       }
     }
+    // H heartbeat: keepalive probe so the server can detect liveness and
+    // the connection survives proxies. Server answers heartbeat_ack.
+    this.heartbeat = setInterval(() => this.sendControl('heartbeat'), 15000)
   }
 
   async stop(): Promise<void> {
@@ -199,6 +205,10 @@ export class VoiceClient {
   }
 
   private async teardown(): Promise<void> {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat)
+      this.heartbeat = undefined
+    }
     this.captureNode?.disconnect()
     this.captureNode = null
     this.stream?.getTracks().forEach((t) => t.stop())
@@ -280,6 +290,18 @@ export class VoiceClient {
           text: payload.text ?? '',
           difficulty: payload.difficulty ?? 'medium',
         })
+        break
+      case 'resume':
+        // Phase H: server resync on reconnect — restore the active question
+        // so the UI can continue the session in progress.
+        this.handlers.onResume?.({
+          id: payload.question_id ?? 0,
+          text: payload.question ?? payload.text ?? '',
+          difficulty: payload.difficulty ?? 'medium',
+        })
+        break
+      case 'heartbeat_ack':
+        // Keepalive acknowledgement; no UI action required.
         break
       case 'partial_transcript':
         this.handlers.onPartial?.(payload.text ?? '')

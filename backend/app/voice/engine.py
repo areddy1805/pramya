@@ -31,18 +31,20 @@ import json
 import math
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 
 from app.core.logging import get_logger
-from app.domain.enums import VoiceState
+from app.domain.enums import TurnDirection, VoiceState
 from app.domain.errors import (
     NotFoundError,
     PramyaError,
     ValidationFailedError,
 )
 from app.interview.service import InterviewService
-from app.models.interview import TranscriptSegment
-from app.repositories.interview import TranscriptSegmentRepository
+from app.models.interview import AudioSegment, TranscriptSegment
+from app.repositories.interview import AudioSegmentRepository, TranscriptSegmentRepository
 from app.voice.asr import ASRClient
 from app.voice.tts import TTSClient, chunk_pcm16
 
@@ -50,6 +52,12 @@ _logger = get_logger("app.voice.engine")
 
 # Minimum accumulation (samples @16kHz) between partial ASR calls.
 PARTIAL_INTERVAL_SAMPLES = 32000  # 2.0 s
+
+
+def _pcm16_duration_ms(pcm16: bytes, sample_rate: int) -> int:
+    """Duration of a PCM16 buffer in ms (bytes / 2 = samples)."""
+    samples = len(pcm16) // 2
+    return round(samples * 1000 / sample_rate)
 
 
 class VoiceWS:
@@ -112,6 +120,12 @@ class VoiceEngine:
     speech_rms: float = 400.0
     ws: VoiceWS | None = None
     transcripts: TranscriptSegmentRepository | None = None  # injectable (tests)
+    # Audio persistence (Phase H): candidate audio stored as WAV + audio_segment
+    # rows when store_audio is true and a storage dir is configured.
+    audios: AudioSegmentRepository | None = None  # injectable (tests)
+    audio_storage_dir: str | None = None
+    store_audio: bool = True
+    retention_days: int = 30
 
     def __post_init__(self) -> None:
         self.state: VoiceState = VoiceState.IDLE
@@ -123,6 +137,7 @@ class VoiceEngine:
         self._speech_ended_at: float | None = None
         self._last_question_id: int | None = None
         self._last_question_turn_id: int | None = None
+        self._last_question_text: str | None = None
         self._turns_completed = 0
         self._interruptions = 0
         self._running = True
@@ -134,6 +149,11 @@ class VoiceEngine:
         self._start_session_task: asyncio.Task[None] | None = None
         self._silence_task: asyncio.Task[None] | None = None
         self._transcripts = self.transcripts or TranscriptSegmentRepository(self.interview.session)
+        self._audios = self.audios or AudioSegmentRepository(self.interview.session)
+        # Turn timing (wall clock for persisted timestamps, monotonic for latency).
+        self._turn_started_wall: datetime | None = None
+        self._listen_started_at: float | None = None
+        self._first_speech_at: float | None = None
 
     # -- state ---------------------------------------------------------------
 
@@ -203,8 +223,26 @@ class VoiceEngine:
                 raise NotFoundError("interview session not found")
             if str(session.status) in ("created", "planning"):
                 await self.interview.begin(self.session_id, self.user_id)
-            await self._set_state(VoiceState.STARTING)
-            await self._ask_next_question()
+                await self._set_state(VoiceState.STARTING)
+                await self._ask_next_question()
+            else:
+                # Reconnect (Phase H): session already in progress. Resync the
+                # client with authoritative state + last question so the UI can
+                # recover after a dropped connection without restarting.
+                text = self._last_question_text
+                if text is None:
+                    questions = await self.interview.questions.list_for_session(self.session_id)
+                    if questions:
+                        text = questions[-1].text
+                await self._emit(
+                    {
+                        "type": "resume",
+                        "state": str(session.status),
+                        "question": text,
+                    }
+                )
+                await self._set_state(VoiceState.LISTENING)
+                await self._start_silence_watchdog()
         except PramyaError as exc:
             if not self._disconnected:
                 await self._emit({"type": "error", "code": exc.code, "message": exc.message})
@@ -234,6 +272,9 @@ class VoiceEngine:
             await self._pause()
         elif mtype == "resume":
             await self._resume()
+        elif mtype == "heartbeat":
+            # Keepalive (Phase H): client liveness probe -> state ack.
+            await self._emit({"type": "heartbeat_ack", "state": self.state.value})
         elif mtype == "stop":
             await self._stop()
         elif mtype == "cancel":
@@ -256,7 +297,10 @@ class VoiceEngine:
             question, turn = await self.interview.next_question(self.session_id, self.user_id)
             self._last_question_id = question.id
             self._last_question_turn_id = turn.id
-            await self._persist_question_transcript(question.text, turn.id)
+            self._last_question_text = question.text
+            await self._persist_question_transcript(
+                question.text, turn.id, started=datetime.now(UTC)
+            )
             await self._emit(
                 {
                     "type": "question",
@@ -294,6 +338,9 @@ class VoiceEngine:
                 self._speech_active = False
                 self._speech_ended_at = None
                 await self._start_silence_watchdog()
+                self._turn_started_wall = datetime.now(UTC)
+                self._listen_started_at = time.monotonic()
+                self._first_speech_at = None
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -309,8 +356,17 @@ class VoiceEngine:
                 await self._set_state(VoiceState.LISTENING)
                 await self._start_silence_watchdog()
 
-    async def _persist_question_transcript(self, text: str, turn_id: int) -> None:
+    async def _persist_question_transcript(
+        self, text: str, turn_id: int, *, started: datetime | None = None
+    ) -> None:
         seq = await self._transcripts.max_seq_for_turn(turn_id)
+        timestamps: dict[str, object] | None = None
+        if started is not None:
+            timestamps = {
+                "role": "interviewer",
+                "started_at": started.isoformat(),
+                "ended_at": datetime.now(UTC).isoformat(),
+            }
         await self._transcripts.add(
             TranscriptSegment(
                 interview_session_id=self.session_id,
@@ -318,6 +374,7 @@ class VoiceEngine:
                 seq=seq + 1,
                 partial=False,
                 text=text,
+                timestamps=timestamps,
             )
         )
         await self.interview.session.commit()
@@ -327,6 +384,9 @@ class VoiceEngine:
         self._partial_since = 0
         self._speech_active = False
         self._speech_ended_at = None
+        self._turn_started_wall = datetime.now(UTC)
+        self._listen_started_at = time.monotonic()
+        self._first_speech_at = None
         await self._set_state(VoiceState.LISTENING)
         await self._start_silence_watchdog()
 
@@ -363,6 +423,8 @@ class VoiceEngine:
         if energy >= self.speech_rms:
             self._speech_active = True
             self._speech_ended_at = None
+            if self._first_speech_at is None:
+                self._first_speech_at = time.monotonic()
         elif self._speech_active and self._speech_ended_at is None:
             self._speech_ended_at = time.monotonic()
 
@@ -435,6 +497,9 @@ class VoiceEngine:
             await self._emit({"type": "final_transcript", "text": transcript})
             if self._last_question_id is None:
                 raise ValidationFailedError("no active question")
+            # Persist candidate audio (opt-in) before answering so a crash after
+            # submission still leaves the recording available for replay.
+            await self._persist_answer_audio(audio)
             answer = await self.interview.submit_answer(
                 self.session_id,
                 self.user_id,
@@ -444,7 +509,9 @@ class VoiceEngine:
                 mode="voice",
             )
             self._turns_completed += 1
-            await self._persist_answer_transcript(transcript)
+            await self._persist_answer_transcript(
+                transcript, audio_ms=_pcm16_duration_ms(audio, self.asr_sample_rate)
+            )
             await self._emit({"type": "answer_submitted", "answer_id": answer.id})
             evaluation = await self.interview.evaluations.get_by_answer(answer.id)
             await self._emit(
@@ -474,11 +541,45 @@ class VoiceEngine:
                 await self._set_state(VoiceState.LISTENING)
                 await self._start_silence_watchdog()
 
-    async def _persist_answer_transcript(self, text: str) -> None:
+    async def _persist_answer_audio(self, audio: bytes) -> None:
+        """Store candidate audio as WAV + audio_segment row (Phase H).
+
+        Writes only when store_audio is enabled and a storage dir is set.
+        The row is best-effort: a storage failure must not break the turn.
+        """
+        if not self.store_audio or not self.audio_storage_dir or not audio:
+            return
+        turn = await self.interview.turns.latest_for_session(self.session_id)
+        if turn is None:
+            return
+        try:
+            dir_path = Path(self.audio_storage_dir) / str(self.session_id)
+            dir_path.mkdir(parents=True, exist_ok=True)
+            storage_key = f"{self.session_id}/{turn.id}.wav"
+            (dir_path / f"{turn.id}.wav").write_bytes(
+                ASRClient.pcm16_to_wav(audio, self.asr_sample_rate)
+            )
+            retention_until = datetime.now(UTC) + timedelta(days=self.retention_days)
+            await self._audios.add(
+                AudioSegment(
+                    interview_session_id=self.session_id,
+                    turn_id=turn.id,
+                    kind=TurnDirection.INPUT,
+                    storage_key=storage_key,
+                    duration_ms=_pcm16_duration_ms(audio, self.asr_sample_rate),
+                    retention_until=retention_until,
+                )
+            )
+            await self.interview.session.commit()
+        except Exception as exc:  # noqa: BLE001 — storage must not kill the turn
+            _logger.warning("audio persistence failed: %s", exc)
+
+    async def _persist_answer_transcript(self, text: str, *, audio_ms: int | None = None) -> None:
         turn = await self.interview.turns.latest_for_session(self.session_id)
         if turn is None:
             return
         seq = await self._transcripts.max_seq_for_turn(turn.id)
+        timestamps = self._answer_timestamps(audio_ms)
         await self._transcripts.add(
             TranscriptSegment(
                 interview_session_id=self.session_id,
@@ -486,9 +587,29 @@ class VoiceEngine:
                 seq=seq + 1,
                 partial=False,
                 text=text,
+                timestamps=timestamps,
             )
         )
         await self.interview.session.commit()
+
+    def _answer_timestamps(self, audio_ms: int | None) -> dict[str, object]:
+        """Wall-clock + measured timing for the current candidate turn."""
+        now = datetime.now(UTC)
+        latency_ms: int | None = None
+        if self._listen_started_at is not None and self._first_speech_at is not None:
+            latency_ms = round((self._first_speech_at - self._listen_started_at) * 1000)
+        ts: dict[str, object] = {
+            "role": "candidate",
+            "started_at": (self._turn_started_wall or now).isoformat(),
+            "ended_at": now.isoformat(),
+        }
+        if audio_ms is not None:
+            ts["audio_ms"] = audio_ms
+        if latency_ms is not None:
+            ts["response_latency_ms"] = latency_ms
+        if self._interruptions:
+            ts["interruptions"] = self._interruptions
+        return ts
 
     # -- interruption / pause / stop ----------------------------------------
 
@@ -509,6 +630,9 @@ class VoiceEngine:
         self._partial_since = 0
         self._speech_active = False
         self._speech_ended_at = None
+        self._turn_started_wall = datetime.now(UTC)
+        self._listen_started_at = time.monotonic()
+        self._first_speech_at = None
         await self._set_state(VoiceState.INTERRUPTED)
         await self._set_state(VoiceState.LISTENING)
         await self._start_silence_watchdog()
