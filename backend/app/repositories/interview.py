@@ -108,6 +108,15 @@ class QuestionRepository(BaseRepository[Question]):
 class AnswerRepository(BaseRepository[Answer]):
     model = Answer
 
+    async def list_for_session(self, session_id: int) -> Sequence[Answer]:
+        stmt = (
+            select(Answer)
+            .join(Question, Question.id == Answer.question_id)
+            .where(Question.interview_session_id == session_id)
+            .order_by(Answer.id)
+        )
+        return (await self.session.scalars(stmt)).all()
+
     async def get_by_question(self, question_id: int) -> Answer | None:
         stmt = select(Answer).where(Answer.question_id == question_id)
         return (await self.session.scalars(stmt)).first()

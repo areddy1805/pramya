@@ -256,6 +256,69 @@ export function useReport(interviewId: number, userId: number, enabled: boolean)
   })
 }
 
+export interface TranscriptTurn {
+  seq: number
+  kind: string
+  question_id?: number | null
+  question?: string | null
+  answer?: string | null
+  evaluation_overall?: number | null
+  hints_used?: number
+}
+
+export interface Transcript {
+  interview_id: number
+  turns: TranscriptTurn[]
+}
+
+export function useTranscript(interviewId: number, userId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['transcript', interviewId],
+    queryFn: () =>
+      api.get<Transcript>(`/api/v1/interviews/${interviewId}/transcript${qs({ user_id: userId })}`),
+    enabled,
+    retry: false,
+  })
+}
+
+export interface Debrief {
+  id: number
+  user_id: number
+  company: string
+  role?: string | null
+  round?: string | null
+  questions?: Record<string, unknown>[] | null
+  feedback?: string | null
+  result?: string | null
+  analysis?: Record<string, unknown> | null
+  created_at?: string
+}
+
+export function useDebriefs(userId: number) {
+  return useQuery({
+    queryKey: ['debriefs', userId],
+    queryFn: () => api.get<Debrief[]>(`/api/v1/debriefs${qs({ user_id: userId })}`),
+    retry: false,
+  })
+}
+
+export function useCreateDebrief() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.post<Debrief>('/api/v1/debriefs', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['debriefs'] }),
+  })
+}
+
+export function useAnalyzeDebrief() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api.post<Debrief>('/api/v1/debriefs/analyze', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['debriefs'] }),
+  })
+}
+
 // --- readiness / preparation / progress --------------------------------------
 
 export function useReadiness(userId: number) {

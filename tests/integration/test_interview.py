@@ -244,3 +244,46 @@ async def test_answer_rejected_in_wrong_state(interview_env: dict[str, Any]) -> 
             answer_text="x",
             idempotency_key=None,
         )
+
+
+async def test_transcript_records_questions_answers_and_evaluations(
+    interview_env: dict[str, Any],
+) -> None:
+    """Phase K: the durable interview record exposes Q/A/evaluation in order."""
+    db = interview_env["db"]
+    user_id = interview_env["user_id"]
+    svc, _provider = await _svc(interview_env, [QUESTION_JSON, EVAL_JSON])
+
+    session = await svc.create_session(
+        user_id=user_id,
+        kind=InterviewKind.GENERAL,
+        role_id=None,
+        duration_minutes=20,
+        focus_competency_ids=[],
+    )
+    await svc.begin(session.id, user_id)
+    q, _turn = await svc.next_question(session.id, user_id)
+    await svc.submit_answer(
+        session_id=session.id,
+        user_id=user_id,
+        question_id=q.id,
+        answer_text="I led a distributed systems migration.",
+        idempotency_key=None,
+    )
+
+    records = await svc.transcript(session.id, user_id)
+    assert len(records) >= 2  # question turn + answer turn
+    question_turns = [r for r in records if r.question is not None]
+    assert question_turns, "expected at least one question turn"
+    assert question_turns[0].question_id == q.id
+    answered = [r for r in records if r.answer is not None]
+    assert answered and answered[0].answer == "I led a distributed systems migration."
+    assert answered[0].evaluation_overall is not None
+
+    # Ownership check: another user cannot read the transcript.
+    from app.domain.errors import NotFoundError
+
+    other = await CandidateService(db).create_user(display_name="Other")
+    await db.commit()
+    with pytest.raises(NotFoundError):
+        await svc.transcript(session.id, other.id)

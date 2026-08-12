@@ -9,6 +9,9 @@ import { StoriesPage } from '../pages/StoriesPage'
 import { EvidencePage } from '../pages/EvidencePage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { ModelStatusPage } from '../pages/ModelStatusPage'
+import { HistoryPage } from '../pages/HistoryPage'
+import { DebriefPage } from '../pages/DebriefPage'
+import { TranscriptPage } from '../pages/TranscriptPage'
 
 const primaryNav = [
   { to: '/dashboard', label: 'Overview' },
@@ -18,9 +21,11 @@ const primaryNav = [
   { to: '/progress', label: 'Progress' },
   { to: '/evidence', label: 'Evidence' },
   { to: '/stories', label: 'Stories' },
+  { to: '/history', label: 'History' },
 ]
 
 const secondaryNav = [
+  { to: '/debriefs', label: 'Debriefs' },
   { to: '/settings', label: 'Settings' },
   { to: '/models', label: 'Runtime' },
 ]
@@ -72,6 +77,9 @@ export function AppShell() {
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/evidence" element={<EvidencePage />} />
           <Route path="/stories" element={<StoriesPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/interview/:id/transcript" element={<TranscriptPage />} />
+          <Route path="/debriefs" element={<DebriefPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/models" element={<ModelStatusPage />} />
         </Routes>

@@ -107,6 +107,19 @@ class InterviewContext:
     storage_dir: Path | None = None
 
 
+@dataclass
+class TurnRecord:
+    """One turn of the durable interview record (Phase K memory)."""
+
+    seq: int
+    kind: str
+    question_id: int | None = None
+    question: str | None = None
+    answer: str | None = None
+    evaluation_overall: float | None = None
+    hints_used: int = 0
+
+
 class InterviewService:
     """Stateful text interview lifecycle (authoritative session state)."""
 
@@ -459,6 +472,46 @@ class InterviewService:
                 details={"session_id": session_id, "status": str(row.status)},
             )
         return row
+
+    async def transcript(self, session_id: int, user_id: int) -> list[TurnRecord]:
+        """Phase K: durable interview record (memory) — questions, answers,
+        evaluations, hint usage per turn, in seq order. Ownership-checked."""
+        await self._owned_session(session_id, user_id)
+        turns = await self.turns.list_for_session(session_id)
+        questions = {q.id: q for q in await self.questions.list_for_session(session_id)}
+        question_by_turn = {q.turn_id: q for q in questions.values()}
+        answers = await self.answers.list_for_session(session_id)
+        answers_by_turn = {a.interview_turn_id: a for a in answers if a.interview_turn_id}
+        evaluations: dict[int, float] = {}
+        for answer in answers:
+            ev = await self.evaluations.get_by_answer(answer.id)
+            if ev is not None:
+                evaluations[answer.id] = float(ev.overall)
+        records: list[TurnRecord] = []
+        for turn in sorted(turns, key=lambda t: t.seq):
+            if str(turn.kind) == InterviewTurnKind.ANSWER.value:
+                ans = answers_by_turn.get(turn.id)
+                records.append(
+                    TurnRecord(
+                        seq=turn.seq,
+                        kind=str(turn.kind),
+                        answer=ans.text if ans else (turn.content or None),
+                        evaluation_overall=evaluations.get(ans.id) if ans else None,
+                        hints_used=turn.hints_used or 0,
+                    )
+                )
+            else:
+                q = question_by_turn.get(turn.id)
+                records.append(
+                    TurnRecord(
+                        seq=turn.seq,
+                        kind=str(turn.kind),
+                        question_id=q.id if q else None,
+                        question=q.text if q else (turn.content or None),
+                        hints_used=turn.hints_used or 0,
+                    )
+                )
+        return records
 
     async def _history_text(self, session_id: int) -> str:
         turns = await self.turns.list_for_session(session_id)

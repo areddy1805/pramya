@@ -79,6 +79,23 @@ class ReportOut(BaseModel):
     report: str
 
 
+class TranscriptTurnOut(BaseModel):
+    """One turn of the interview record (Phase K memory/history)."""
+
+    seq: int
+    kind: str
+    question_id: int | None = None
+    question: str | None = None
+    answer: str | None = None
+    evaluation_overall: float | None = None
+    hints_used: int = 0
+
+
+class TranscriptOut(BaseModel):
+    interview_id: int
+    turns: list[TranscriptTurnOut] = Field(default_factory=lambda: [])
+
+
 class AudioSegmentOut(BaseModel):
     """Stored voice recording for one turn (Phase H replay)."""
 
@@ -264,6 +281,31 @@ async def interview_report(
     return ReportOut(report=report)
 
 
+@router.get("/interviews/{interview_id}/transcript", response_model=TranscriptOut)
+async def interview_transcript(
+    interview_id: int, session: SessionDep, user_id: int = Query(...)
+) -> TranscriptOut:
+    """Phase K: the durable interview record (memory) — questions, answers,
+    evaluations, hint usage per turn, in order."""
+    svc = _service(session)
+    records = await svc.transcript(interview_id, user_id)
+    return TranscriptOut(
+        interview_id=interview_id,
+        turns=[
+            TranscriptTurnOut(
+                seq=r.seq,
+                kind=r.kind,
+                question_id=r.question_id,
+                question=r.question,
+                answer=r.answer,
+                evaluation_overall=r.evaluation_overall,
+                hints_used=r.hints_used,
+            )
+            for r in records
+        ],
+    )
+
+
 @router.get("/interviews/{interview_id}/events")
 async def interview_events(
     interview_id: int, session: SessionDep, user_id: int = Query(...)
@@ -276,9 +318,7 @@ async def interview_events(
 # -- Phase H: voice replay + communication analysis -------------------------
 
 
-async def _require_owned_session(
-    session: AsyncSession, interview_id: int, user_id: int
-) -> None:
+async def _require_owned_session(session: AsyncSession, interview_id: int, user_id: int) -> None:
     svc = _service(session)
     row = await svc.sessions.get_or_raise(interview_id, name="interview session")
     if row.user_id != user_id:
