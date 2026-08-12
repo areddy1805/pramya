@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.contracts import ChatMessage
 from app.ai.factory import build_inference_router
+from app.ai.langchain.structured import generate_structured
 from app.ai.policy import TaskClass
-from app.ai.structured import generate_structured
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.domain.errors import NotFoundError

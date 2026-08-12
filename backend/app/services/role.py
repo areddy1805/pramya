@@ -13,9 +13,9 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.contracts import ChatMessage
+from app.ai.langchain.structured import generate_structured
 from app.ai.policy import TaskClass
 from app.ai.router import InferenceRouter
-from app.ai.structured import generate_structured
 from app.domain.enums import CompetencyCategory, CompetencyImportance
 from app.domain.errors import ValidationFailedError
 from app.domain.schemas import RoleAnalysis

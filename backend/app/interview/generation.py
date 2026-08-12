@@ -10,9 +10,9 @@ import json
 import logging
 
 from app.ai.contracts import ChatMessage
+from app.ai.langchain.structured import generate_structured
 from app.ai.policy import TaskClass
 from app.ai.router import InferenceRouter
-from app.ai.structured import generate_structured
 from app.core.logging import get_logger
 from app.domain.schemas import AnswerEvaluation, HintOutput, InterviewQuestion
 from app.services.prompts import load_prompt

@@ -145,9 +145,7 @@ async def test_explicit_thinking_override() -> None:
     deepseek = FakeProvider()
     router = _router(deepseek=deepseek)
 
-    result = await router.generate(
-        TaskClass.DEEP_EVALUATION, MSG, thinking=True
-    )
+    result = await router.generate(TaskClass.DEEP_EVALUATION, MSG, thinking=True)
 
     assert result.decision.thinking is True
 

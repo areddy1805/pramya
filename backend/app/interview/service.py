@@ -381,8 +381,13 @@ class InterviewService:
                 ),
             ),
         ]
-        result = await self.router.generate(TaskClass.FINAL_SYNTHESIS, messages)
-        return result.response.content
+        # Phase B: report synthesis executes through a LangChain runnable
+        # (text_chain -> RouterChatModel -> InferenceRouter -> DeepSeek).
+        from app.ai.langchain.pipelines import text_chain
+
+        chain = text_chain(self.router, TaskClass.FINAL_SYNTHESIS, messages[0].content)
+        report = await chain.ainvoke({"user": messages[1].content})
+        return str(report)
 
     # -- internals -----------------------------------------------------------
 
