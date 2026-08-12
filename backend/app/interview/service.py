@@ -20,11 +20,10 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.contracts import ChatMessage
-from app.ai.policy import TaskClass
 from app.ai.router import InferenceRouter
 from app.core.logging import get_logger
 from app.domain.enums import (
@@ -39,9 +38,11 @@ from app.domain.enums import (
 from app.domain.errors import InterviewStateError, NotFoundError, ValidationFailedError
 from app.domain.schemas import (
     AnswerEvaluation,
+    InterviewQuestion,
 )
 from app.interview.generation import Evaluator, Hints, QuestionGenerator
 from app.interview.state import transition
+from app.interview.workflow import build_interview_workflow
 from app.knowledge.retrieval import RetrievalService
 from app.models.evidence import Evidence
 from app.models.interview import (
@@ -135,6 +136,10 @@ class InterviewService:
         self.hints = Hints(router)
         self.idempotency = IdempotencyService(session)
         self._plan_prompt = load_prompt(_PLAN_PROMPT, fallback="Plan the interview session.")
+        # Phase C: the interview lifecycle executes through a LangGraph
+        # workflow (application layer); this service stays the domain/
+        # invariant layer (state transitions, persistence, SSE events).
+        self.workflow: Any = build_interview_workflow(router, retrieval=retrieval)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -184,19 +189,33 @@ class InterviewService:
         return row
 
     async def next_question(self, session_id: int, user_id: int) -> tuple[Question, InterviewTurn]:
-        """Generate + persist the next adaptive question."""
-        await self._require_questioning(session_id, user_id)
+        """Generate + persist the next adaptive question via the LangGraph workflow."""
+        row = await self._require_questioning(session_id, user_id)
         history = await self._history_text(session_id)
         evidence_summary = await self._evidence_summary(user_id)
         comp, difficulty, seniority = await self._focus(session_id, user_id)
 
-        question = await self.questions_gen.generate(
-            competency=comp,
-            difficulty=difficulty,
-            seniority=seniority,
-            evidence_summary=evidence_summary,
-            history=history,
-            hints_used=0,
+        state = await self.workflow.ainvoke(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "action": "question",
+                "history": history,
+                "evidence_summary": evidence_summary,
+                "competency": comp,
+                "difficulty": difficulty,
+                "seniority": seniority,
+                "hints_used": 0,
+            },
+            config={"configurable": {"thread_id": row.graph_thread_id or f"s{session_id}"}},
+        )
+        question = InterviewQuestion(
+            text=state["question_text"] or "",
+            type=state.get("question_type") or "general",
+            difficulty=state.get("question_difficulty") or "medium",
+            hint_levels=state.get("hint_levels") or [],
+            rationale=state.get("rationale"),
+            target_competency=state.get("target_competency") or comp,
         )
         q = Question(
             interview_session_id=session_id,
@@ -274,19 +293,38 @@ class InterviewService:
         await self.answers.add(answer)
         await self.session.flush()
 
-        evidence_context = await self._retrieve_context(user_id, answer_text)
-        hints_used = 0
-        evaluation = await self.evaluator.evaluate(
-            question_text=q.text,
-            answer_text=answer_text,
-            evidence_context=evidence_context,
-            hints_used=hints_used,
+        # Phase C: evaluation + evidence extraction execute through the
+        # LangGraph workflow (retrieve_context -> evaluate_answer ->
+        # extract_evidence -> update_candidate_state -> determine_next_action).
+        state = await self.workflow.ainvoke(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "action": "answer",
+                "question_text": q.text,
+                "answer_text": answer_text,
+                "hints_used": 0,
+                "history": "",
+                "evidence_summary": "",
+                "competency": "",
+                "difficulty": "",
+                "seniority": "",
+            },
+            config={"configurable": {"thread_id": f"s{session_id}"}},
         )
-        await self._persist_evaluation(q, answer, evaluation, hints_used)
+        evaluation = AnswerEvaluation.model_validate(state["evaluation"] or {})
+        await self._persist_evaluation(q, answer, evaluation, 0)
         await self.session.commit()
         event_bus.publish(
             session_id,
-            InterviewEvent("evaluation", {"answer_id": answer.id, "overall": evaluation.overall}),
+            InterviewEvent(
+                "evaluation",
+                {
+                    "answer_id": answer.id,
+                    "overall": evaluation.overall,
+                    "next_action": state.get("next_action"),
+                },
+            ),
         )
         return answer
 
@@ -297,8 +335,22 @@ class InterviewService:
             raise NotFoundError("question not found in this session")
         turn = await self.turns.get(q.turn_id) if q.turn_id else None
         used = turn.hints_used if turn else 0
-        level = min(used + 1, 4)
-        hint = await self.hints.hint_for(question_text=q.text, hint_level=level)
+        state = await self.workflow.ainvoke(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "action": "hint",
+                "question_text": q.text,
+                "hints_used": used,
+                "history": "",
+                "evidence_summary": "",
+                "competency": "",
+                "difficulty": "",
+                "seniority": "",
+            },
+            config={"configurable": {"thread_id": f"s{session_id}"}},
+        )
+        hint = state.get("hint") or ""
         if turn is not None:
             turn.hints_used = used + 1
         await self.session.flush()
@@ -360,34 +412,31 @@ class InterviewService:
             q = await self.questions.get(answer.question_id) if answer.question_id else None
             question_text = q.text if q else "(question unavailable)"
             summary_lines.append(f"Q: {question_text}\nA: {answer.text}\nOverall: {ev.overall}/10")
-        messages = [
-            ChatMessage(
-                role="system",
-                content=load_prompt(
-                    "report_generation/final_report.txt",
-                    fallback=(
-                        "Write an evidence-backed interview report: strengths, "
-                        "weaknesses, readiness signals, and recommended practice."
-                    ),
-                ),
-            ),
-            ChatMessage(
-                role="user",
-                content=(
+
+        # Phase C: report synthesis is the graph's generate_report node
+        # (LangChain text_chain -> RouterChatModel -> InferenceRouter -> DeepSeek).
+        row = await self._owned_session(session_id, user_id)
+        state = await self.workflow.ainvoke(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "action": "report",
+                "report_input": (
                     "SESSION SUMMARY:\n"
                     + "\n---\n".join(summary_lines)
                     + "\n\nTRANSCRIPT:\n"
                     + transcript
                 ),
-            ),
-        ]
-        # Phase B: report synthesis executes through a LangChain runnable
-        # (text_chain -> RouterChatModel -> InferenceRouter -> DeepSeek).
-        from app.ai.langchain.pipelines import text_chain
-
-        chain = text_chain(self.router, TaskClass.FINAL_SYNTHESIS, messages[0].content)
-        report = await chain.ainvoke({"user": messages[1].content})
-        return str(report)
+                "history": transcript,
+                "evidence_summary": "",
+                "competency": "",
+                "difficulty": "",
+                "seniority": "",
+                "hints_used": 0,
+            },
+            config={"configurable": {"thread_id": row.graph_thread_id or f"s{session_id}"}},
+        )
+        return state.get("report") or ""
 
     # -- internals -----------------------------------------------------------
 
