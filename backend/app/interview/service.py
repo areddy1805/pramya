@@ -455,8 +455,8 @@ class InterviewService:
             InterviewSessionStatus.INTERRUPTED,
         ):
             raise InterviewStateError(
-                f"session not in questioning state ({row.status.value})",
-                details={"session_id": session_id, "status": row.status.value},
+                f"session not in questioning state ({row.status})",
+                details={"session_id": session_id, "status": str(row.status)},
             )
         return row
 

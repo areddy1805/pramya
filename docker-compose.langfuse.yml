@@ -48,6 +48,7 @@ services:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
       - langfuse-clickhouse:/var/lib/clickhouse
+      - ./infra/langfuse/clickhouse-keeper.xml:/etc/clickhouse-server/config.d/keeper.xml:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 5s
@@ -82,23 +83,71 @@ services:
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
       REDIS_URL: redis://langfuse-redis:6379
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
       CLICKHOUSE_URL: http://langfuse:langfuse@langfuse-clickhouse:8123
-      S3_ENDPOINT: http://langfuse-minio:9000
-      S3_ACCESS_KEY_ID: minioadmin
-      S3_SECRET_ACCESS_KEY: minioadmin
-      S3_REGION: us-east-1
-      S3_BUCKET_NAME: langfuse
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse:langfuse@langfuse-clickhouse:9000
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       NODE_ENV: production
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: dev-only-change-me
-      SALT: dev-only-change-me
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      NEXTAUTH_URL: http://localhost:3030
+      NEXTAUTH_SECRET: "dev-only-change-me"
+      SALT: "dev-only-change-me"
+      ENCRYPTION_KEY: "${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}"
+      LANGFUSE_INIT_ORG_ID: pramya
+      LANGFUSE_INIT_ORG_NAME: Pramya
+      LANGFUSE_INIT_PROJECT_ID: pramya-v1
+      LANGFUSE_INIT_PROJECT_NAME: Pramya V1
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-1d616a1b0bdbaf77ef2f93ba3421598d871eea9a552b9e4c
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-9fb0efe14f1d2b9fab01a1056127ce3588b00cde6c6862b2
+      LANGFUSE_INIT_USER_EMAIL: admin@pramya.local
+      LANGFUSE_INIT_USER_PASSWORD: pramya-dev-2026
       AUTH_DISABLE_SIGNUP: "false"
       LANGFUSE_NEW_SIGNUP_DISABLED: "false"
       LANGFUSE_AUTO_CREATE_ORG_PROJECT: "false"
     ports:
-      - "3000:3000"
+      - "3030:3000"
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    profiles: ["langfuse"]
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      CLICKHOUSE_URL: http://langfuse:langfuse@langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse:langfuse@langfuse-clickhouse:9000
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: langfuse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      NEXTAUTH_URL: http://localhost:3030
+      NEXTAUTH_SECRET: "dev-only-change-me"
+      SALT: "dev-only-change-me"
+      ENCRYPTION_KEY: "${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}"
 
 volumes:
   langfuse-pgdata:
