@@ -1,0 +1,79 @@
+{
+  "area": "answer_evaluation",
+  "description": "Golden cases for deep answer evaluation: correctness, evidence grounding, hallucination, consistency, structured validity. Synthetic answers.",
+  "judge": "deepseek-v4-flash, temperature 0 (via InferenceRouter)",
+  "thresholds": {
+    "correctness_grounded": 0.7,
+    "hallucination_detected": 1.0,
+    "scoring_consistency": 0.7,
+    "structured_validity": 1.0
+  },
+  "cases": [
+    {
+      "id": "aev-001",
+      "question": "How would you design a rate limiter for a public API?",
+      "answer": "I would use a token bucket per API key with a Redis-backed counter, returning 429 with Retry-After when exhausted. The bucket refills at a fixed rate, allowing bursts up to the bucket size.",
+      "evidence_context": "Candidate built a token-bucket rate limiter at 50k QPS with Redis and 429 responses.",
+      "hints_used": 0,
+      "expect": {
+        "grounded": true,
+        "hallucination": false,
+        "overall_min": 4.5,
+        "overall_max": 10.0
+      }
+    },
+    {
+      "id": "aev-001b",
+      "question": "How would you design a rate limiter for a public API?",
+      "answer": "I would use a token bucket per API key with a Redis-backed counter, returning 429 with Retry-After when exhausted. The bucket refills at a fixed rate, allowing bursts up to the bucket size.",
+      "evidence_context": "Candidate built a token-bucket rate limiter at 50k QPS with Redis and 429 responses.",
+      "hints_used": 0,
+      "expect": {
+        "grounded": true,
+        "hallucination": false,
+        "overall_min": 4.5,
+        "overall_max": 10.0
+      }
+    },
+    {
+      "id": "aev-002",
+      "question": "Explain the difference between synchronous and asynchronous replication.",
+      "answer": "Synchronous replication waits for the replica to ack before committing, which is safe but slower. Asynchronous replication returns immediately and can lose data on failover. In PostgreSQL, synchronous_commit controls this.",
+      "evidence_context": "Candidate discussed replication during a database design exercise.",
+      "hints_used": 0,
+      "expect": {
+        "grounded": true,
+        "hallucination": false,
+        "overall_min": 3.0,
+        "overall_max": 10.0
+      }
+    },
+    {
+      "id": "aev-003",
+      "question": "What is the CAP theorem?",
+      "answer": "CAP says you can have at most two of consistency, availability, and partition tolerance. I once built a distributed lock service that stored data on the moon and achieved 100% availability with zero latency, which proves you can have all three.",
+      "evidence_context": "Candidate studied distributed systems fundamentals in coursework. Resume lists no distributed lock service and no space-based infrastructure; the claim about moon-based storage contradicts all documented work.",
+      "hints_used": 0,
+      "expect": {
+        "grounded": false,
+        "hallucination": true,
+        "overall_max": 6.0,
+        "detect_unsupported": ["moon", "100% availability"]
+      }
+    },
+    {
+      "id": "aev-004",
+      "question": "Describe your experience with load balancing.",
+      "answer": "I configured Nginx round-robin across three app servers and added health checks. I also tuned keepalive timeouts.",
+      "evidence_context": "Candidate owns load balancer config in production.",
+      "hints_used": 1,
+      "expect": {
+        "grounded": true,
+        "hallucination": false,
+        "overall_min": 3.5,
+        "overall_max": 10.0,
+        "golden_rationale": "Correct, evidence-grounded, but unquantified answer; the production evaluator scores evidence=4 and overall 4-5 for correct-but-thin answers. A floor of 3.5 separates genuinely poor evaluations (regression) from acceptable variation."
+      }
+    }
+  ]
+}

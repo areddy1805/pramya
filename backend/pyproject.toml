@@ -34,6 +34,7 @@ dev = [
     "ruff>=0.14",
     "mypy>=1.17",
     "pyright>=1.1.400",
+    "deepeval>=4.1.7",
 ]
 
 [build-system]
@@ -47,6 +48,10 @@ packages = ["app"]
 testpaths = ["../tests"]
 pythonpath = [".", "../"]
 asyncio_mode = "auto"
+# Session-scoped loop: DeepEval + httpx clients must share one event loop
+# across async tests (function-scoped loops cause "Event loop is closed").
+asyncio_default_test_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "session"
 addopts = "-q --strict-markers"
 
 [tool.ruff]

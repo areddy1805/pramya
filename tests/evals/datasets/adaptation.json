@@ -1,0 +1,61 @@
+{
+  "area": "adaptation",
+  "description": "Golden interview-adaptation cases: appropriate follow-up, repetition avoidance, competency progression, difficulty adaptation. Synthetic transcripts.",
+  "judge": "deepseek-v4-flash, temperature 0 (via InferenceRouter)",
+  "thresholds": {
+    "followup_appropriateness": 0.5,
+    "repetition_avoidance": 1.0,
+    "competency_progression": 0.5,
+    "difficulty_adaptation": 0.5
+  },
+  "cases": [
+    {
+      "id": "ad-001",
+      "history": [
+        {"q": "Describe your experience with REST APIs.", "a": "I built several REST services with FastAPI, including auth and rate limiting."},
+        {"q": "How did you handle auth?", "a": "JWT with refresh tokens and scoped permissions."}
+      ],
+      "competency": "API Design",
+      "difficulty": "medium",
+      "prior_difficulty": "easy",
+      "prior_question": "Describe your experience with REST APIs.",
+      "expect": {
+        "followup_targets": ["auth", "JWT", "rate limiting"],
+        "must_not_repeat": "Describe your experience with REST APIs.",
+        "difficulty_direction": "escalate_or_maintain"
+      }
+    },
+    {
+      "id": "ad-002",
+      "history": [
+        {"q": "What is a deadlock?", "a": "When two transactions each hold a lock the other needs."},
+        {"q": "How do you prevent deadlocks?", "a": "Lock ordering and timeouts."}
+      ],
+      "competency": "Databases",
+      "difficulty": "medium",
+      "prior_difficulty": "medium",
+      "prior_question": "How do you prevent deadlocks?",
+      "expect": {
+        "followup_targets": ["isolation level", "deadlock detection", "lock ordering"],
+        "must_not_repeat": "How do you prevent deadlocks?",
+        "difficulty_direction": "maintain"
+      }
+    },
+    {
+      "id": "ad-003",
+      "history": [
+        {"q": "Tell me about a conflict at work.", "a": "I had a disagreement with a designer about scope; we aligned by data."},
+        {"q": "How did you resolve the disagreement about scope?", "a": "I gave the designer direct feedback about the data, and we agreed on a smaller milestone."}
+      ],
+      "competency": "Behavioral",
+      "difficulty": "medium",
+      "prior_difficulty": "medium",
+      "prior_question": "How did you resolve the disagreement about scope?",
+      "expect": {
+        "followup_targets": ["feedback", "conflict", "relationship", "outcome"],
+        "must_not_repeat": "How did you resolve the disagreement about scope?",
+        "difficulty_direction": "maintain"
+      }
+    }
+  ]
+}

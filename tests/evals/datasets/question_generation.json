@@ -1,0 +1,79 @@
+{
+  "area": "question_generation",
+  "description": "Golden cases for adaptive question generation. Synthetic context only; never real employer or candidate data.",
+  "judge": "deepseek-v4-flash, temperature 0 (via InferenceRouter)",
+  "thresholds": {
+    "relevance": 0.55,
+    "difficulty_alignment": 0.55,
+    "competency_alignment": 0.55,
+    "role_alignment": 0.55,
+    "adaptation": 0.55,
+    "duplication_free": 1.0
+  },
+  "cases": [
+    {
+      "id": "qg-001",
+      "competency": "System Design",
+      "difficulty": "hard",
+      "seniority": "senior",
+      "evidence_summary": "Designed a rate limiter at 50k QPS; led a cache migration; owns load balancer config.",
+      "history": "Q1 (medium): Walk me through how you designed the rate limiter. A: Token bucket with Redis counters; keyed by API key with 429 responses.",
+      "hints_used": 0,
+      "expect": {
+        "target_competency": "System Design",
+        "difficulty": "hard",
+        "seniority": "senior",
+        "must_be_about": ["scalability", "rate limiter", "cache", "design", "tradeoff"],
+        "must_not_duplicate": "Walk me through how you designed the rate limiter"
+      }
+    },
+    {
+      "id": "qg-002",
+      "competency": "Behavioral",
+      "difficulty": "medium",
+      "seniority": "mid",
+      "evidence_summary": "Led a 3-person team through a sprint; resolved a teammate conflict.",
+      "history": "Q1 (easy): Tell me about how you work with a team. A: I lead a small team and enjoy coaching and resolving conflicts.",
+      "hints_used": 1,
+      "expect": {
+        "target_competency": "Behavioral",
+        "difficulty": "medium",
+        "seniority": "mid",
+        "must_be_about": ["team", "conflict", "leadership", "collaboration"],
+        "must_not_duplicate": "Tell me about how you work with a team"
+      }
+    },
+    {
+      "id": "qg-003",
+      "competency": "Databases",
+      "difficulty": "medium",
+      "seniority": "mid",
+      "evidence_summary": "Wrote SQL queries with joins and indexes; optimized a slow query 10x.",
+      "history": "Q1 (medium): What indexes did you create? A: A composite index on (user_id, created_at).",
+      "hints_used": 2,
+      "expect": {
+        "target_competency": "Databases",
+        "difficulty": "medium",
+        "seniority": "mid",
+        "must_be_about": ["index", "query", "database", "performance"],
+        "must_not_duplicate": "What indexes did you create"
+      }
+    },
+    {
+      "id": "qg-004",
+      "competency": "Algorithms",
+      "difficulty": "easy",
+      "seniority": "junior",
+      "evidence_summary": "Implemented binary search and hash maps in coursework.",
+      "history": "Q1 (easy): What data structures do you know? A: Arrays, linked lists, hash maps.",
+      "hints_used": 0,
+      "expect": {
+        "target_competency": "Algorithms",
+        "difficulty": "easy",
+        "seniority": "junior",
+        "must_be_about": ["array", "hash", "search", "complexity"],
+        "must_not_duplicate": "What data structures do you know"
+      }
+    }
+  ]
+}

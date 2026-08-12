@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from app.core.config import get_settings
 from app.observability import (
     NullObservability,
     SpanContext,
@@ -18,8 +19,24 @@ from app.observability import (
 )
 
 
-async def test_default_degrades_to_null_when_unconfigured() -> None:
+def _force_unconfigured(monkeypatch: object) -> None:
+    """Isolate from ambient .env: the degradation tests assert the NO-KEYS
+    path regardless of what the developer's .env currently sets."""
+    import app.observability as obs_module
+    from app.core import config
+
+    monkeypatch.setattr(obs_module, "get_settings", lambda: get_settings())
+    config.get_settings.cache_clear()
+    settings = get_settings()
+    settings.langfuse_public_key = ""
+    settings.langfuse_secret_key = ""
+    settings.langfuse_host = "http://127.0.0.1:3030"
+    monkeypatch.setattr(obs_module, "get_settings", lambda: settings)
     reset_observability()
+
+
+async def test_default_degrades_to_null_when_unconfigured(monkeypatch: object) -> None:
+    _force_unconfigured(monkeypatch)
     obs = get_observability()
     assert isinstance(obs, NullObservability)
     assert obs.enabled is False
@@ -51,8 +68,8 @@ async def test_null_observability_span_context_measures_latency() -> None:
     assert fields["competency"] == "System Design"
 
 
-async def test_trace_span_context_manager_records_error() -> None:
-    reset_observability()
+async def test_trace_span_context_manager_records_error(monkeypatch: object) -> None:
+    _force_unconfigured(monkeypatch)
     try:
         async with trace_span("eval", session_id=7):
             raise RuntimeError("boom")

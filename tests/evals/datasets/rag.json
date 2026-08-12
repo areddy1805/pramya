@@ -1,0 +1,49 @@
+{
+  "area": "rag",
+  "description": "Golden RAG cases: retrieval relevance, context precision/recall, faithfulness. Chunk contents are synthetic document fragments.",
+  "judge": "deepseek-v4-flash, temperature 0 (via InferenceRouter)",
+  "thresholds": {
+    "retrieval_relevance": 0.6,
+    "context_precision": 0.6,
+    "context_recall": 0.6,
+    "faithfulness": 0.7
+  },
+  "cases": [
+    {
+      "id": "rag-001",
+      "query": "What caching strategy did the candidate use for the recommendation API?",
+      "retrieved_context": [
+        "The candidate added Redis caching to the recommendation API and reported a p95 latency drop from 320ms to 90ms.",
+        "The candidate used a write-through cache with a 5-minute TTL for product catalogs."
+      ],
+      "relevant_indexes": [0, 1],
+      "answer": "They used Redis write-through caching with a 5-minute TTL, cutting p95 latency from 320ms to 90ms.",
+      "expected_output": "Redis caching with a write-through strategy and a 5-minute TTL",
+      "expect_faithful": true
+    },
+    {
+      "id": "rag-002",
+      "query": "How did the candidate reduce build time?",
+      "retrieved_context": [
+        "The candidate reduced build time from 25 to 8 minutes by parallelizing test jobs.",
+        "The CI migration from Jenkins to GitHub Actions also contributed to faster builds."
+      ],
+      "relevant_indexes": [0, 1],
+      "answer": "They parallelized test jobs, cutting build time from 25 to 8 minutes.",
+      "expected_output": "Build time dropped from 25 minutes to 8 minutes after parallelizing test jobs",
+      "expect_faithful": true
+    },
+    {
+      "id": "rag-003",
+      "query": "What database did the candidate use?",
+      "retrieved_context": [
+        "The candidate worked extensively with PostgreSQL and tuned query performance.",
+        "The candidate deployed services on Kubernetes."
+      ],
+      "relevant_indexes": [0],
+      "answer": "The candidate used MongoDB and migrated everything to Cassandra.",
+      "expected_output": "The candidate worked extensively with PostgreSQL",
+      "expect_faithful": false
+    }
+  ]
+}
