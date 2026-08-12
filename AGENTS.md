@@ -1,4 +1,9 @@
 # Pramya — Agent Instructions
+When the user authorizes implementation of the remaining roadmap, execute
+the Master Implementation Plan autonomously from the current phase through
+the final planned phase. A completed phase is a transition point, not a stop
+condition. Stop only when the roadmap is complete or a genuine blocker
+requires user input.
 ## 1. Project
 Pramya is a greenfield, evidence-driven interview preparation platform.
 Product identity:
@@ -77,25 +82,65 @@ Do not mechanically mirror every tiny coding task into the plan.
 Update the plan when the actual state materially changes.
 The implementation plan is NOT permission to execute every future phase automatically.
 ---
-# 5. Absolute Phase Boundary
-The currently assigned phase is the active scope.
-Work ONLY inside the active phase/task unless an explicit dependency requires otherwise.
-Do NOT:
-- start future phases,
-- partially implement future phases,
-- opportunistically refactor unrelated systems,
-- redesign adjacent architecture,
-- add unrelated improvements,
-- clean up unrelated technical debt,
-- introduce future-phase infrastructure "while already here",
-- continue into the next phase merely because the current phase appears easy.
-If the current phase reveals work belonging to a future phase:
-1. record it,
-2. classify it as deferred,
-3. continue only if the current phase genuinely depends on it,
-4. otherwise stop at the boundary.
-Completing one phase does NOT authorize starting the next phase.
-The next phase begins only when explicitly instructed.
+# 5. Autonomous Phase Execution
+
+The master implementation plan is the authoritative execution queue.
+
+When the user instructs the agent to implement the remaining roadmap,
+all subsequent planned phases are authorized for autonomous execution.
+
+The currently active phase is the current implementation scope.
+
+The agent MUST:
+1. complete the active phase,
+2. validate it,
+3. update the master plan,
+4. commit coherent completed work,
+5. determine the next planned phase,
+6. automatically begin that phase,
+7. continue until the roadmap is complete or a genuine blocker requires
+   user input.
+
+Do NOT stop merely because a phase has completed.
+
+Do NOT ask the user:
+- "Should I continue?"
+- "Ready for the next phase?"
+- "Would you like me to proceed?"
+- "Phase X is complete; awaiting instruction."
+
+Normal phase completion is an automatic transition point.
+
+The execution loop is:
+
+INSPECT
+→ PLAN
+→ IMPLEMENT
+→ VALIDATE
+→ DEBUG
+→ REGRESSION VALIDATE
+→ AUDIT SCOPE
+→ UPDATE PLAN
+→ COMMIT
+→ VERIFY
+→ NEXT PHASE
+→ repeat
+
+Future phases remain out of scope only when the current user instruction
+explicitly limits execution to a particular phase/task.
+
+Do NOT partially implement future-phase functionality merely because it is
+convenient.
+
+If a future-phase dependency is required by the active phase:
+implement only the minimum required dependency, record it in the plan,
+and continue.
+
+If a future-phase item is discovered but is not required:
+record it as deferred and continue the current execution sequence.
+
+A phase boundary is therefore a CONTROLLED TRANSITION, not an AUTOMATIC
+STOP CONDITION.
 ---
 # 6. Mandatory Execution Lifecycle
 Every implementation task follows:
@@ -966,25 +1011,52 @@ Phase F COMPLETE WITH KNOWN WARNINGS.
 The report must reflect the actual evidence.
 
 ⸻
+# 36. Stop Conditions
 
-36. Stop Conditions
+STOP autonomous execution only when one of the following is true:
 
-STOP immediately when:
+1. ALL planned V1 phases are complete.
 
-* acceptance criteria are satisfied
-* required validation passes
-* a failure cannot be resolved with available evidence
-* a diagnostic hangs
-* repeated attempts produce the same failure without new evidence
-* scope begins expanding
-* work crosses into a future phase
-* external validation is unavailable
-* resource usage becomes disproportionate
-* the remaining work requires an architectural decision not already established
+2. A genuine BLOCKED condition exists that cannot reasonably be resolved
+   autonomously.
 
-Stopping is a valid successful agent behavior.
+3. A required architectural/product/security decision is not established
+   anywhere in the repository, accepted ADRs, master plan, or explicit
+   user instructions.
 
-Do not continue merely because the task runner expects more work.
+4. Required external infrastructure is unavailable and the blocked
+   capability is mandatory for the current acceptance criteria.
+
+5. Continuing would require an irreversible or materially destructive
+   action not already authorized by the project specification.
+
+6. Resource constraints make continued execution unsafe.
+
+7. The same root problem has failed two evidence-based correction attempts
+   without new evidence.
+
+8. A diagnostic or implementation process becomes uncontrolled despite
+   bounded execution safeguards.
+
+DO NOT stop merely because:
+
+- the current phase is complete,
+- the current acceptance criteria pass,
+- a commit was created,
+- the next phase is obvious,
+- a completion report was generated.
+
+When a phase is complete and the next phase is defined by the master plan:
+
+CONTINUE.
+
+"Acceptance criteria satisfied" means:
+
+CURRENT PHASE COMPLETE → VALIDATE → COMMIT → ADVANCE.
+
+It does NOT mean:
+
+CURRENT PHASE COMPLETE → STOP ENTIRE EXECUTION..
 
 ⸻
 
@@ -1062,11 +1134,15 @@ COMMIT:
 WORKTREE:
 - clean / dirty
 NEXT PHASE:
-- not started
+- phase/task identified from MASTER_IMPLEMENTATION_PLAN.md
 
-Do not automatically start the next phase.
+If autonomous roadmap execution is active:
+- automatically begin the next phase after the completion report.
+
+A completion report is a checkpoint artifact, not a permission gate.
 
 ⸻
+
 
 40. Session Completion
 
@@ -1084,7 +1160,6 @@ At the end of a substantial implementation session:
 10. stop
 
 Do not leave the repository in a state that the next session cannot understand.
-
 ⸻
 
 41. Greenfield Rule
@@ -1211,3 +1286,56 @@ The new AGENTS.md establishes three hard brakes that your current file lacks:
 TWO FAILED FIXES → STOP
 HANGING DIAGNOSTIC → KILL/STOP
 ACCEPTANCE CRITERIA MET → STOP
+
+⸻
+
+# 45. Autonomous Roadmap Mode
+
+When the user gives an instruction equivalent to:
+
+- implement the remaining phases,
+- finish the implementation,
+- continue through the roadmap,
+- complete the V1,
+- implement everything remaining,
+- proceed autonomously,
+- finish the master plan,
+
+interpret that instruction as:
+
+AUTONOMOUS ROADMAP MODE = ENABLED.
+
+While Autonomous Roadmap Mode is enabled:
+
+1. The Master Implementation Plan is the execution queue.
+2. The agent progresses through planned phases automatically.
+3. Phase completion automatically triggers the next phase.
+4. The agent does not request confirmation between phases.
+5. The agent independently fixes ordinary engineering failures.
+6. The agent commits coherent completed work.
+7. The agent maintains the progress tracker.
+8. The agent updates project memory when meaningful durable knowledge is found.
+9. The agent preserves architectural and security boundaries.
+10. The agent stops only at a genuine global stop condition.
+
+The user does NOT need to repeat "continue" after every phase.
+
+The user may explicitly disable autonomous roadmap execution by stating that
+execution should stop at a particular phase/task.
+
+If the user explicitly limits execution to one phase/task, that narrower
+instruction overrides Autonomous Roadmap Mode for that execution.
+
+AUTONOMOUS ROADMAP MODE does NOT authorize:
+
+- arbitrary scope expansion,
+- unrelated refactors,
+- unapproved architecture changes,
+- security/privacy policy changes,
+- destructive infrastructure operations,
+- fabrication of validation,
+- ignoring acceptance criteria,
+- bypassing the two-failure rule.
+
+Autonomy governs SEQUENCING.
+It does not remove ENGINEERING CONTROLS.
