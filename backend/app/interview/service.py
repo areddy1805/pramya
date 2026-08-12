@@ -256,7 +256,12 @@ class InterviewService:
             session_id,
             InterviewEvent(
                 "question",
-                {"question_id": q.id, "text": q.text, "difficulty": question.difficulty},
+                {
+                    "question_id": q.id,
+                    "text": q.text,
+                    "difficulty": question.difficulty,
+                    "rationale": question.rationale,
+                },
             ),
         )
         await self.session.commit()

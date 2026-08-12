@@ -62,7 +62,7 @@ export function InterviewPage() {
   const [lastHint, setLastHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string } | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string; rationale: string | null } | null>(null)
   const keyCounter = useRef(0)
   const voiceRef = useRef<VoiceClient | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement>(null)
@@ -82,6 +82,7 @@ export function InterviewPage() {
           text: event.data.text,
           difficulty: String(event.data.difficulty ?? ''),
           type: String(event.data.type ?? ''),
+          rationale: typeof event.data.rationale === 'string' ? event.data.rationale : null,
         })
         setLastHint(null)
         setAnswer('')
@@ -140,7 +141,7 @@ export function InterviewPage() {
       const client = new VoiceClient(url, {
         onState: (st) => setVoiceState(st),
         onQuestion: (q) => {
-          setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '' })
+          setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null })
           setLastHint(null)
           setTranscript((t) => [...t, { role: 'interviewer', text: q.text }])
         },
@@ -148,7 +149,7 @@ export function InterviewPage() {
           // Phase H: reconnect resync — restore the active question from
           // the server's authoritative state without duplicating it.
           if (q && q.text) {
-            setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '' })
+            setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null })
           }
         },
         onPartial: (text) =>
@@ -323,6 +324,14 @@ export function InterviewPage() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-accent">Answer evaluated</p>
                       <p className="mt-1 text-sm text-fg">Overall score: {evaluation.toFixed(1)} / 10 — the next question adapts to this answer.</p>
                     </div>
+                  ) : null}
+                  {currentQuestion.rationale ? (
+                    <details className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-sm">
+                      <summary className="cursor-pointer text-xs font-medium text-fg-3 hover:text-fg-2">
+                        Why this question
+                      </summary>
+                      <p className="mt-2 leading-relaxed text-fg-2">{currentQuestion.rationale}</p>
+                    </details>
                   ) : null}
                 </>
               ) : (

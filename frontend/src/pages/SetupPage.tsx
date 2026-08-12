@@ -178,12 +178,14 @@ export function SetupPage() {
             {extract.data ? <Pill tone="ok">{extract.data.evidence_count} claims extracted</Pill> : null}
           </div>
         ) : null}
-        <label className="inline-block">
-          <span className="sr-only">Upload resume</span>
+        <label className="inline-flex cursor-pointer">
+          <span className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-fg-3 hover:bg-surface-2">
+            Upload resume
+          </span>
           <input
             type="file"
             accept=".pdf,.docx,.txt,.md"
-            className="block w-full cursor-pointer text-sm text-fg-2 file:mr-3 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-white file:cursor-pointer hover:file:bg-accent"
+            className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) void onUploadResume(file)

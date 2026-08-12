@@ -2,7 +2,7 @@
 // requests, missing content. Run against the dev server.
 import { chromium } from 'playwright'
 
-const BASE = 'http://127.0.0.1:3000'
+const BASE = 'http://localhost:3000'
 
 const routes = [
   ['dashboard', '/dashboard'],
@@ -14,6 +14,9 @@ const routes = [
   ['stories', '/stories'],
   ['settings', '/settings'],
   ['runtime', '/models'],
+  ['history', '/history'],
+  ['debriefs', '/debriefs'],
+  ['transcript', '/interview/40/transcript'],
 ]
 
 async function main() {
@@ -41,6 +44,7 @@ async function main() {
       }
       // Buttons with zero size or negative
       document.querySelectorAll('button, a, input, select, textarea').forEach((el) => {
+        if (el.classList.contains('sr-only')) return // a11y-hidden, focusable
         const r = el.getBoundingClientRect()
         if (r.width < 4 || r.height < 4) problems.push(`TINY ELEMENT: ${el.tagName}.${el.className}`)
       })
