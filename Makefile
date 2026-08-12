@@ -28,7 +28,10 @@ test-contract:
 	cd backend && uv run pytest -c pyproject.toml ../tests/contract -q
 
 test-integration:
-	cd backend && uv run pytest -c pyproject.toml ../tests/integration -q
+	cd backend && PYTHONPATH=.. uv run pytest ../tests/integration -p no:warnings
+
+e2e:
+	cd frontend && pnpm exec playwright test
 
 evals:
 	cd backend && uv run pytest -c pyproject.toml ../tests/evals -q

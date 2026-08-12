@@ -869,7 +869,7 @@ Phase 8  Streaming ASR/TTS           NOT STARTED
 Phase 9  Interrupt/Pause/Resume      COMPLETE (voice engine H.1-H.12; audio persistence, replay, reconnect/heartbeat, communication analysis)
 Phase 10 Progress/History/Practice   COMPLETE (progress aggregation, practice sessions, history page, interview record endpoint, debrief UI, story bank)
 Phase 11 MCP/Observability/Security  IN PROGRESS (Langfuse done; security done; demo mode done; MCP NOT STARTED)
-Phase 12 E2E/Deploy/Docs/Polish      NOT STARTED
+Phase 12 E2E/Deploy/Docs/Polish      IN PROGRESS (browser E2E suite done; deploy/docs/release pending)
 ```
 
 - Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)

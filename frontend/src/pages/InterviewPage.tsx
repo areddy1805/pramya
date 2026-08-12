@@ -88,6 +88,11 @@ export function InterviewPage() {
         setTranscript((t) => [...t, { role: 'interviewer', text: String(event.data.text) }])
       }
       if (event.type === 'hint' && typeof event.data.hint === 'string') setLastHint(event.data.hint)
+      if (event.type === 'evaluation' && event.data.overall != null) {
+        // Surface the live evaluation (submitAnswer already appends the
+        // candidate transcript line + clears the answer box).
+        setEvaluation(Number(event.data.overall))
+      }
       if (event.type === 'session_status') {
         const status = String(event.data.status ?? '')
         if (status === 'completed' || status === 'cancelled') setSessionId(null)
@@ -313,6 +318,12 @@ export function InterviewPage() {
                     <Pill tone="accent">{currentQuestion.difficulty}</Pill>
                     <Pill>{currentQuestion.type}</Pill>
                   </div>
+                  {evaluation != null ? (
+                    <div className="mt-4 rounded-lg border border-line bg-accent-soft p-3.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Answer evaluated</p>
+                      <p className="mt-1 text-sm text-fg">Overall score: {evaluation.toFixed(1)} / 10 — the next question adapts to this answer.</p>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <Spinner label="Preparing the next question…" />
@@ -334,12 +345,6 @@ export function InterviewPage() {
                     </p>
                   </div>
                 </div>
-                {evaluation != null ? (
-                  <div className="mt-4 rounded-lg border border-line bg-accent-soft p-3.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">Answer evaluated</p>
-                    <p className="mt-1 text-sm text-fg">Overall score: {evaluation.toFixed(1)} / 10 — the next question adapts to this answer.</p>
-                  </div>
-                ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Button variant="danger" onClick={() => voiceRef.current?.interrupt()} disabled={voiceState !== 'speaking'}>
                     Interrupt
