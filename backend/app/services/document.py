@@ -38,6 +38,16 @@ _ALLOWED_MIME: dict[DocumentKind, set[str]] = {
     DocumentKind.TRANSCRIPT: {"text/plain", "text/markdown"},
 }
 
+
+def sanitize_suffix(suffix: str) -> str:
+    """Defense-in-depth: storage keys derive from a content digest plus a
+    whitelisted extension, never from a client-supplied filename (Phase I)."""
+    if not suffix or len(suffix) > 10:
+        return ""
+    if not all(c.isalnum() or c == "." for c in suffix):
+        return ""
+    return suffix
+
 _MAX_SIZE_MB = 5
 
 
@@ -198,7 +208,7 @@ class DocumentService:
         assert self.storage_dir is not None
         subdir = self.storage_dir / kind.value
         subdir.mkdir(parents=True, exist_ok=True)
-        ext = Path(filename).suffix.lower()
+        ext = sanitize_suffix(Path(filename).suffix.lower())
         key = f"{digest}{ext}"
         (subdir / key).write_bytes(data)
         return str(Path(kind.value) / key)

@@ -36,6 +36,14 @@ router = APIRouter()
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
+def ws_authorized(settings: object, token: str | None) -> bool:
+    """WebSocket bearer check (Phase I): auth off when no tokens configured."""
+    tokens = getattr(settings, "api_tokens", None)
+    if not tokens:
+        return True
+    return bool(token and token in tokens)
+
+
 class _WSAdapter(VoiceWS):
     """Adapts FastAPI WebSocket to the engine's minimal interface."""
 
@@ -103,8 +111,15 @@ async def voice_ws(
     websocket: WebSocket,
     interview_id: int,
     user_id: int = Query(...),
+    token: str | None = Query(default=None),
     session: SessionDep = None,  # type: ignore[assignment]
 ) -> None:
+    # Phase I: WebSocket auth uses the same bearer tokens as the HTTP API
+    # (via `?token=` since WS headers are awkward in browsers).
+    settings = get_settings()
+    if not ws_authorized(settings, token):
+        await websocket.close(code=1008, reason="unauthorized")
+        return
     await websocket.accept()
     _logger.info("voice ws connect: session=%d user=%d", interview_id, user_id)
     engine = _engine(session, interview_id, user_id)

@@ -135,6 +135,23 @@ class Settings(BaseSettings):
             return parts or ["http://localhost:3000"]
         return value
 
+    # Security (Phase I)
+    # API bearer tokens (comma-separated: API_TOKENS=t1,t2). When non-empty,
+    # every /api/v1 request (except health + docs) must present one of these
+    # as `Authorization: Bearer <token>`. Empty list = auth disabled (dev).
+    api_tokens: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Per-IP rate limit (requests/minute) on /api/v1 (except health); 0 = off.
+    rate_limit_rpm: int = Field(default=0, ge=0)
+    # Emit standard security response headers.
+    security_headers: bool = True
+
+    @field_validator("api_tokens", mode="before")
+    @classmethod
+    def _split_tokens(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [p.strip() for p in value.split(",") if p.strip()]
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:

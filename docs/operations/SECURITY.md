@@ -26,8 +26,12 @@ personal information. All treated as sensitive application data.
   traces; IDs + metadata only.
 - **Retention & deletion**: configurable audio retention (off by default);
   deletion endpoints for profile, sessions, audio, transcripts; cascades.
-- **API hardening**: CORS policy, rate limiting, request validation, secure
-  headers; auth only if deployment requires (not a V1 blocker).
+- **API hardening**: CORSMiddleware applied (config `CORS_ORIGINS`);
+  optional bearer-token auth (`API_TOKENS`, HTTP + voice WS `?token=`);
+  per-IP rate limit (`RATE_LIMIT_RPM`, in-memory fixed window); security
+  headers on every response (nosniff / frame-deny / referrer / permissions);
+  request validation; upload storage keys derive from content digest +
+  whitelisted extension (never client filenames). All Phase I (2026-08).
 - **Local-only mode**: no candidate data leaves the machine when local
   routing suffices; DeepSeek calls only when configured/needed.
 
