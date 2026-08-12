@@ -320,7 +320,7 @@ The live voice interview is a real spoken loop, not a demo shell:
 
 ```mermaid
 flowchart LR
-    MIC[Browser mic · PCM16 16kHz] --> WS[WebSocket /ws/voice/{id}]
+    MIC[Browser mic · PCM16 16kHz] --> WS[WebSocket /ws/voice per session]
     WS --> ENG[VoiceEngine · concurrent state machine]
     ENG --> ASR[Parakeet-TDT live ASR<br/>partial transcripts]
     ASR --> Q[answer → LangGraph workflow]
