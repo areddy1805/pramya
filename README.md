@@ -119,9 +119,11 @@ Four engineering principles shape the system:
 | Story bank | Situation/Task/Action/Result records | Implemented |
 | Transcript analysis | Paste a transcript → structured questions/answers/weaknesses | Implemented |
 | Observability | Structured JSON logs, request IDs, routing decisions | Implemented (Langfuse: not integrated) |
-| Evals | AI-system quality measurement independent of product scoring | Not implemented (`tests/evals` empty) |
+| Evals | Golden-data harness: question-gen, answer-eval, extraction, RAG, adaptation, voice | Implemented (`make evals`, judge = deepseek-v4-flash) |
 | MCP | Expose Pramya capabilities to external AI clients | Not implemented (ADR-006 accepted, unbuilt) |
-| Interview memory | Longitudinal pattern notes fed into next interviews | Not implemented |
+| Interview memory | Durable per-session record: questions, answers, scores, hints | Implemented (interview record + transcript view) |
+| History & debriefs | Session history, real-interview debriefs with structured analysis | Implemented |
+| Demo mode | Idempotent 4-role demo dataset via API/`make demo-setup` | Implemented |
 
 ---
 
@@ -460,11 +462,11 @@ Two distinct meanings — Pramya separates them:
    a product feature with versioned evaluation records.
 2. **AI-system evaluation:** a suite that evaluates *Pramya itself* (question
    generation quality, evaluation accuracy, RAG grounding, adaptation,
-   structured-output robustness, voice behavior). **This does not exist yet.**
-
-`make evals` exists in the Makefile but `tests/evals` is empty — running it
-currently collects nothing. Building the eval suite is roadmap work (planned
-judge: deepseek-v4-flash via the InferenceRouter).
+   structured-output robustness, voice behavior). Implemented as a
+   golden-data pytest harness under `tests/evals` with deepseek-v4-flash as
+   the judge (via the InferenceRouter — no router bypass). Phase F status:
+   COMPLETE WITH KNOWN WARNINGS (borderline DeepSeek judge variance is
+   recorded as WARNING, never gamed to PASS).
 
 ---
 
@@ -554,14 +556,15 @@ make dev-frontend             # vite :3000
 | `make migrate` | Apply Alembic migrations | ✅ |
 | `make test` | Unit + contract tests | ✅ |
 | `make test-integration` | Integration suite (isolated `pramya_test` DB) | ✅ |
-| `make evals` | AI evaluation suite | ⚠️ target exists, `tests/evals` empty |
+| `make evals` | AI evaluation suite (golden-data, DeepSeek judge) | ✅ |
 | `make lint` | Backend ruff + frontend oxlint | ✅ |
 | `make typecheck` | Backend mypy + frontend tsc | ✅ |
 | `make dev-backend` / `make dev-frontend` | Dev servers | ✅ |
-| `make demo-setup` | Demo environment loader | ⚠️ stub (lands with demo data work) |
+| `make demo-setup` | Seed the 4-role demo dataset (idempotent) | ✅ |
 | `make backend-install` / `make frontend-install` | Install dependencies | ✅ |
 
-There is no `make e2e` yet — E2E is planned (Phase 12).
+`make e2e` runs the Playwright browser suite (real backend + vite, `frontend/e2e/`):
+`cd frontend && pnpm exec playwright test`.
 
 ---
 
@@ -637,14 +640,14 @@ Verified 2026-08-12 (local run, clean tree):
 
 | Suite | Command | Result |
 |---|---|---|
-| Unit + contract | `cd backend && uv run pytest ../tests/unit ../tests/contract -p no:warnings -q` | ✅ 135 passing |
-| Integration | `cd backend && PYTHONPATH=.. uv run pytest ../tests/integration -p no:warnings -q` | ✅ 29 passing (isolated `pramya_test`, created/dropped per run) |
+| Unit + contract | `cd backend && uv run pytest ../tests/unit ../tests/contract -p no:warnings -q` | ✅ 182 passing |
+| Integration | `cd backend && PYTHONPATH=.. uv run pytest ../tests/integration -p no:warnings -q` | ✅ 36 passing (isolated `pramya_test`, created/dropped per run) |
 | Migration drift | `cd backend && uv run alembic check` | ✅ no new operations |
 | Frontend typecheck | `cd frontend && pnpm exec tsc -b --noEmit` | ✅ 0 errors |
 | Frontend lint | `cd frontend && pnpm exec oxlint` | ✅ |
 | Frontend build | `cd frontend && pnpm build` | ✅ |
-| E2E (Playwright) | — | ❌ scripts only (`frontend/scripts/visual-qa-*.ts`, `voice_e2e_real.mjs`); no suite |
-| Evals | `make evals` | ❌ `tests/evals` empty |
+| E2E (Playwright) | `cd frontend && pnpm exec playwright test` | ✅ 2 tests: dashboard readiness + typed interview journey (real backend) |
+| Evals | `make evals` | ✅ golden-data harness (DeepSeek judge; variance recorded as WARNING) |
 
 Voice coverage: 10 unit tests (hot-loop interrupt mid-TTS, generation bump, no
 stale chunks, auto + manual end-of-turn, pause/resume/stop/cancel, transcript
@@ -685,8 +688,8 @@ pramya/
 │   ├── unit/              # 135 tests
 │   ├── contract/          # API surface + error-envelope contracts
 │   ├── integration/       # 29 tests on isolated pramya_test
-│   ├── e2e/               # empty — not yet built
-│   └── evals/             # empty — not yet built
+│   ├── e2e/               # browser suite (Playwright, frontend/e2e)
+│   └── evals/             # golden-data AI eval harness (DeepSeek judge)
 ├── prompts/               # versioned prompt files (question, eval, hints, reports…)
 ├── scripts/               # seed_demo.py (full HTTP pipeline exercise)
 ├── docs/                  # plan, ADRs, architecture, model catalog, operations
@@ -762,12 +765,13 @@ posture.
   automated test; no communication analysis.
 - Interview memory (longitudinal adaptation) — not implemented.
 - Debrief workflow: backend endpoints only, no UI.
-- Demo mode / packaged demo data — not implemented.
+- Demo mode is implemented (`demo/` fixtures + `POST /demo/setup` + `make demo-setup`);
+  MCP and Langfuse are not implemented.
 - RAG: pipeline implemented and tested, but the reference runtime holds
   **0 indexed chunks** — retrieval is starved until indexing runs on real data.
 - Resume extraction: endpoint and service exist and are integration-tested,
   but no extraction output was observed landing in the reference database.
-- Eval suite, E2E suite, MCP, Langfuse — not implemented.
+- Eval suite and browser E2E are implemented; MCP and Langfuse remain not implemented.
 
 **Architectural debt**
 
@@ -809,14 +813,18 @@ posture.
 - Voice: audio persistence, replay, reconnect, real-mic coverage
 - RAG: index real documents so retrieval has runtime content
 - Report persistence, runtime eval-version persistence
-- CORS middleware wiring, extraction runtime verification
+- Early README/docs sections still describe the intended (pre-ADR) stack in places.
+
+**Implemented since**
+
+- Security hardening (CORS applied, bearer tokens, rate limit, security headers)
+- Communication analysis, voice audio persistence + replay + reconnect
+- Interview memory (record endpoint), history, debriefs, transcript views
+- Demo mode (4 roles), browser E2E suite, fresh-clone verification
 
 **Planned**
 
-- Phase 11: MCP server, Langfuse integration, security hardening (auth,
-  rate limiting, adversarial docs, secret scanning), eval suite, demo data
-- Phase 12: E2E suite, fresh-clone verification, release
-- Communication analysis, interview memory, debrief UI, demo mode
+- MCP server, Langfuse integration, release packaging
 
 ---
 

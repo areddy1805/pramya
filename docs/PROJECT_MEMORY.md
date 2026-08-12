@@ -92,4 +92,49 @@
 - **Stale-audio correctness:** every TTS stream has a `generation` id (`tts_start{generation}` / `tts_stop{generation}`); server skips chunks whose generation no longer matches; client drops binary frames unless `state==='speaking'` AND generation is current; interrupt invalidates both.
 - **Model roles (H.4):** live ASR = Parakeet-TDT (`voice_live_asr_model`), offline/archival ASR = Qwen3-ASR (`voice_offline_asr_model`), TTS = Qwen3-TTS (`voice_tts_model`). Do not let config churn flip Qwen3-ASR back into the live path.
 - **Mic permission errors** map to typed codes (`permission_denied` / `device_unavailable` / `mic_unavailable`) surfaced as actionable UI text, not generic "something went wrong".
-- **Real-model E2E is still pending** — blocked on Mac memory pressure (oMLX churn). Run the observable event contract from `docs/ai/VOICE_ARCHITECTURE.md` §0 when authorized.
+- **Real-model voice E2E passed 2026-08-12** (sessions 39/40/41, fake-mic via Playwright): 20 ASR partials, 9 TTS syntheses, interrupt conceded no stale chunks. Voice engine unit coverage: 14 tests.
+
+## Phases H–M completion record (2026-08-12)
+
+- **H (voice persistence):** candidate audio → WAV under `audio_storage_path`
+  + `audio_segment` row (`VOICE_STORE_AUDIO` opt-in, `voice_retention_days`);
+  replay endpoints `GET /interviews/{id}/voice/audio[/{segment_id}]`;
+  WS `heartbeat`→`heartbeat_ack`; reconnect emits `resume` (state + last
+  question, never re-begins an active session); communication analysis is
+  pure arithmetic over persisted transcript timestamps (`GET
+  /interviews/{id}/communication`) — absent data → `None` + explanatory
+  notes, never fabricated. PCM16 duration bug fixed: bytes/2 = samples
+  (`_pcm16_duration_ms`).
+- **I (security):** CORSMiddleware finally applied (config parsed it but the
+  app never added it). **Starlette middleware order: LAST added = OUTERMOST**
+  (verified by resolved-stack inspection) — CORS must be added last. Bearer
+  tokens via `API_TOKENS` (HTTP + voice WS `?token=`), per-IP fixed-window
+  rate limit `RATE_LIMIT_RPM`, security headers, digest-keyed upload storage
+  with suffix whitelist. `pip-audit`: no known vulnerabilities.
+- **J (demo):** `demo/roles/{4 keys}/resume.md+jd.md` fixtures; `POST
+  /api/v1/demo/setup` idempotent (docs dedup by content hash, roles by title,
+  evidence by source_ref); `make demo-setup` = seed script; Settings "Demo
+  data" button. Runtime-verified: real bge-m3 embeddings + deepseek extraction.
+- **K (memory/history/debrief):** `GET /interviews/{id}/transcript` builds the
+  durable record (question turns + answer turns with `turn.content`, scores
+  via Answer.interview_turn_id); History / Debriefs / Transcript pages wired;
+  debriefs create+analyze (DeepSeek ANALYSIS). Transcript mapping pitfall:
+  `turn.kind` from DB is a plain str — compare with `str(...) ==
+  InterviewTurnKind.X.value`, never `is`.
+- **L (E2E):** Playwright suite `frontend/e2e/` (`make e2e`) — dashboard +
+  full typed-interview journey against live stack. **Race exposed:** the
+  "Current question" heading + caption render immediately; the question text
+  arrives via SSE after DeepSeek generation. Selectors must wait on the
+  question paragraph (`main p.text-xl`), never the heading/caption (caption
+  matched `/what/` → typed+clicked before question existed → silent no-op).
+  **Real product bugs fixed:** text-mode UI never handled SSE `evaluation`
+  events, and the score display lived only in the voice branch — evaluation
+  now renders for both modes.
+- **M (fresh clone):** verified fresh-DB `alembic upgrade head` (23 tables
+  from zero), backend boot with example-only env (deepseek configured=false,
+  honest), `make test/lint/typecheck/e2e` all green from repo root.
+
+**Pending / not implemented:** MCP server, Langfuse SDK integration
+(config fields only), real-model voice E2E re-run on this machine, release
+packaging. Eval suite (Phase F) = COMPLETE WITH KNOWN WARNINGS (DeepSeek
+judge variance recorded as WARNING; never gamed).
