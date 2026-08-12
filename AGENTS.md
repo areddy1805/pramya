@@ -1305,26 +1305,43 @@ interpret that instruction as:
 
 AUTONOMOUS ROADMAP MODE = ENABLED.
 
-While Autonomous Roadmap Mode is enabled:
+When the user authorizes completion of the remaining roadmap, Autonomous
+Roadmap Mode is enabled.
 
-1. The Master Implementation Plan is the execution queue.
-2. The agent progresses through planned phases automatically.
-3. Phase completion automatically triggers the next phase.
-4. The agent does not request confirmation between phases.
-5. The agent independently fixes ordinary engineering failures.
-6. The agent commits coherent completed work.
-7. The agent maintains the progress tracker.
-8. The agent updates project memory when meaningful durable knowledge is found.
-9. The agent preserves architectural and security boundaries.
-10. The agent stops only at a genuine global stop condition.
+Execute the Master Implementation Plan from the current phase through the
+final planned phase without requesting confirmation between phases.
 
-The user does NOT need to repeat "continue" after every phase.
+For each phase:
 
-The user may explicitly disable autonomous roadmap execution by stating that
-execution should stop at a particular phase/task.
+INSPECT
+→ DEFINE ACCEPTANCE
+→ IMPLEMENT
+→ FOCUSED VALIDATION
+→ FIX CONCRETE FAILURES
+→ BROADER VALIDATION
+→ DIFF/SCOPE REVIEW
+→ UPDATE PLAN/MEMORY
+→ COMMIT
+→ VERIFY GIT STATE
+→ ADVANCE TO NEXT PHASE
 
-If the user explicitly limits execution to one phase/task, that narrower
-instruction overrides Autonomous Roadmap Mode for that execution.
+A completed phase is a transition point, not a stop condition.
+
+Continue automatically into the next planned phase unless:
+- a genuine blocker requires user input;
+- an architectural/product/security decision is undefined;
+- the two-failure rule is triggered;
+- resource usage becomes unsafe;
+- required external infrastructure is unavailable;
+- destructive/irreversible action requires authorization;
+- or the entire authorized roadmap is complete.
+
+Never ask for confirmation merely because a phase finished.
+
+Autonomy controls sequencing, not engineering standards.
+
+All existing evidence, validation, security, scope, resource, debugging,
+and honesty rules remain mandatory.
 
 AUTONOMOUS ROADMAP MODE does NOT authorize:
 
