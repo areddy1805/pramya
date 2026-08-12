@@ -67,9 +67,12 @@ class RoleAnalysisService:
                 content=f"<<<DOCUMENT DATA>>>\n{jd_text}\n<<<END DOCUMENT DATA>>>",
             ),
         ]
-        analysis, _result = await generate_structured(
-            self.router, TaskClass.COMPLEX_REASONING, messages, RoleAnalysis
-        )
+        from app.observability import trace_span
+
+        async with trace_span("role_analysis", task="complex_reasoning"):
+            analysis, _result = await generate_structured(
+                self.router, TaskClass.COMPLEX_REASONING, messages, RoleAnalysis
+            )
         if not analysis.competencies:
             raise ValidationFailedError("role analysis produced no competencies")
 

@@ -73,9 +73,12 @@ class ExtractionService:
                 content=f"<<<RESUME DATA>>>\n{content}\n<<<END RESUME DATA>>>",
             ),
         ]
-        extraction, _result = await generate_structured(
-            self.router, TaskClass.EXTRACTION, messages, ResumeExtraction
-        )
+        from app.observability import trace_span
+
+        async with trace_span("evidence_extraction", task="extraction", document_id=document.id):
+            extraction, _result = await generate_structured(
+                self.router, TaskClass.EXTRACTION, messages, ResumeExtraction
+            )
 
         await self._persist(user_id, document, extraction)
         return extraction

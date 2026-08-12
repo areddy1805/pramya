@@ -94,6 +94,20 @@ class RetrievalService:
                 rerank_used=False,
             )
 
+        from app.observability import trace_span
+
+        async with trace_span("retrieval", task="hybrid_retrieval", query_len=len(query)):
+            return await self._search(user_id, query, kind=kind, k=k)
+
+    async def _search(
+        self,
+        user_id: int,
+        query: str,
+        *,
+        kind: DocumentKind | None,
+        k: int,
+    ) -> RetrievalResult:
+        """Deterministic hybrid search body (vector + FTS + RRF + rerank)."""
         vector_hits: list[RetrievedChunk] = []
         fts_hits: list[RetrievedChunk] = []
         vector_used = False

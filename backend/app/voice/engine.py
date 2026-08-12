@@ -124,6 +124,7 @@ class VoiceEngine:
         self._last_question_id: int | None = None
         self._last_question_turn_id: int | None = None
         self._turns_completed = 0
+        self._interruptions = 0
         self._running = True
         self._disconnected = False
         self._generation = 0  # increments per TTS stream (H.7 stale protection)
@@ -266,8 +267,20 @@ class VoiceEngine:
             )
             await self._emit({"type": "tts_start", "generation": generation})
             async with self._speech_lock:
+                started_tts = time.monotonic()
                 pcm, sr = await self.tts.synthesize(question.text)
+                tts_ms = round((time.monotonic() - started_tts) * 1000, 1)
             self.tts_sample_rate = sr
+            from app.observability import record_event
+
+            record_event(
+                "voice_tts",
+                session_id=self.session_id,
+                turn_id=turn.id,
+                tts_latency_ms=tts_ms,
+                tts_bytes=len(pcm) * 2,
+                model="Qwen3-TTS",
+            )
             for chunk in chunk_pcm16(pcm, self.chunk_samples):
                 # H.7: only send chunks for the CURRENT generation; interrupt
                 # bumps the generation so stale audio is never transmitted.
@@ -402,7 +415,18 @@ class VoiceEngine:
                 await self._start_silence_watchdog()
                 return
             async with self._speech_lock:
+                started_asr = time.monotonic()
                 transcript = await self.asr.transcribe(audio, sample_rate=self.asr_sample_rate)
+                asr_ms = round((time.monotonic() - started_asr) * 1000, 1)
+            from app.observability import record_event
+
+            record_event(
+                "voice_asr",
+                session_id=self.session_id,
+                asr_latency_ms=asr_ms,
+                audio_bytes=len(audio),
+                model="Parakeet-TDT",
+            )
             if not transcript.strip():
                 await self._emit({"type": "final_transcript", "text": ""})
                 await self._set_state(VoiceState.LISTENING)
@@ -470,6 +494,14 @@ class VoiceEngine:
 
     async def _interrupt(self) -> None:
         """Barge-in: cancel TTS + in-flight answer, clear audio, -> listening."""
+        self._interruptions += 1
+        from app.observability import record_event
+
+        record_event(
+            "voice_interrupt",
+            session_id=self.session_id,
+            interruption_count=self._interruptions,
+        )
         await self._cancel_tts()
         await self._cancel_answer()
         await self._stop_silence_watchdog()

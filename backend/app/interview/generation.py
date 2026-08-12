@@ -52,9 +52,21 @@ class QuestionGenerator:
             ChatMessage(role="system", content=self._prompt),
             ChatMessage(role="user", content=json.dumps(context, default=str)),
         ]
-        question, _ = await generate_structured(
-            self.router, TaskClass.INTERVIEW_CONTENT_GENERATION, messages, InterviewQuestion
-        )
+        from app.observability import trace_span
+
+        async with trace_span(
+            "question_generation",
+            task="interview_content_generation",
+            competency=competency,
+            difficulty=difficulty,
+            seniority=seniority,
+        ):
+            question, _ = await generate_structured(
+                self.router,
+                TaskClass.INTERVIEW_CONTENT_GENERATION,
+                messages,
+                InterviewQuestion,
+            )
         return question
 
 
@@ -88,9 +100,16 @@ class Evaluator:
                 content=f"RETRIEVED EVIDENCE:\n{evidence_context}\nHINTS_USED: {hints_used}",
             ),
         ]
-        evaluation, _ = await generate_structured(
-            self.router, TaskClass.DEEP_EVALUATION, messages, AnswerEvaluation
-        )
+        from app.observability import trace_span
+
+        async with trace_span(
+            "answer_evaluation",
+            task="deep_evaluation",
+            hints_used=hints_used,
+        ):
+            evaluation, _ = await generate_structured(
+                self.router, TaskClass.DEEP_EVALUATION, messages, AnswerEvaluation
+            )
         return evaluation
 
 
