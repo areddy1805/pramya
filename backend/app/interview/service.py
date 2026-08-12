@@ -116,12 +116,14 @@ class InterviewService:
         router: InferenceRouter,
         *,
         retrieval: RetrievalService | None = None,
+        rag: Any | None = None,
         storage_dir: Path | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.session = session
         self.router = router
         self.retrieval = retrieval
+        self.rag = rag  # LlamaIndex retriever (Phase D primary RAG path)
         self.storage_dir = storage_dir
         self._logger = logger or get_logger("app.interview.service")
         self.sessions = InterviewSessionRepository(session)
@@ -479,6 +481,16 @@ class InterviewService:
         return "general", "medium", "mid"
 
     async def _retrieve_context(self, user_id: int, query: str) -> str:
+        # Phase D: LlamaIndex retrieval is the primary RAG path; the
+        # deterministic hybrid RetrievalService stays as the fallback layer.
+        rag = self.rag
+        if rag is not None:
+            try:
+                chunks = await rag.retrieve(query, user_id=user_id, top_k=3)
+                if chunks:
+                    return "\n---\n".join(chunks)
+            except Exception:  # LlamaIndex failure -> deterministic fallback
+                self._logger.warning("llamaindex retrieval failed; deterministic fallback")
         if self.retrieval is None:
             return ""
         try:

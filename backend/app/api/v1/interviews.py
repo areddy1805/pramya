@@ -81,7 +81,12 @@ def _service(session: AsyncSession) -> InterviewService:
     settings = get_settings()
     router = build_inference_router(settings)
     retrieval = RetrievalService(session, router)
-    return InterviewService(session, router, retrieval=retrieval)
+    # Phase D: LlamaIndex retriever is the primary RAG path (fallback:
+    # deterministic hybrid RetrievalService above).
+    from app.knowledge.rag.service import LlamaIndexRetriever
+
+    rag = LlamaIndexRetriever(session, router)
+    return InterviewService(session, router, retrieval=retrieval, rag=rag)
 
 
 @router.post("/interviews", response_model=InterviewSessionOut, status_code=201)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -17,6 +18,7 @@ from app.domain.enums import DocumentKind, EvidenceStatus
 from app.domain.errors import NotFoundError
 from app.knowledge.ingestion import IngestionService
 from app.knowledge.parsing import parse_document_with_timeout
+from app.repositories.document import DocumentChunkRepository
 from app.services.document import DocumentService
 from app.services.evidence import EvidenceService
 from app.services.extraction import ResumeExtractionRunner
@@ -247,6 +249,29 @@ async def index_document(
         timeout_seconds=settings.document_parse_timeout_seconds,
     )
     router = build_inference_router(settings)
+    # Phase D: production ingestion executes the LlamaIndex pipeline
+    # (RouterEmbeddings -> PramyaVectorStore); deterministic IngestionService
+    # stays as the reference/fallback layer.
+    try:
+        from app.knowledge.rag.service import LlamaIndexIngestionService
+
+        rag_ingestion = LlamaIndexIngestionService(
+            session,
+            router,
+            chunk_size=settings.knowledge_chunk_size,
+            chunk_overlap=settings.knowledge_chunk_overlap,
+        )
+        count = await rag_ingestion.index_document(doc, parsed.content)
+        if count:
+            await session.commit()
+            chunks = await DocumentChunkRepository(session).list_for_document(document_id)
+            dimension = len(chunks[0].embedding) if chunks and chunks[0].embedding else 0
+            return DocumentIndexOut(document_id=doc.id, chunk_count=count, dimension=dimension)
+    except Exception as exc:
+        # Degrade to the deterministic ingestion path (reference layer).
+        logging.getLogger(__name__).warning(
+            "llamaindex ingestion degraded to deterministic path: %s", exc
+        )
     ingestion = IngestionService(
         session,
         router,
