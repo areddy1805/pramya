@@ -34,7 +34,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/); versions follow
   playback-completion gating held, candidate speech captured acoustically
   and transcribed (211 chars), answer submitted + evaluated, adaptive Q2,
   interrupt mid-TTS with zero stale chunks — evidence in
-  `docs/ai/VOICE_ARCHITECTURE.md §12`.
+  `docs/ai/VOICE_ARCHITECTURE.md §12`. Live 5-turn acoustic interview
+  PASSED (session 81): 5 real-mic candidate transcripts, 5 evaluations,
+  adaptive follow-ups, interrupt mid-Q3 with zero stale chunks — harness
+  `frontend/scripts/voice_e2e_5turns.mjs`.
 
 
 - **Phase H — voice persistence & communication:** candidate audio persisted

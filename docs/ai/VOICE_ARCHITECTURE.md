@@ -25,7 +25,7 @@
 | H.16 diagnostics | ✅ | `voice_listening` (playback_confirmed), `voice_answer` (accepted/discarded frames+bytes, listening_ms, interruptions), `voice_tts`/`voice_asr`/`voice_interrupt` telemetry |
 | H.17 voice barge-in (opt-in) | ✅ | `voice_barge_in_enabled` (default OFF): sustained mic energy ≥ `voice_barge_in_rms` for `voice_barge_in_ms` during SPEAKING cancels TTS. Explicit `interrupt` control remains the guaranteed path |
 | Real-model E2E (fake-device mic) | ✅ | passed 2026-08-12 (sessions 39/40/41) + 2026-08-13 with the new gating contract: `tts_stop → playback_complete → state:listening` verified with real Qwen3-TTS + Parakeet |
-| Physical-mic E2E (real speakers+mic) | ✅ PASSED 2026-08-13 | full acoustic loop on the open-lid MacBook: interviewer TTS played aloud → `playback_complete` gating → candidate speech played through speakers captured by the real built-in mic → 211-char candidate transcript → answer submitted → evaluation → adaptive Q2 → interrupt mid-TTS with zero stale chunks. See §12 |
+| Physical-mic E2E (real speakers+mic) | ✅ PASSED 2026-08-13 | single-turn + **live 5-turn** acoustic loops (real built-in mic + speakers, open-lid MacBook): every turn = TTS aloud → `playback_complete` gating → candidate speech through speakers → real-mic ASR (161–211 chars) → answer → evaluation → adaptive next question; interrupt mid-Q3 with zero stale chunks; all 5 evaluations persisted with correct speaker attribution. See §12 |
 
 **Observable event contract (acceptance):** `state` (idle→starting→speaking→listening→processing…) → `question` → `tts_start{generation}` → binary chunks → `tts_stop{generation}` → `partial_transcript` → `turn_ended` → `final_transcript` → `answer_submitted` → `evaluation` → next `question` → … Interrupt: `interrupt` control → `state: interrupted` → `state: listening`, generation bumped, zero stale chunks.
 
@@ -214,6 +214,17 @@ zero stale chunks after interrupt. The interviewer's own playback was
 captured by the mic during SPEAKING and discarded (server-authoritative
 gating); it never became a candidate answer.
 
-Known limitation: evaluation scored 2/10 — the "candidate" was a 13 s canned
-TTS clip, not an interactive answer; the score reflects the scripted,
-non-responsive answer, which is correct behavior.
+**Live 5-turn run (2026-08-13, session 81):** 5 consecutive turns completed
+through the same acoustic path — `tts_start → chunks → tts_stop →
+playback_complete → state:listening` on every turn, candidate answers played
+through the speakers and transcribed (211/184/161/211/184 chars — the actual
+scripted answer texts), each evaluated (2, 1.5, 1, 2, 2.5) with the next
+question adapting to the transcribed content ("You mentioned implementing a
+transactional outbox…"), and an interrupt executed mid-Q3 TTS with zero stale
+chunks. Harness: `frontend/scripts/voice_e2e_5turns.mjs`. DB: 11 transcript
+segments (6 interviewer / 5 candidate, alternating, explicit speaker
+attribution) + 5 persisted evaluations.
+
+Known limitation: evaluation scores are low (1–3) because the "candidate" is a
+canned TTS clip, not an interactive answer — the scores reflect scripted,
+non-responsive answers, which is correct behavior.
