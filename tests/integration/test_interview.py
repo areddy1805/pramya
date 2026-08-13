@@ -27,15 +27,16 @@ from app.interview.service import InterviewService
 from app.repositories.interview import InterviewTurnRepository
 from app.services.user import CandidateService
 
-QUESTION_JSON = json.dumps(
-    {
-        "text": "Describe a distributed system you built and a hard tradeoff you faced.",
-        "type": "project_deep_dive",
-        "difficulty": "medium",
-        "rationale": "Probes architecture + tradeoff awareness",
-        "hint_levels": ["Think about consistency", "Consider CAP", "Sketch the design"],
-        "target_competency": "System Design",
-    }
+QUESTION_TEXT = (
+    "QUESTION: Describe a distributed system you built and a hard tradeoff you faced.\n"
+    "TYPE: project_deep_dive\n"
+    "DIFFICULTY: medium\n"
+    "RATIONALE: Probes architecture + tradeoff awareness\n"
+    "TARGET: System Design\n"
+    "HINTS:\n"
+    "- Think about consistency\n"
+    "- Consider CAP\n"
+    "- Sketch the design"
 )
 
 EVAL_JSON = json.dumps(
@@ -112,7 +113,7 @@ async def _svc(env: dict[str, Any], contents: list[str]) -> tuple[InterviewServi
 async def test_full_text_interview_lifecycle(interview_env: dict[str, Any]) -> None:
     db = interview_env["db"]
     user_id = interview_env["user_id"]
-    svc, provider = await _svc(interview_env, [QUESTION_JSON, EVAL_JSON, REPORT_JSON])
+    svc, provider = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON, REPORT_JSON])
 
     session = await svc.create_session(
         user_id=user_id,
@@ -154,7 +155,7 @@ async def test_full_text_interview_lifecycle(interview_env: dict[str, Any]) -> N
 
 
 async def test_duplicate_answer_returns_same_row(interview_env: dict[str, Any]) -> None:
-    svc, _ = await _svc(interview_env, [QUESTION_JSON, EVAL_JSON])
+    svc, _ = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON])
     user_id = interview_env["user_id"]
     session = await svc.create_session(
         user_id=user_id,
@@ -184,7 +185,7 @@ async def test_duplicate_answer_returns_same_row(interview_env: dict[str, Any]) 
 
 
 async def test_hint_flow(interview_env: dict[str, Any]) -> None:
-    svc, _ = await _svc(interview_env, [QUESTION_JSON, HINT_JSON])
+    svc, _ = await _svc(interview_env, [QUESTION_TEXT, HINT_JSON])
     user_id = interview_env["user_id"]
     session = await svc.create_session(
         user_id=user_id,
@@ -252,7 +253,7 @@ async def test_transcript_records_questions_answers_and_evaluations(
     """Phase K: the durable interview record exposes Q/A/evaluation in order."""
     db = interview_env["db"]
     user_id = interview_env["user_id"]
-    svc, _provider = await _svc(interview_env, [QUESTION_JSON, EVAL_JSON])
+    svc, _provider = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON])
 
     session = await svc.create_session(
         user_id=user_id,
@@ -287,3 +288,41 @@ async def test_transcript_records_questions_answers_and_evaluations(
     await db.commit()
     with pytest.raises(NotFoundError):
         await svc.transcript(session.id, other.id)
+
+
+async def test_next_question_streaming_yields_tokens_then_question(
+    interview_env: dict[str, Any],
+) -> None:
+    """V1.1: the streaming question generator surfaces model tokens (via
+    LangGraph stream_mode='messages') and then the persisted question —
+    proving the realtime path (StateSnapshot readback) works end to end."""
+    user_id = interview_env["user_id"]
+    # Token-streaming fake: the workflow's RouterChatModel.astream consumes
+    # deltas via router.stream(); QueueProvider has no stream surface so the
+    # router falls back to a single-chunk yield — still token-shaped.
+    svc, _provider = await _svc(interview_env, [QUESTION_TEXT])
+    session = await svc.create_session(
+        user_id=user_id,
+        kind=InterviewKind.PROJECT_DEEP_DIVE,
+        role_id=None,
+        duration_minutes=30,
+        focus_competency_ids=[],
+    )
+    await svc.begin(session.id, user_id)
+
+    tokens: list[str] = []
+    question: object | None = None
+    async for kind, payload in svc.next_question_streaming(session.id, user_id):
+        if kind == "token":
+            tokens.append(payload)
+        elif kind == "question":
+            question = payload
+
+    assert "".join(tokens), "expected streamed tokens"
+    assert question is not None
+    q, turn = question  # type: ignore[misc]
+    assert str(q.text).startswith("Describe a distributed system")
+    assert turn.id is not None
+    # Durable: the question was persisted by the streaming path.
+    rows = await svc.questions.list_for_session(session.id)
+    assert len(rows) == 1

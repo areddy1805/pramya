@@ -15,8 +15,11 @@ const INIT = `
 window.__voiceDiag = {
   wsOpened: false, ttsStart: 0, ttsStop: 0, playbackCompleteSent: 0,
   chunksReceived: 0, micSends: 0, events: [],
+  t0: performance.now(),
+  turnEndAt: null, ttsStartAt: null, firstChunkAt: null, listeningAt: null,
+  perTurn: [],
 }
-const push = (e) => { window.__voiceDiag.events.push(e); if (window.__voiceDiag.events.length > 3000) window.__voiceDiag.events.shift() }
+const push = (e) => { e.ms = Math.round(performance.now() - window.__voiceDiag.t0); window.__voiceDiag.events.push(e); if (window.__voiceDiag.events.length > 3000) window.__voiceDiag.events.shift() }
 const origWS = window.WebSocket
 window.WebSocket = class extends origWS {
   constructor(...a) { super(...a); window.__voiceDiag.wsOpened = true }
@@ -38,16 +41,18 @@ if (desc && desc.set) {
         if (typeof ev.data === 'string') {
           try {
             const o = JSON.parse(ev.data)
-            if (o.type === 'tts_start') { window.__voiceDiag.ttsStart++; push({t:'tts_start'}) }
+            if (o.type === 'tts_start') { window.__voiceDiag.ttsStart++; window.__voiceDiag.ttsStartAt = performance.now(); push({t:'tts_start'}) }
             else if (o.type === 'tts_stop') { window.__voiceDiag.ttsStop++; push({t:'tts_stop'}) }
+            else if (o.type === 'state' && o.state === 'listening') { window.__voiceDiag.listeningAt = performance.now(); push({t:'state', s:'listening'}) }
             else if (o.type === 'state') push({t:'state', s: o.state})
             else if (o.type === 'question') push({t:'question'})
             else if (o.type === 'final_transcript') push({t:'final', n: (o.text||'').length, txt: (o.text||'').slice(0,80)})
+            else if (o.type === 'turn_ended') { window.__voiceDiag.turnEndAt = performance.now(); push({t:'turn_ended'}) }
             else if (o.type === 'evaluation') push({t:'eval', v: o.overall})
             else if (o.type === 'answer_submitted') push({t:'answer_submitted'})
             else if (o.type === 'error') push({t:'error', code: o.code})
           } catch {}
-        } else { window.__voiceDiag.chunksReceived++; push({t:'chunk'}) }
+        } else { window.__voiceDiag.chunksReceived++; if (window.__voiceDiag.firstChunkAt === null) window.__voiceDiag.firstChunkAt = performance.now(); push({t:'chunk'}) }
         fn(ev)
       })
     },
@@ -56,7 +61,9 @@ if (desc && desc.set) {
   })
 }
 `
-const afplay = (wav) => new Promise((res) => execFile('/usr/bin/afplay', [wav], (err) => res(err ? 'ERR' : 'OK')))
+// Test-session volumes only (never project settings): interviewer = system
+// output (set externally to ~50%), mock candidate = afplay -v 0.5 (50%).
+const afplay = (wav) => new Promise((res) => execFile('/usr/bin/afplay', ['-v', '0.5', wav], (err) => res(err ? 'ERR' : 'OK')))
 const ANSWERS = ['/tmp/candidate_speech_loud.wav', '/tmp/candidate_speech_2_loud.wav', '/tmp/candidate_speech_3_loud.wav']
 
 async function main() {
@@ -128,6 +135,24 @@ async function main() {
   const evals = evs.filter((e) => e.t === 'eval')
   console.log('=== 5-TURN DIAG ===')
   console.log('wsOpened:', d.wsOpened, '| ttsStart:', d.ttsStart, 'ttsStop:', d.ttsStop)
+  // Per-turn waterfall from stamped events: turn_end -> tts_start -> first chunk.
+  const evs2 = evs
+  let turnNo = 0
+  for (let i = 0; i < evs2.length; i++) {
+    if (evs2[i].t === 'turn_ended') {
+      turnNo++
+      let ts = evs2[i].ms, tts = null, chunk = null
+      for (let j = i + 1; j < evs2.length; j++) {
+        if (evs2[j].t === 'tts_start') { tts = evs2[j].ms; break }
+      }
+      for (let j = i + 1; j < evs2.length; j++) {
+        if (evs2[j].t === 'chunk') { chunk = evs2[j].ms; break }
+      }
+      const firstAudio = tts === null ? 'n/a' : `${Math.round(tts - ts)}ms`
+      const firstChunk = (tts === null || chunk === null) ? 'n/a' : `${Math.round(chunk - tts)}ms`
+      console.log(`  turn ${turnNo}: turn_end->tts_start ${firstAudio} | tts_start->first_chunk ${firstChunk}`)
+    }
+  }
   console.log('playbackCompleteSent:', d.playbackCompleteSent, '| chunksReceived:', d.chunksReceived)
   console.log('micSends:', d.micSends)
   finals.forEach((f, i) => console.log(`  turn ${i + 1} final (${f.n} chars): ${JSON.stringify(f.txt)}`))

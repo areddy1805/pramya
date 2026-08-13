@@ -75,6 +75,21 @@ class StubTTS:
             await self.gate.wait()
         return self.pcm, self.sr
 
+    async def synthesize_stream(self, text: str, *, streaming_interval: float = 1.0):
+        """Streaming surface: yields PCM in 200ms (9600-byte) frames."""
+        self.synthesizes.append(text)
+        if self.gate is not None:
+            await self.gate.wait()
+        for i in range(0, len(self.pcm), 9600):
+            if self.gate is not None and not self.gate.is_set():
+                await self.gate.wait()
+            yield self.pcm[i : i + 9600]
+            if self.chunk_delay:
+                await asyncio.sleep(self.chunk_delay)
+
+    async def warmup(self) -> None:
+        return None
+
 
 class StubTranscripts:
     def __init__(self) -> None:
@@ -121,6 +136,7 @@ class StubInterview:
     def __init__(self) -> None:
         self.started = False
         self.next_question_text = "Tell me about a hard problem you solved."
+        self.next_question_stream_tokens = ["Tell me about a ", "hard problem ", "you solved."]
         self.question_seq = 0
         self.turn_seq = 0
         self.answer_texts: list[str] = []
@@ -148,6 +164,22 @@ class StubInterview:
         turn = type("T", (), {"id": self.turn_seq})()
         return q, turn
 
+    async def next_question_streaming(self, session_id: int, user_id: int):
+        """Streaming seam: tokens then the persisted question pair."""
+        self.question_seq += 1
+        self.turn_seq += 1
+        # Stream the question text in word-ish chunks so the segmenter sees a
+        # realistic token stream.
+        for tok in self.next_question_stream_tokens:
+            yield ("token", tok)
+        q = type(
+            "Q",
+            (),
+            {"id": self.question_seq, "text": self.next_question_text, "difficulty": "medium"},
+        )()
+        turn = type("T", (), {"id": self.turn_seq})()
+        yield ("question", (q, turn))
+
     async def submit_answer(
         self,
         session_id: int,
@@ -157,10 +189,22 @@ class StubInterview:
         answer_text: str,
         idempotency_key: str | None,
         mode: str,
+        await_evaluation: bool = True,
     ) -> object:
         self.answer_texts.append(answer_text)
         self.turn_seq += 1
         return type("A", (), {"id": 1})()
+
+    async def evaluate_answer(
+        self,
+        session_id: int,
+        user_id: int,
+        *,
+        question_id: int,
+        answer_text: str,
+        hints_used: int = 0,
+    ) -> object:
+        return type("E", (), {"overall": self.overall})()
 
     async def stop(self, session_id: int, user_id: int) -> object:
         return object()

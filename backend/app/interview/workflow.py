@@ -27,7 +27,12 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
 )
 
 from app.ai.router import InferenceRouter
-from app.interview.generation import Evaluator, Hints, QuestionGenerator
+from app.interview.generation import (
+    Evaluator,
+    Hints,
+    QuestionGenerator,
+    parse_question_output,
+)
 from app.knowledge.retrieval import RetrievalService
 
 
@@ -118,15 +123,23 @@ def build_interview_workflow(
         }
 
     async def generate_question(state: InterviewState) -> dict[str, Any]:
-        """generate_question node (LangChain pipeline -> DeepSeek)."""
-        question = await qgen.generate(
+        """generate_question node (LangChain streaming pipeline -> DeepSeek).
+
+        Streams tokens through the model (LangGraph ``stream_mode="messages"``
+        surfaces them to the realtime voice engine); accumulates and parses
+        into the InterviewQuestion schema for persistence.
+        """
+        text = ""
+        async for token in qgen.stream_question(
             competency=state["competency"],
             difficulty=state["difficulty"],
             seniority=state["seniority"],
             evidence_summary=state["evidence_summary"],
             history=state["history"],
             hints_used=state.get("hints_used", 0),
-        )
+        ):
+            text += token
+        question = parse_question_output(text, default_competency=state["competency"])
         return {
             "question_text": question.text,
             "question_type": question.type,

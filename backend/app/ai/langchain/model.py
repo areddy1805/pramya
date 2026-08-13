@@ -8,12 +8,19 @@ text — ADR-023). No bypass of the router, no silent local text fallback.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun, CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+)
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import PrivateAttr
 
 from app.ai.contracts import ChatMessage as RouterChatMessage
@@ -104,6 +111,42 @@ class RouterChatModel(BaseChatModel):
                 "degraded": result.decision.degraded,
             },
         )
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        """Stream tokens through the router (V1.1 realtime path).
+
+        Yields one ChatGenerationChunk per router stream delta; emits
+        on_llm_new_token so LangGraph ``stream_mode="messages"`` can surface
+        them. The router falls back to a single chunk for non-streaming
+        providers.
+        """
+        chat_messages = [self._to_router_message(m) for m in messages]
+        first = True
+        async for decision, delta in self._router.stream(
+            self.task,
+            chat_messages,
+            json_mode=self.json_mode,
+            thinking=self.thinking,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        ):
+            if first and decision is not None:
+                self._last_decision = decision
+                first = False
+            if not delta:
+                continue
+            if run_manager is not None:
+                await run_manager.on_llm_new_token(delta)
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(content=delta),
+                generation_info=None,
+            )
 
     @staticmethod
     def _to_router_message(message: BaseMessage) -> RouterChatMessage:

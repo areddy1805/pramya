@@ -185,10 +185,21 @@ async def trace_span(name: str, **metadata: Any) -> AsyncGenerator[SpanContext, 
 
 
 def record_event(name: str, **metadata: Any) -> None:
-    """Fire-and-forget telemetry event (voice metrics, interruptions, etc.)."""
+    """Fire-and-forget telemetry event (voice metrics, interruptions, etc.).
+
+    Always emitted to structured logs (guaranteed channel); forwarded to
+    Langfuse when configured and reachable. Never raises.
+    """
     obs = get_observability()
     span = obs.start(name, **metadata)
     obs.finish(span)
+    # Structured-log fallback: the log channel must show metrics even when
+    # Langfuse is down/unconfigured (R15 latency observability guarantee).
+    try:
+        fields = span.finish()
+        logger.info("telemetry", extra={"extra_fields": {"event": name, **fields}})
+    except Exception as exc:  # pragma: no cover - telemetry must never crash
+        logger.debug("telemetry log fallback failed: %s", exc)
     obs.flush()
 
 

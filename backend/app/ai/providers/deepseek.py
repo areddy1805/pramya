@@ -11,12 +11,13 @@ OpenAI-compatible JSON over HTTP.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
-from app.ai.contracts import ChatRequest, ChatResponse
-from app.ai.providers._http import build_headers, parse_chat_response, request_json
+from app.ai.contracts import ChatRequest, ChatResponse, ChatStreamChunk
+from app.ai.providers._http import build_headers, parse_chat_response, request_json, stream_chat
 
 
 class DeepSeekProvider:
@@ -60,3 +61,45 @@ class DeepSeekProvider:
             body=body,
         )
         return parse_chat_response(payload, fallback_model=self.model, provider=self.name)
+
+    async def supports_stream(self) -> bool:
+        return True
+
+    async def stream(self, request: ChatRequest) -> AsyncIterator[ChatStreamChunk]:
+        """Streaming completion (SSE). Yields content deltas + final usage.
+
+        Same request semantics as generate() with ``stream: true``; the
+        caller (router/LangChain) applies the same validation as
+        non-streaming output. Cancellation (task cancel) closes the HTTP
+        stream.
+        """
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+            "stream": True,
+        }
+        if request.temperature is not None:
+            body["temperature"] = request.temperature
+        if request.max_tokens is not None:
+            body["max_tokens"] = request.max_tokens
+        if request.json_mode:
+            body["response_format"] = {"type": "json_object"}
+        if request.thinking is not None:
+            body["thinking"] = {"type": "enabled" if request.thinking else "disabled"}
+
+        usage: Any = None
+        async for delta, finish, frame_usage in stream_chat(
+            self._client,
+            "POST",
+            f"{self.base_url}/chat/completions",
+            headers=build_headers(self.api_key, bearer=True),
+            body=body,
+            provider=self.name,
+            fallback_model=self.model,
+        ):
+            if frame_usage is not None:
+                usage = frame_usage
+            yield ChatStreamChunk(delta=delta, model=self.model, finish_reason=finish)
+        if usage is not None:
+            # Final chunk carries the aggregated usage for cost telemetry.
+            yield ChatStreamChunk(delta="", model=self.model, finish_reason="stop", usage=usage)

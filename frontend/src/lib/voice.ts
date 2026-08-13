@@ -22,6 +22,7 @@
 export type VoiceState =
   | 'idle'
   | 'starting'
+  | 'thinking'
   | 'listening'
   | 'processing'
   | 'speaking'

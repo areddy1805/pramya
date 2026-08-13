@@ -42,15 +42,16 @@ def _router(provider: QueueProvider) -> InferenceRouter:
     return InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
 
 
-Q = json.dumps(
-    {
-        "text": "Describe a distributed system you built.",
-        "type": "project_deep_dive",
-        "difficulty": "medium",
-        "rationale": "Probes architecture",
-        "hint_levels": ["Think about CAP"],
-        "target_competency": "System Design",
-    }
+Q = (
+    "QUESTION: Describe a distributed system you built. What was the hardest tradeoff you faced?\n"
+    "TYPE: project_deep_dive\n"
+    "DIFFICULTY: medium\n"
+    "RATIONALE: Probes architecture\n"
+    "TARGET: System Design\n"
+    "HINTS:\n"
+    "- Think about CAP\n"
+    "- Consider consistency\n"
+    "- Sketch the design"
 )
 EVAL = json.dumps(
     {
@@ -115,7 +116,7 @@ async def test_question_flow_routes_and_generates() -> None:
         {**_base(), "action": "question"},
         config={"configurable": {"thread_id": "thread-1"}},
     )
-    assert state["question_text"] == "Describe a distributed system you built."
+    assert state["question_text"].startswith("Describe a distributed system you built.")
     assert state["question_type"] == "project_deep_dive"
     assert state["target_competency"] == "System Design"
     assert provider.calls == 1  # exactly one LLM call (question generation)

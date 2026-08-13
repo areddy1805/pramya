@@ -35,6 +35,7 @@ const STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger'
 
 const VOICE_STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active'; blurb: string }> = {
   idle: { label: 'Ready', tone: 'neutral', blurb: 'Connect your microphone to begin.' },
+  thinking: { label: 'Interviewer thinking', tone: 'active', blurb: 'Preparing the next question…' },
   speaking: { label: 'Interviewer speaking', tone: 'active', blurb: 'Listen — you can interrupt at any time.' },
   listening: { label: 'Listening', tone: 'ok', blurb: 'Your turn. Speak naturally; the transcript appears live.' },
   processing: { label: 'Thinking', tone: 'active', blurb: 'Evaluating your answer and deciding what to ask next.' },

@@ -27,6 +27,7 @@ from app.interview.service import InterviewService
 from app.knowledge.retrieval import RetrievalService
 from app.voice.asr import ASRClient
 from app.voice.engine import VoiceEngine, VoiceWS
+from app.voice.profile import resolve_interviewer_voice
 from app.voice.tts import TTSClient
 
 _logger = get_logger("app.api.v1.voice")
@@ -85,10 +86,16 @@ def _engine(
         model=settings.voice_live_asr_model,  # Parakeet-TDT: live ASR (H.4)
         timeout_seconds=settings.omlx_timeout_seconds,
     )
+    # V1.1 (R2): ONE deterministic interviewer voice per session, resolved
+    # here (backend authoritative) and passed to both the engine (telemetry)
+    # and the TTS client (provider voice mapping). Never random.
+    voice = resolve_interviewer_voice(settings)
     tts = TTSClient(
         base_url=settings.omlx_base_url,
         api_key=settings.omlx_api_key,
         model=settings.voice_tts_model,  # Qwen3-TTS (H.4)
+        voice=voice.provider_voice,
+        voice_id=voice.voice_id,
         timeout_seconds=settings.omlx_timeout_seconds,
     )
     return VoiceEngine(
@@ -103,6 +110,11 @@ def _engine(
         audio_storage_dir=str(settings.audio_storage_path),
         store_audio=settings.voice_store_audio,
         retention_days=settings.voice_retention_days,
+        barge_in_enabled=settings.voice_barge_in_enabled,
+        barge_in_rms=settings.voice_barge_in_rms,
+        barge_in_ms=settings.voice_barge_in_ms,
+        tts_streaming_interval=settings.voice_tts_streaming_interval,
+        voice_profile=voice,
     )
 
 

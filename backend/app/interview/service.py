@@ -265,6 +265,57 @@ class InterviewService:
             rationale=state.get("rationale"),
             target_competency=state.get("target_competency") or comp,
         )
+        q, turn = await self._persist_question(question, session_id, comp)
+        return q, turn
+
+    async def next_question_streaming(
+        self, session_id: int, user_id: int
+    ) -> AsyncIterator[tuple[str, object]]:
+        """Stream the next question (V1.1 realtime path).
+
+        Yields ("token", str) for every model token chunk surfaced by the
+        LangGraph workflow (stream_mode="messages"), then a final
+        ("question", (Question, InterviewTurn)) after persistence. The voice
+        engine consumes tokens through the segmenter and starts TTS on the
+        first complete sentence while the rest of the response streams.
+        """
+        row = await self._require_questioning(session_id, user_id)
+        history = await self._history_text(session_id)
+        evidence_summary = await self._evidence_summary(user_id)
+        comp, difficulty, seniority = await self._focus(session_id, user_id)
+        config = {"configurable": {"thread_id": row.graph_thread_id or f"s{session_id}"}}
+        input_state = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "action": "question",
+            "history": history,
+            "evidence_summary": evidence_summary,
+            "competency": comp,
+            "difficulty": difficulty,
+            "seniority": seniority,
+            "hints_used": 0,
+        }
+        async for event in self.workflow.astream(input_state, config, stream_mode="messages"):
+            message, _meta = event
+            content = getattr(message, "content", "")
+            if isinstance(content, str) and content:
+                yield ("token", content)
+        state = await self.workflow.aget_state(config)
+        values = state.values if hasattr(state, "values") else state
+        question = InterviewQuestion(
+            text=values.get("question_text") or "",
+            type=values.get("question_type") or "general",
+            difficulty=values.get("question_difficulty") or "medium",
+            hint_levels=values.get("hint_levels") or [],
+            rationale=values.get("rationale"),
+            target_competency=values.get("target_competency") or comp,
+        )
+        q, turn = await self._persist_question(question, session_id, comp)
+        yield ("question", (q, turn))
+
+    async def _persist_question(
+        self, question: InterviewQuestion, session_id: int, default_competency: str
+    ) -> tuple[Question, InterviewTurn]:
         q = Question(
             interview_session_id=session_id,
             competency_id=None,
@@ -309,8 +360,17 @@ class InterviewService:
         answer_text: str,
         idempotency_key: str | None,
         mode: str = "text",
+        await_evaluation: bool = True,
     ) -> Answer:
-        """Idempotent answer submission -> evaluation + evidence extraction."""
+        """Idempotent answer submission; evaluation is optional (two-lane).
+
+        ``await_evaluation=True`` (text API): the answer is recorded and the
+        LangGraph evaluation workflow runs inline before returning — V1
+        behavior. ``await_evaluation=False`` (voice realtime path): the
+        answer + turn are durably committed and the method returns
+        immediately; the caller runs evaluation as a background analytical
+        task (never blocks the next-question critical path).
+        """
         if not answer_text.strip():
             raise ValidationFailedError("answer must not be empty")
         await self._require_questioning(session_id, user_id)
@@ -345,10 +405,38 @@ class InterviewService:
         )
         await self.answers.add(answer)
         await self.session.flush()
+        await self.session.commit()  # durable before the caller proceeds
+        if not await_evaluation:
+            return answer
+        await self.evaluate_answer(
+            session_id, user_id, question_id=question_id, answer_text=answer_text
+        )
+        return answer
 
-        # Phase C: evaluation + evidence extraction execute through the
-        # LangGraph workflow (retrieve_context -> evaluate_answer ->
-        # extract_evidence -> update_candidate_state -> determine_next_action).
+    async def evaluate_answer(
+        self,
+        session_id: int,
+        user_id: int,
+        *,
+        question_id: int,
+        answer_text: str,
+        hints_used: int = 0,
+    ) -> AnswerEvaluation:
+        """Analytical lane: LangGraph answer workflow -> persisted evaluation.
+
+        Runs retrieve_context -> evaluate_answer -> extract_evidence ->
+        update_candidate_state -> determine_next_action, then persists the
+        evaluation + evidence rows. Safe to run as a background task AFTER
+        the answer is durably committed (no stale-state race: the next
+        question reads the committed answer turn, not this evaluation).
+        """
+        await self._require_questioning(session_id, user_id)
+        q = await self.questions.get_or_raise(question_id, name="question")
+        if q.interview_session_id != session_id:
+            raise NotFoundError("question not found in this session")
+        answer = await self.answers.get_by_question(question_id)
+        if answer is None:
+            raise NotFoundError("answer not found for question")
         state = await self.workflow.ainvoke(
             {
                 "session_id": session_id,
@@ -356,7 +444,7 @@ class InterviewService:
                 "action": "answer",
                 "question_text": q.text,
                 "answer_text": answer_text,
-                "hints_used": 0,
+                "hints_used": hints_used,
                 "history": "",
                 "evidence_summary": "",
                 "competency": "",
@@ -366,7 +454,7 @@ class InterviewService:
             config={"configurable": {"thread_id": f"s{session_id}"}},
         )
         evaluation = AnswerEvaluation.model_validate(state["evaluation"] or {})
-        await self._persist_evaluation(q, answer, evaluation, 0)
+        await self._persist_evaluation(q, answer, evaluation, hints_used)
         await self.session.commit()
         event_bus.publish(
             session_id,
@@ -379,7 +467,7 @@ class InterviewService:
                 },
             ),
         )
-        return answer
+        return evaluation
 
     async def request_hint(self, session_id: int, user_id: int, question_id: int) -> str:
         await self._require_questioning(session_id, user_id)

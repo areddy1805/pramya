@@ -138,3 +138,26 @@
 (config fields only), real-model voice E2E re-run on this machine, release
 packaging. Eval suite (Phase F) = COMPLETE WITH KNOWN WARNINGS (DeepSeek
 judge variance recorded as WARNING; never gamed).
+
+## V1.1 REALTIME VOICE — CHECKPOINT (2026-08-13, mid-implementation)
+
+STATUS: R1 measured, R2-R11 implemented + unit/integration-tested, LIVE E2E VERIFICATION PENDING (one known fix applied, not yet live re-run).
+
+V1 BASELINE (measured, session 83, client timestamps): TURN_TO_FIRST_AUDIO ≈ 22-55s. turn_end→tts_start median ~12.5s (includes 1.5s silence watchdog + full-buffer ASR + submit_answer blocking on COMPLETE DeepSeek evaluation + full question gen); tts_start→first_chunk 10.5-40s (full-utterance Qwen3-TTS synthesis; memory thrash on turn 2). Bottlenecks by contribution: (1) full-utterance TTS, (2) evaluation blocking submit_answer, (3) full DeepSeek gen, (4) silence+ASR.
+
+V1.1 ARCHITECTURE (implemented, tests green):
+- R2 VOICE IDENTITY: config interviewer_voice_id/name/style (PRAMYA_INTERVIEWER_VOICE_ID, default professional_female_01); app/voice/profile.py resolve_interviewer_voice() deterministic per session; Qwen3-TTS single speaker maps provider_voice='default'; no random selection anywhere; regression test test_tts_client_uses_same_voice_for_every_call.
+- R3 PROVIDER BOUNDARY: TTSClient = single real provider (synthesize / synthesize_stream / warmup / voice_id); StreamingTextGenerationProvider optional protocol (contracts.py) — runtime_checkable base protocol stays minimal so fakes don't break.
+- R4 WARMUP: TTSClient.warmup() tiny synthesis at session start (engine _warmup_tts task); model kept resident by oMLX.
+- R5 DEEPSEEK STREAM: ChatStreamChunk + stream_chat SSE parser (_http.py) + DeepSeekProvider.stream + InferenceRouter.stream (fallback to single-chunk generate for non-streaming providers) + RouterChatModel._astream (on_llm_new_token → LangGraph stream_mode='messages').
+- R6 SEGMENTER: app/voice/segmenter.py TextSegmenter (min 60/max 200 chars, sentence boundaries .!?…， mid-word-safe hard flush). Question prompt rewritten to streaming format prompts/question_generation/adaptive_question_stream.txt (QUESTION: first, then TYPE/DIFFICULTY/RATIONALE/TARGET/HINTS lines); parse_question_output() in generation.py; single code path for text+voice.
+- R7 STREAMING TTS: oMLX /v1/audio/speech supports {"stream": true, "streaming_interval": s} — NATIVE streaming (Qwen3-TTS generate() has stream/streaming_interval params, verified in oMLX 0.5.7 source); 44-byte WAV header then PCM chunks; TTSClient.synthesize_stream; engine _speech_worker serializes segments on _speech_lock, relays 200ms frames.
+- R9 STATES: VoiceState.THINKING added; engine: THINKING (LLM stream) → SPEAKING (first audio) → playback-gated LISTENING. Silence watchdog default 1.0s (was 1.5).
+- R10 BARGE-IN: voice_barge_in_enabled default True (config 900 RMS / 250ms); _on_audio treats THINKING+SPEAKING as interviewer-owned (mic discarded, never ASR'd, barge-in checked).
+- R11 TWO-LANE: submit_answer(await_evaluation=False) commits answer fast; evaluation DEFERRED to LISTENING window (_maybe_start_evaluation in _start_listening) — avoids concurrent use of shared async DB session (SQLAlchemy AsyncSession not concurrency-safe); next question streams immediately after submit.
+- LANGGRAPH AUTHORITATIVE: InterviewService.next_question_streaming() = async generator over workflow.astream(stream_mode='messages') tokens + final ("question", (q, turn)) from workflow.aget_state(); generate_question node accumulates + parses.
+- OBSERVABILITY: record_event now ALWAYS logs structured telemetry (event field) even when Langfuse down (Langfuse host 3030 currently NOT running); voice_question_waterfall carries question_gen_ms/llm_first_token_ms/tts_first_audio_ms/voice_id; voice_answer_waterfall asr_ms/submit_ms.
+
+KNOWN DEFECT FIXED: LangGraph aget_state returns StateSnapshot (has .values, not .get) — fixed in service.py next_question_streaming. Live run before fix: 'StateSnapshot' object has no attribute 'get' (question pipeline degraded). After fix: 194 unit + 9 contract + 38 integration green, mypy/pyright/ruff clean, frontend tsc/lint/build green.
+
+NEXT (resume point): restart backend on 8001, run frontend/scripts/voice_e2e_5turns.mjs (volume 50%) — verify streaming loop + TURN_TO_FIRST_AUDIO per turn; then R13 TTS benchmark (Pocket TTS research time-boxed), R10 barge-in live check, R14 reconnect, R18 V1-vs-V1.1 benchmark, R19 docs (ADR-025, VOICE_ARCHITECTURE, OBSERVABILITY, MODEL_CATALOG, README, CHANGELOG), R20 final validation + report. Uncommitted V1.1 work sits in the working tree (checkpoint commit to follow).

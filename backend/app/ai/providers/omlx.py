@@ -13,6 +13,7 @@ Implemented over httpx — no OpenAI SDK.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import httpx
@@ -31,7 +32,14 @@ from app.ai.providers._http import build_headers, parse_chat_response, request_j
 
 
 class MLXProvider:
-    """oMLX provider: text generation + embeddings + reranking capabilities."""
+    """oMLX provider: text generation + embeddings + reranking capabilities.
+
+    Text generation is construction-compat only (ADR-023: no local text LLM
+    in the production path; the router never routes text tasks to oMLX). The
+    protocol's streaming surface exists so the provider conforms to
+    TextGenerationProvider; it advertises ``supports_stream() == False`` so
+    the router always falls back to the non-streaming path for it.
+    """
 
     name = "omlx"
 
@@ -80,6 +88,17 @@ class MLXProvider:
             body=body,
         )
         return parse_chat_response(payload, fallback_model=self.chat_model, provider=self.name)
+
+    async def supports_stream(self) -> bool:
+        """oMLX text generation is not a production path (ADR-023); the
+        router must treat it as non-streaming (single-chunk fallback)."""
+        return False
+
+    async def stream(self, request: ChatRequest) -> AsyncIterator[str]:
+        """Protocol conformance: never reached (supports_stream is False).
+        Implemented as a single-chunk yield for safety."""
+        response = await self.generate(request)
+        yield response.content
 
     async def embed(self, request: EmbedRequest) -> EmbedResponse:
         body: dict[str, Any] = {

@@ -75,6 +75,7 @@ class VoiceState(StrEnum):
 
     IDLE = "idle"
     STARTING = "starting"
+    THINKING = "thinking"  # interviewer reasoning (question generation in flight)
     LISTENING = "listening"
     PROCESSING = "processing"
     SPEAKING = "speaking"

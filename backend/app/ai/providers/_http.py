@@ -8,6 +8,7 @@ app.ai.errors so provider internals never leak into application code.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import httpx
@@ -113,3 +114,50 @@ def parse_chat_response(
         finish_reason=choice.get("finish_reason"),
         thinking_content=message.get("reasoning_content"),
     )
+
+
+
+async def stream_chat(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, Any] | None = None,
+    body: dict[str, Any] | None = None,
+    provider: str = "provider",
+    fallback_model: str = "",
+) -> AsyncIterator[tuple[str, str | None, Any]]:
+    """Stream an OpenAI-compatible SSE chat completion.
+
+    Yields (delta, finish_reason, usage_or_None) per data frame. Raises the
+    normalized app.ai.errors on HTTP/transport failure (fallback-eligible).
+    ``[DONE]`` ends the stream. usage arrives on the final frame when the
+    provider includes it.
+    """
+    try:
+        async with client.stream(
+            method, url, headers=headers, json=body
+        ) as response:
+            _raise_for_provider_status(response)
+            async for line in response.aiter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                choices = payload.get("choices")
+                if not isinstance(choices, list) or not choices:
+                    continue
+                choice = cast(dict[str, Any], choices[0])
+                delta = cast(dict[str, Any], choice.get("delta") or {}).get("content") or ""
+                finish = choice.get("finish_reason")
+                usage = _get(payload, "usage")
+                yield delta, finish, usage
+    except httpx.TimeoutException as exc:
+        raise ProviderConnectionError(f"provider stream timed out: {url}") from exc
+    except httpx.HTTPError as exc:
+        raise ProviderConnectionError(f"provider stream failed: {url}: {exc}") from exc
