@@ -106,7 +106,14 @@ export function InterviewPage() {
       }
       if (event.type === 'session_status') {
         const status = String(event.data.status ?? '')
-        if (status === 'completed' || status === 'cancelled') setSessionId(null)
+        if (status === 'completed' || status === 'cancelled') {
+          // P0: the session ended via ANY path (HTTP stop/cancel, SSE, etc.)
+          // — the active voice client must be torn down so interviewer TTS
+          // cannot keep playing. The server state is authoritative; this
+          // only stops local audio + the connection.
+          void voiceRef.current?.disconnect()
+          setSessionId(null)
+        }
       }
     },
   })

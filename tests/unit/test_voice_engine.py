@@ -890,3 +890,35 @@ async def test_cancel_mid_tts_halts_all_audio_sends() -> None:
     await asyncio.sleep(0.1)
     assert len(ws.bytes_out) == sent_before, "audio sent after cancel"
     await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_cancel_stops_tts_when_session_already_terminal() -> None:
+    """P0: the session can be cancelled via the HTTP/SSE path while the voice
+    WS is still live. The engine's _cancel must tolerate the already-terminal
+    session (InterviewStateError) and STILL stop the audio sender."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    interview = engine.interview
+    original_cancel = interview.cancel
+
+    async def cancel_already_terminal(session_id: int, user_id: int) -> object:
+        from app.domain.errors import InterviewStateError
+
+        raise InterviewStateError("already terminal")
+
+    interview.cancel = cancel_already_terminal  # type: ignore[method-assign]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "cancel"})
+    assert await _wait_state(engine, ws, VoiceState.CANCELLED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after terminal cancel"
+    interview.cancel = original_cancel  # type: ignore[method-assign]
+    await _cancel_task(task)

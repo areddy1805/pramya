@@ -219,6 +219,19 @@ export class VoiceClient {
     this.handlers.onState?.('cancelled')
   }
 
+  /**
+   * Tear down WITHOUT a WS control message: used when the session is already
+   * terminal server-side (e.g. cancelled via the HTTP/SSE path) — the server
+   * state is authoritative; this client only stops its own audio + connection
+   * so interviewer TTS cannot keep playing after the session is cancelled.
+   */
+  async disconnect(): Promise<void> {
+    this.closedByUser = true
+    await this.teardown()
+    this.state = 'idle'
+    this.handlers.onClosed?.()
+  }
+
   private async teardown(): Promise<void> {
     if (this.heartbeat) {
       clearInterval(this.heartbeat)

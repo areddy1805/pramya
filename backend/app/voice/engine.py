@@ -38,6 +38,7 @@ from typing import Any, cast
 from app.core.logging import get_logger
 from app.domain.enums import TurnDirection, VoiceState
 from app.domain.errors import (
+    InterviewStateError,
     NotFoundError,
     PramyaError,
     ValidationFailedError,
@@ -1104,7 +1105,13 @@ class VoiceEngine:
                 await self._start_silence_watchdog()
 
     async def _stop(self) -> None:
-        await self.interview.stop(self.session_id, self.user_id)
+        # The session may already be terminal (e.g. cancelled via the HTTP/
+        # SSE path before the WS control arrived) — cancellation of TTS must
+        # still happen, so tolerate the state-transition error.
+        try:
+            await self.interview.stop(self.session_id, self.user_id)
+        except InterviewStateError:
+            pass
         await self._cancel_tts()
         await self._cancel_answer()
         await self._cancel_evaluation()
@@ -1116,7 +1123,10 @@ class VoiceEngine:
         self._running = False
 
     async def _cancel(self) -> None:
-        await self.interview.cancel(self.session_id, self.user_id)
+        try:
+            await self.interview.cancel(self.session_id, self.user_id)
+        except InterviewStateError:
+            pass  # already terminal; TTS cancellation below is what matters
         await self._cancel_tts()
         await self._cancel_answer()
         await self._cancel_evaluation()
