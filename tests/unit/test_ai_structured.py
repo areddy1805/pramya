@@ -37,7 +37,7 @@ class QueueProvider:
 
 
 def _router(provider: QueueProvider) -> InferenceRouter:
-    return InferenceRouter(policy=TaskPolicyTable(), omlx=provider, deepseek=None)
+    return InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
 
 
 MSG = [ChatMessage(role="user", content="extract")]
@@ -51,18 +51,14 @@ async def test_structured_happy_path() -> None:
 
     assert parsed.title == "T"
     assert parsed.score == 8
-    assert result.decision.model == "pramya-4b"
+    assert result.decision.model == "deepseek-v4-flash"
     # Schema is embedded in the system prompt.
     assert "JSON Schema" in provider.calls[0][0].content
 
 
 async def test_structured_retries_with_feedback_then_succeeds() -> None:
-    provider = QueueProvider(
-        ["not json at all", '{"title": "T", "score": 9}']
-    )
-    parsed, _ = await generate_structured(
-        _router(provider), TaskClass.EXTRACTION, MSG, Extraction
-    )
+    provider = QueueProvider(["not json at all", '{"title": "T", "score": 9}'])
+    parsed, _ = await generate_structured(_router(provider), TaskClass.EXTRACTION, MSG, Extraction)
 
     assert parsed.title == "T"
     assert len(provider.calls) == 2

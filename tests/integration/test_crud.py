@@ -60,17 +60,19 @@ async def test_document_upload_and_validation(tmp_path, session_factory: object)
         svc = CandidateService(session)
         user = await svc.create_user(email=_email())
         doc_svc = DocumentService(session, storage_dir=tmp_path)
-        doc = await doc_svc.upload(
+        doc, parsed = await doc_svc.upload(
             user_id=user.id,
             kind=DocumentKind.RESUME,
-            filename="resume.pdf",
-            mime="application/pdf",
-            data=b"%PDF-1.4 fake",
+            filename="resume.md",
+            mime="text/markdown",
+            data=b"# Alex\nSenior engineer",
         )
-        assert doc.status == DocumentStatus.PENDING
-        assert doc.content_hash == content_hash(b"%PDF-1.4 fake")
+        assert doc.status == DocumentStatus.PARSED
+        assert doc.parsed_at is not None
+        assert doc.content_hash == content_hash(b"# Alex\nSenior engineer")
         assert doc.storage_key is not None
         assert (tmp_path / doc.storage_key).exists()
+        assert "Senior engineer" in parsed.content
 
         with pytest.raises(ValidationFailedError):
             await doc_svc.upload(
@@ -88,15 +90,54 @@ async def test_document_upload_and_validation(tmp_path, session_factory: object)
                 mime="application/pdf",
                 data=b"x" * (5 * 1024 * 1024 + 1),
             )
-        # duplicate content rejected
+        # duplicate content rejected once parsed
         with pytest.raises(ValidationFailedError):
             await doc_svc.upload(
                 user_id=user.id,
                 kind=DocumentKind.RESUME,
-                filename="dup.pdf",
-                mime="application/pdf",
-                data=b"%PDF-1.4 fake",
+                filename="dup.md",
+                mime="text/markdown",
+                data=b"# Alex\nSenior engineer",
             )
+        await session.rollback()
+
+
+async def test_upload_failed_parse_marks_failed_and_allows_retry(
+    tmp_path, session_factory: object
+) -> None:
+    """Malformed file -> FAILED status; identical re-upload is allowed again."""
+    async with session_factory() as session:  # type: ignore[attr-defined]
+        svc = CandidateService(session)
+        user = await svc.create_user(email=_email())
+        doc_svc = DocumentService(session, storage_dir=tmp_path)
+
+        with pytest.raises(ValidationFailedError):
+            await doc_svc.upload(
+                user_id=user.id,
+                kind=DocumentKind.RESUME,
+                filename="broken.pdf",
+                mime="application/pdf",
+                data=b"%PDF-1.4 this is not a real pdf",
+            )
+        await session.commit()
+
+        from app.repositories.document import DocumentRepository
+
+        repo = DocumentRepository(session)
+        failed = await repo.get_by_hash(user.id, content_hash(b"%PDF-1.4 this is not a real pdf"))
+        assert failed is not None
+        assert failed.status == DocumentStatus.FAILED
+
+        # identical content is retryable after FAILED (dedup skips FAILED docs)
+        doc, parsed = await doc_svc.upload(
+            user_id=user.id,
+            kind=DocumentKind.RESUME,
+            filename="ok.txt",
+            mime="text/plain",
+            data=b"recovered content",
+        )
+        assert doc.status == DocumentStatus.PARSED
+        assert "recovered content" in parsed.content
         await session.rollback()
 
 
@@ -140,7 +181,7 @@ async def test_cascade_delete_user_removes_all(session_factory: object) -> None:
 
         # document + chunk
         doc_svc = DocumentService(session)
-        doc = await doc_svc.upload(
+        doc, _parsed = await doc_svc.upload(
             user_id=user.id,
             kind=DocumentKind.RESUME,
             filename="r.txt",

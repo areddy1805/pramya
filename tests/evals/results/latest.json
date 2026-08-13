@@ -1,0 +1,122 @@
+{
+  "suites": {
+    "question_generation": [
+      {
+        "case_id": "qg-pipeline",
+        "metric": "structured_validity",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "difficulty=hard competency=System Design"
+      }
+    ],
+    "answer_evaluation": [
+      {
+        "case_id": "aev-pipeline",
+        "metric": "structured_validity",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "overall=7.6 evidence_rows=2"
+      }
+    ],
+    "evidence_extraction": [
+      {
+        "case_id": "ev-pipeline",
+        "metric": "structured_validity",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "claims=2"
+      }
+    ],
+    "rag": [
+      {
+        "case_id": "rag-001",
+        "metric": "context_precision_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "MAP@k=1.000 relevant=2"
+      },
+      {
+        "case_id": "rag-001",
+        "metric": "context_recall_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "recall=1.000 hits=2/2"
+      },
+      {
+        "case_id": "rag-002",
+        "metric": "context_precision_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "MAP@k=1.000 relevant=2"
+      },
+      {
+        "case_id": "rag-002",
+        "metric": "context_recall_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "recall=1.000 hits=2/2"
+      },
+      {
+        "case_id": "rag-003",
+        "metric": "context_precision_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "MAP@k=1.000 relevant=1"
+      },
+      {
+        "case_id": "rag-003",
+        "metric": "context_recall_det",
+        "score": 1.0,
+        "threshold": 0.6,
+        "passed": true,
+        "status": "PASS",
+        "detail": "recall=1.000 hits=1/1"
+      }
+    ],
+    "voice": [
+      {
+        "case_id": "voice-001",
+        "metric": "turn_finalization",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "turn_ended=True final_transcript=True"
+      },
+      {
+        "case_id": "voice-002",
+        "metric": "interruption_correctness",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "interrupted=True listening=True gen_bumped=True stale_bytes=False"
+      },
+      {
+        "case_id": "voice-003",
+        "metric": "stale_audio_prevention",
+        "score": 1.0,
+        "threshold": 1.0,
+        "passed": true,
+        "status": "PASS",
+        "detail": "bytes_after_interrupt=0 stale_tts_stop=False"
+      }
+    ]
+  }
+}

@@ -9,8 +9,13 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
+        ws: true, // voice interview WebSocket (phase 9)
+        // AI endpoints routinely take 20-120s (local inference): never let
+        // the dev proxy cut them off with its default 30s timeout.
+        timeout: 180_000,
+        proxyTimeout: 180_000,
       },
     },
   },

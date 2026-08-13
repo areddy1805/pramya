@@ -1,0 +1,47 @@
+{
+  "area": "evidence_extraction",
+  "description": "Golden cases for evidence extraction: precision, recall, completeness, unsupported-claim detection. Synthetic answers.",
+  "judge": "deepseek-v4-flash, temperature 0 (via InferenceRouter)",
+    "thresholds": {
+        "precision": 0.7,
+        "recall": 0.6,
+        "completeness": 0.6,
+        "unsupported_detection": 1.0
+    },
+  "methodology": "Primary extraction run = production behavior and is scored. A repeat run is stability/variance evidence only (recorded as WARNING; never inflates primary scores).",
+  "cases": [
+    {
+      "id": "ev-001",
+      "answer": "In my last role I built a recommendation API serving 40k requests per minute. I added Redis caching which cut p95 latency from 320ms to 90ms. I also wrote integration tests covering the checkout flow.",
+      "evidence_context": "Candidate profile: backend engineer, 5 years, e-commerce platform.",
+      "expect_claims": [
+        "built a recommendation API",
+        "40k requests per minute",
+        "added Redis caching",
+        "p95 latency from 320ms to 90ms",
+        "wrote integration tests"
+      ],
+      "expect_no_claims": ["designed the database schema from scratch"],
+      "expect_strength_high": ["added Redis caching"]
+    },
+    {
+      "id": "ev-002",
+      "answer": "I improved team velocity by 40% using agile ceremonies and also personally invented a new distributed consensus algorithm that everyone in the industry now uses.",
+      "evidence_context": "Candidate profile: team lead, 7 years.",
+      "expect_claims": ["improved team velocity by 40%", "invented a new distributed consensus algorithm"],
+      "expect_no_claims": ["developed the mobile app for the company"],
+      "note": "The consensus-algorithm claim appears verbatim in the answer; extraction correctly records it as claimed. Unsupported-claim flagging is the evaluation stage's job (aev-003 covers it)."
+    },
+    {
+      "id": "ev-003",
+      "answer": "I migrated the CI pipeline from Jenkins to GitHub Actions. Build time dropped from 25 minutes to 8. I also set up nightly dependency scanning.",
+      "evidence_context": "Candidate profile: DevOps engineer.",
+      "expect_claims": [
+        "migrated the CI pipeline from Jenkins to GitHub Actions",
+        "Build time dropped from 25 minutes to 8",
+        "set up nightly dependency scanning"
+      ],
+      "expect_no_claims": ["deployed the mobile app to the App Store"]
+    }
+  ]
+}

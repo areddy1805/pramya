@@ -33,9 +33,7 @@ class CandidateProfile(Base, TimestampMixin):
     __table_args__ = (UniqueConstraint("user_id", name="uq_candidate_profile_user_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("user.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     seniority_target: Mapped[str | None] = mapped_column(String(100), nullable=True)
     headline: Mapped[str | None] = mapped_column(String(300), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)

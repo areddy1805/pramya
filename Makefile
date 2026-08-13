@@ -28,7 +28,10 @@ test-contract:
 	cd backend && uv run pytest -c pyproject.toml ../tests/contract -q
 
 test-integration:
-	cd backend && uv run pytest -c pyproject.toml ../tests/integration -q
+	cd backend && PYTHONPATH=.. uv run pytest ../tests/integration -p no:warnings
+
+e2e:
+	cd frontend && pnpm exec playwright test
 
 evals:
 	cd backend && uv run pytest -c pyproject.toml ../tests/evals -q
@@ -46,7 +49,7 @@ typecheck:
 # --- Dev -------------------------------------------------------------------
 
 dev-backend:
-	cd backend && uv run uvicorn app.main:app --reload --port 8000
+	cd backend && uv run uvicorn app.main:app --reload --port 8001
 
 dev-frontend:
 	cd frontend && pnpm dev
@@ -58,7 +61,7 @@ models-pull:
 	@echo "See docs/MODEL_CATALOG.md for model download commands (Phase 4/7)."
 
 demo-setup:
-	@echo "Demo setup lands in Phase 11 (POST /api/v1/demo/setup)."
+	cd backend && uv run python ../scripts/seed_demo.py
 
 # --- Install ---------------------------------------------------------------
 

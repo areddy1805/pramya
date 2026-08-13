@@ -3,6 +3,32 @@
 > Companion to master plan §16 and ADR-012.
 > Voice is a first-class feature: explicit state machine, streaming ASR/TTS, correctness-grade interruption.
 
+## 0. Implementation Status (2026-08-13, physical-mic speaker-integrity)
+
+| Item | Status | Notes |
+|---|---|---|
+| H.1 concurrent engine | ✅ | `VoiceEngine.run()` receive loop never awaits TTS/ASR/DeepSeek/DB; work runs in `_tts_task` / `_answer_task` / `_start_session_task` |
+| H.2 turn finalization | ✅ | auto (RMS speech → silence watchdog, `voice_silence_seconds`) + manual (`end_turn` / Done speaking) |
+| H.3 answer loop | ✅ | end_turn → final ASR → `submit_answer` (DeepSeek) → evaluation event → next question → TTS |
+| H.4 model routing | ✅ | `voice_live_asr_model` (Parakeet), `voice_offline_asr_model` (Qwen3-ASR), `voice_tts_model`; live ASR ≠ offline ASR |
+| H.5 concurrency tests | ✅ | hot-loop interrupt mid-TTS, generation bump, no stale chunks, auto+manual end_turn, pause/resume/stop |
+| H.6 playback lifecycle | ✅ | AudioContext created synchronously in click; playback gated on `state==='running'` |
+| H.7 generation IDs | ✅ | `generation` on tts_start/tts_stop; server skips stale generations; client drops stale chunks |
+| H.8 persistence | ✅ | `TranscriptSegment` rows per turn (question + final answer) with explicit `speaker` column |
+| H.9 mic permission | ✅ | typed `micErrorMessage`: permission_denied / device_unavailable / mic_unavailable |
+| H.10 audio persistence | ✅ | opt-in (`voice_store_audio`): candidate PCM16 → WAV under `audio_storage_dir`, `AudioSegment` row; replay via `GET /interviews/{id}/voice/audio[/{segment_id}]` |
+| H.11 reconnect + heartbeat | ✅ | reconnect emits `resume` (authoritative state + last question); `heartbeat` → `heartbeat_ack`; client pings every 15s |
+| H.12 communication analysis | ✅ | deterministic `CommunicationAnalyzer` from persisted transcript timestamps; speaker from the `speaker` column |
+| H.13 playback-completion gating | ✅ | `tts_stop` no longer opens LISTENING; client sends `playback_complete{generation}` only after the real playback queue drains; server stays SPEAKING until then (see §2). Failure-mode guard `voice_playback_timeout_seconds` (45s) |
+| H.14 server-authoritative mic gating | ✅ | only LISTENING accepts mic frames for ASR; SPEAKING frames counted + discarded (never ASR'd); other states counted |
+| H.15 speaker integrity | ✅ | `transcript_segment.speaker` (`interviewer`/`candidate`/`unknown`) set at capture time (migration 0002 backfills legacy rows); communication analysis prefers the column |
+| H.16 diagnostics | ✅ | `voice_listening` (playback_confirmed), `voice_answer` (accepted/discarded frames+bytes, listening_ms, interruptions), `voice_tts`/`voice_asr`/`voice_interrupt` telemetry |
+| H.17 voice barge-in (opt-in) | ✅ | `voice_barge_in_enabled` (default OFF): sustained mic energy ≥ `voice_barge_in_rms` for `voice_barge_in_ms` during SPEAKING cancels TTS. Explicit `interrupt` control remains the guaranteed path |
+| Real-model E2E (fake-device mic) | ✅ | passed 2026-08-12 (sessions 39/40/41) + 2026-08-13 with the new gating contract: `tts_stop → playback_complete → state:listening` verified with real Qwen3-TTS + Parakeet |
+| Physical-mic E2E (real speakers+mic) | ✅ PASSED 2026-08-13 | single-turn + **live 5-turn** acoustic loops (real built-in mic + speakers, open-lid MacBook): every turn = TTS aloud → `playback_complete` gating → candidate speech through speakers → real-mic ASR (161–211 chars) → answer → evaluation → adaptive next question; interrupt mid-Q3 with zero stale chunks; all 5 evaluations persisted with correct speaker attribution. See §12 |
+
+**Observable event contract (acceptance):** `state` (idle→starting→speaking→listening→processing…) → `question` → `tts_start{generation}` → binary chunks → `tts_stop{generation}` → `partial_transcript` → `turn_ended` → `final_transcript` → `answer_submitted` → `evaluation` → next `question` → … Interrupt: `interrupt` control → `state: interrupted` → `state: listening`, generation bumped, zero stale chunks.
+
 ---
 
 ## 1. Pipeline
@@ -26,19 +52,53 @@ Cancellation supported at every boundary: LLM task cancel, TTS queue clear, clie
 
 ## 2. Explicit State Machine
 
-States: `listening`, `processing`, `speaking`, `paused`, `interrupted`, `cancelled`, `completed`, `error`, plus session-level `reconnecting`. Enforced server-side in VoiceEngine; mirrored client-side (single source of truth = server, broadcast as WS `state` events).
+States: `idle`, `starting`, `speaking` (== TTS playing), `listening`, `processing` (ASR → evaluation), `paused`, `interrupted`, `cancelled`, `completed`, `error`, plus session-level `reconnecting`. Enforced server-side in VoiceEngine; mirrored client-side (single source of truth = server, broadcast as WS `state` events).
+
+**Playback-completion gating (speaker integrity — authoritative transition):**
+
+```
+TTS_PLAYING (speaking) ──tts_stop──▶ still SPEAKING (playback tail may sound)
+    └─ client: playback queue drains + generation matches ──playback_complete──▶ LISTENING
+    └─ client dead/glitched ──playback_timeout_seconds──▶ LISTENING (playback_confirmed=false, diagnostic)
+```
+
+`tts_stop` alone NEVER opens LISTENING. The mic window opens only on the
+`playback_complete{generation}` handshake (stale generations ignored) or the
+timeout guard. This is what makes it impossible for the interviewer's own
+audio — still sounding from the browser queue — to become candidate input.
 
 Transitions (examples):
 
 ```
+speaking ──playback_complete──▶ listening
 listening ──user ends turn──▶ processing ──▶ speaking
-speaking ──user interrupts──▶ interrupted ──▶ (clear TTS) ──▶ listening
+speaking ──user interrupts──▶ interrupted ──▶ (clear TTS, generation bump) ──▶ listening
+speaking ──voice barge-in (opt-in)──▶ interrupted ──▶ listening
 any ──pause──▶ paused ──resume──▶ (previous state)
-listening/speaking ──stop──▶ cancelled
-error ──(recoverable)──▶ error_recovery ──▶ listening
+speaking ──pause──▶ paused (TTS cancelled; client flushes playback queue)
+listening/speaking ──stop──▶ completed · ──cancel──▶ cancelled
+error ──(recoverable)──▶ listening
 ```
 
-Rules: no stale TTS after interrupt (tested); interruption during generation cancels in-flight LLM; state preserved in LangGraph checkpoint + session row.
+**Mic gating semantics (server-authoritative):**
+
+- `LISTENING`: mic frames → candidate buffer → partial/final ASR. The only
+  window that can become a candidate answer.
+- `SPEAKING`: mic frames are counted (`discarded_tts_frames/bytes`) and never
+  ASR'd. The client keeps the capture worklet live so the server can answer
+  "was the mic active while the interviewer was speaking?" and so opt-in
+  voice barge-in can detect sustained candidate energy.
+- `processing`/`paused`/`interrupted`/`completed`/`cancelled`/`idle`: frames
+  counted as discarded-other, never ASR'd.
+
+Rules: no stale TTS after interrupt (tested); interruption during generation
+cancels in-flight LLM; state preserved in LangGraph checkpoint + session row.
+
+**Speaker-integrity guarantee:** every persisted `transcript_segment` carries
+an explicit `speaker` value (`interviewer` for question rows, `candidate` for
+answer rows) written at capture time — never inferred later. Legacy rows are
+backfilled from the JSONB role; rows without evidence stay `unknown` (never
+guessed).
 
 ## 3. Audio Data Model (privacy-first)
 
@@ -96,11 +156,12 @@ Server → client:
 
 | Failure | Behavior |
 |---|---|
-| DeepSeek down | local model (degraded quality) |
+| DeepSeek down | controlled provider error/retry (ADR-023 — no silent local-text fallback) |
 | oMLX/ASR down | manual transcript mode |
 | TTS down | text interviewer response |
-| retrieval down | degraded interview mode |
+| retrieval down | degraded interview mode (no context, logged) |
 | WS dropped | reconnect + transcript re-sync |
+| playback_complete never arrives | `voice_playback_timeout_seconds` guard opens LISTENING with `playback_confirmed=false` (diagnostic) |
 | ASR/TTS/LLM timeout | per-node TimeoutPolicy; retry policy; actionable error |
 
 Never "Something went wrong" — always actionable degraded state.
@@ -112,3 +173,58 @@ normal, fast, slow, long, short, silence, background noise, interruption, double
 ## 11. Performance Targets (measured then documented)
 
 - TTFA (time-to-first-audio) and TTF-Transcript low on M4; immediate interruption (<~100ms perceived); no stale playback; bounded memory; no sustained uncontrolled thermal load. Exact thresholds recorded in DEPLOYMENT/TROUBLESHOOTING after measurement.
+
+## 12. Physical-Microphone E2E — evidence (2026-08-13)
+
+**Verdict: PASSED.** Full acoustic loop with the REAL built-in microphone and
+REAL speakers (MacBook open; in clamshell mode the built-in mic delivers
+digital silence at the OS level — verified AVAudioRecorder peak 0 closed,
+peak 199 open).
+
+Setup: headed Chromium (Playwright, `--use-fake-ui-for-media-stream` only —
+no fake device), real mic auto-granted, browser playback through the Mac
+speakers, candidate speech played through the same speakers via `afplay`
+(real room-acoustic path). Harness: `frontend/scripts/voice_e2e_physical.mjs`.
+
+Observed event contract (session 76):
+
+```
+state:starting → state:speaking → question → tts_start
+  → 106 PCM chunks (Qwen3-TTS, real audio) → tts_stop
+  → playback_complete (client, after queue drained) → state:listening   ← gating
+  → afplay candidate speech → turn_ended → processing
+  → final_transcript (211 chars: "I led the migration of our payments platform…")
+  → answer_submitted → evaluation (overall 2)
+  → state:speaking → question (adaptive follow-up: "…optimistic concurrency with retries…")
+  → tts_start → INTERRUPT mid-TTS (button) → no further chunks (106 stays)
+```
+
+Persisted transcript (DB, `speaker` column):
+
+| speaker | text |
+|---|---|
+| interviewer | Talk me through a time you had to balance a high-availability… |
+| candidate | I led the migration of our payments platform from a monolith… |
+| interviewer | You mentioned using optimistic concurrency with retries to keep… |
+
+Assertions held: `gatingOk` (state:listening only after playback_complete),
+candidate transcript ≠ interviewer question (speaker integrity), answer
+submitted + evaluated, second question adaptive to the transcribed answer,
+zero stale chunks after interrupt. The interviewer's own playback was
+captured by the mic during SPEAKING and discarded (server-authoritative
+gating); it never became a candidate answer.
+
+**Live 5-turn run (2026-08-13, session 81):** 5 consecutive turns completed
+through the same acoustic path — `tts_start → chunks → tts_stop →
+playback_complete → state:listening` on every turn, candidate answers played
+through the speakers and transcribed (211/184/161/211/184 chars — the actual
+scripted answer texts), each evaluated (2, 1.5, 1, 2, 2.5) with the next
+question adapting to the transcribed content ("You mentioned implementing a
+transactional outbox…"), and an interrupt executed mid-Q3 TTS with zero stale
+chunks. Harness: `frontend/scripts/voice_e2e_5turns.mjs`. DB: 11 transcript
+segments (6 interviewer / 5 candidate, alternating, explicit speaker
+attribution) + 5 persisted evaluations.
+
+Known limitation: evaluation scores are low (1–3) because the "candidate" is a
+canned TTS clip, not an interactive answer — the scores reflect scripted,
+non-responsive answers, which is correct behavior.

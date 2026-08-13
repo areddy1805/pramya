@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.interview import (
     Answer,
@@ -49,6 +49,15 @@ class InterviewTurnRepository(BaseRepository[InterviewTurn]):
         )
         return (await self.session.scalars(stmt)).all()
 
+    async def latest_for_session(self, session_id: int) -> InterviewTurn | None:
+        stmt = (
+            select(InterviewTurn)
+            .where(InterviewTurn.interview_session_id == session_id)
+            .order_by(InterviewTurn.seq.desc())
+            .limit(1)
+        )
+        return (await self.session.scalars(stmt)).first()
+
     async def max_seq(self, session_id: int) -> int:
         stmt = select(InterviewTurn.seq).where(InterviewTurn.interview_session_id == session_id)
         seqs = (await self.session.scalars(stmt)).all()
@@ -57,6 +66,14 @@ class InterviewTurnRepository(BaseRepository[InterviewTurn]):
 
 class AudioSegmentRepository(BaseRepository[AudioSegment]):
     model = AudioSegment
+
+    async def list_for_session(self, session_id: int) -> Sequence[AudioSegment]:
+        stmt = (
+            select(AudioSegment)
+            .where(AudioSegment.interview_session_id == session_id)
+            .order_by(AudioSegment.id)
+        )
+        return (await self.session.scalars(stmt)).all()
 
 
 class TranscriptSegmentRepository(BaseRepository[TranscriptSegment]):
@@ -69,6 +86,11 @@ class TranscriptSegmentRepository(BaseRepository[TranscriptSegment]):
             .order_by(TranscriptSegment.seq)
         )
         return (await self.session.scalars(stmt)).all()
+
+    async def max_seq_for_turn(self, turn_id: int) -> int:
+        stmt = select(func.max(TranscriptSegment.seq)).where(TranscriptSegment.turn_id == turn_id)
+        value = (await self.session.scalars(stmt)).first()
+        return int(value) if value is not None else 0
 
 
 class QuestionRepository(BaseRepository[Question]):
@@ -85,6 +107,15 @@ class QuestionRepository(BaseRepository[Question]):
 
 class AnswerRepository(BaseRepository[Answer]):
     model = Answer
+
+    async def list_for_session(self, session_id: int) -> Sequence[Answer]:
+        stmt = (
+            select(Answer)
+            .join(Question, Question.id == Answer.question_id)
+            .where(Question.interview_session_id == session_id)
+            .order_by(Answer.id)
+        )
+        return (await self.session.scalars(stmt)).all()
 
     async def get_by_question(self, question_id: int) -> Answer | None:
         stmt = select(Answer).where(Answer.question_id == question_id)

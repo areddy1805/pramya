@@ -1,0 +1,40 @@
+{
+  "area": "voice",
+  "description": "Voice evaluation cases: transcription quality, turn finalization, interruption correctness, stale-audio prevention. Uses the engine seams (stub ASR/TTS/WS); no real oMLX inference in the default run.",
+  "judge": "deterministic engine assertions + optional semantic transcript scoring (deepseek judge, temperature 0)",
+  "thresholds": {
+    "turn_finalization": 1.0,
+    "interruption_correctness": 1.0,
+    "stale_audio_prevention": 1.0,
+    "transcription_quality": 0.6
+  },
+  "cases": [
+    {
+      "id": "voice-001",
+      "kind": "turn_finalization",
+      "description": "Silence watchdog finalizes the turn and produces a final transcript.",
+      "expect": "final_transcript emitted, answer submitted exactly once, state returns to LISTENING"
+    },
+    {
+      "id": "voice-002",
+      "kind": "interruption",
+      "description": "Barge-in during TTS cancels audio; generation bumps so stale chunks never transmit.",
+      "expect": "interrupted state observed, stale generation chunks dropped, no post-interrupt audio bytes"
+    },
+    {
+      "id": "voice-003",
+      "kind": "stale_audio",
+      "description": "After interrupt, an in-flight TTS chunk from an old generation is never sent.",
+      "expect": "no bytes from stale generation; tts_stop not emitted for cancelled generation"
+    },
+    {
+      "id": "voice-004",
+      "kind": "transcription",
+      "description": "Golden ASR transcript pairs scored for quality (optional semantic eval).",
+      "golden_pairs": [
+        {"asr": "I used Redis for caching and it helped a lot", "reference": "I used Redis for caching and it helped a lot"},
+        {"asr": "the p ninety five went down from three twenty", "reference": "the p95 latency dropped from 320ms"}
+      ]
+    }
+  ]
+}

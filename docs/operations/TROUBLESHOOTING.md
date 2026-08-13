@@ -27,7 +27,7 @@
 
 ```bash
 docker compose ps                # db up?
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8001/api/v1/health
 curl $OMLX_BASE_URL/models       # local models?
 make test                        # unit+integration
 make evals                       # AI eval suite

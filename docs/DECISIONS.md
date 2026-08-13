@@ -30,7 +30,10 @@
 | ADR-017 | Model-routed AI architecture | Accepted | inline below |
 | ADR-018 | Apple Silicon local AI (MLX/oMLX) | Accepted | inline below |
 | ADR-019 | Voice as a first-class capability | Accepted | inline below |
-| ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Accepted | inline below |
+| ADR-020 | Model stack finalization: 4B workhorse + DeepSeek escalation, 9B deferred | Superseded by ADR-023 (text routing) | inline below |
+| ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Superseded (framework realignment) | inline below |
+| ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Superseded (framework realignment) | inline below |
+| ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
 
 ---
 
@@ -355,3 +358,96 @@ Routing policy: 4B local first → application-level task-class decision → can
 - Evals/judge options updated (ADR-009: local judge = 4B, not 9B).
 - Local verification baseline at Phase 4 (catalog §6): `pramya-4b` discoverable/loads, thinking off, normal + structured JSON generation, alias works, no 9B dependency.
 - Only changeable via a new ADR + verified evidence (spec §7/§15 protocol).
+
+## ADR-021 — Knowledge Layer: Deterministic Ingestion + Retrieval (LlamaIndex not required)
+
+**Status:** Superseded — deterministic layer remains as the fallback/reference path; LlamaIndex is now the production ingestion/retrieval layer (realignment directive 2026-08, `app/knowledge/rag/service.py`).
+**Date:** 2026-08
+
+**Decision:** Phase 2.2/2.3 implement the knowledge layer with deterministic
+components owned by the application — `app/knowledge/chunking.py` (greedy
+paragraph packing, chunk_size/overlap), `app/knowledge/ingestion.py`
+(chunk → embed via InferenceRouter → pgvector write with explicit dedup),
+`app/knowledge/retrieval.py` (pgvector cosine + PostgreSQL FTS + RRF k=60 +
+Qwen3-Reranker via InferenceRouter) — instead of a LlamaIndex
+`IngestionPipeline` dependency. ADR-003's boundary intent is preserved:
+the knowledge layer owns ingestion/retrieval and never workflow state.
+
+**Context:** Plan §12/ADR-003 named LlamaIndex for ingestion. Project
+principles (deterministic-first, no unnecessary dependencies, router-only
+model access) and verified LlamaIndex behavior (IngestionPipeline does NOT
+dedupe against the vector store — run-llama#17871; embedding would call
+oMLX directly, bypassing the InferenceRouter boundary) point to a smaller
+equivalent.
+
+**Rationale:** The required pipeline (parse → chunk → metadata → embed →
+pgvector → dedup → hybrid retrieval → rerank → context → LLM) is fully
+implemented; only the framework is omitted. Every model call goes through
+the InferenceRouter (ADR-004 boundary). LlamaIndex remains a documented
+swap target behind the same service interfaces.
+
+**Consequences:** No LlamaIndex/langchain dependency in pyproject; dedup by
+content-hash on the immutable `document` row + replace-on-reindex (Phase 2.2
+idempotency test); retrieval degradation explicit (embedding down → FTS-only;
+rerank down → RRF order) and observable.
+
+## ADR-022 — Interview Engine: Deterministic Service State Machine (LangGraph not required)
+
+**Status:** Superseded — the interview lifecycle now executes a real LangGraph StateGraph (realignment directive 2026-08, `app/interview/workflow.py`) while InterviewService stays the domain/invariant layer. (implementation decision)
+**Date:** 2026-08
+
+**Decision:** Phase 3 implements the interview engine as a deterministic,
+DB-backed service state machine (`app/interview/state.py` transition table,
+`app/interview/service.py` lifecycle, `app/interview/generation.py`
+question/eval/hint generation) with SSE event streaming — not a LangGraph
+graph + Postgres checkpointer. Plan §7's own design rule ("State transitions
+for interview_session: enforced in the interview service, mirrored in
+LangGraph thread") makes the service authoritative; the DB rows (session
+status, turns, questions, answers, evaluations) provide durability.
+
+**Context:** ADR-002/plan §13 mandated LangGraph 1.2 with PostgresSaver
+checkpointing and interrupt/resume. The deterministic state machine
+satisfies every Phase 3 acceptance criterion (refresh survives via DB
+state, idempotent answers, pause/resume/cancel, evidence extraction,
+evaluation versioning) without the LangGraph dependency's API-churn risk on
+an overnight build.
+
+**Rationale:** Smallest architecture that fully satisfies V1; no second
+source of truth (plan itself names the interview service as the enforcer);
+deterministic-first; dependency risk register (plan §29 #4) avoided.
+
+**Consequences:** Interview session state is authoritative in PostgreSQL;
+SSE events streamed from an in-memory per-session event bus (single-process
+dev runtime; state rebuildable from rows). LangGraph remains a documented
+upgrade path behind the InterviewService interface.
+
+## ADR-023 — Production Text Inference: DeepSeek Only; Local oMLX for Audio + Retrieval
+
+Full ADR: `docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md`.
+
+**Decision (2026-08-12):** all textual/LLM inference routes through
+`deepseek-v4-flash` (sole production text provider). Local oMLX is retained
+for audio (Parakeet-TDT live ASR, Qwen3-ASR primary/recorded ASR,
+Qwen3-TTS) and retrieval (BGE-M3 embeddings, Qwen3-Reranker-0.6B). Local
+text-generation models (pramya-4b / qwen3.5-4b / qwen2.5-coder-7b) are
+prohibited in the production inference path; text tasks have no fallback
+chain (a DeepSeek failure is a controlled provider error/retry path, never a
+silent local text fallback). Thinking defaults off; reasoning is requested
+deliberately per operation.
+
+**Context:** local text model load/unload churn on a 16 GB M4 caused severe
+memory pressure and user-visible lag during voice sessions. A single remote
+text provider gives deterministic cost, predictable latency, and zero local
+text memory. The provider abstraction (InferenceRouter → provider contracts →
+DeepSeekProvider/MLXProvider) is unchanged; future text providers implement
+the same interface. Supersedes the local-text-LLM-first interpretation of
+ADR-004/ADR-011/ADR-013/ADR-020 for text routing.
+
+**Consequences:** `LLM_PROVIDER=deepseek`, `VOICE_PROVIDER=omlx`;
+`OMLX_ASR_MODEL=Qwen3-ASR-1.7B-4bit` (primary) with
+`OMLX_ASR_OPTIONAL_MODEL=parakeet-tdt-0.6b-v3`; task policy table maps every
+text task to `deepseek-v4-flash` with no fallback; `/models/status` reports
+provider roles (text LLM vs audio + retrieval); model catalog rewritten
+(§0/§1/§2.1). No L1/L2 inference cache exists yet — any future cache key must
+include provider/model so old local-model entries cannot masquerade as
+DeepSeek results.

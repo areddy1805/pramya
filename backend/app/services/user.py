@@ -43,7 +43,15 @@ class CandidateService:
         headline: str | None = None,
         timezone: str | None = None,
     ) -> CandidateProfile:
-        await self.users.get_or_raise(user_id, name="user")
+        """Create the candidate profile; ensure the owning user exists.
+
+        Single-user local default (plan §19): first-run profile creation
+        also creates the user row so a fresh install can bootstrap via the
+        UI without a separate user-creation step.
+        """
+        user = await self.users.get(user_id)
+        if user is None:
+            await self.users.add(User(id=user_id))
         existing = await self.profiles.get_by_user(user_id)
         if existing:
             raise ValidationFailedError("candidate profile already exists for this user")

@@ -1,7 +1,20 @@
 # ADR-008 — Observability
 
-**Status:** Accepted
+**Status:** Accepted — Runtime Verified (2026-08-12, Phase E)
 **Date:** 2026-08
+
+## Verification Evidence
+
+- Self-hosted Langfuse OSS stack (web 3.225.2, worker, postgres, redis,
+  clickhouse, minio) healthy under the `langfuse` docker-compose profile;
+  `GET http://127.0.0.1:3030/api/public/health` → 200.
+- Real DeepSeek operation (`POST /interviews/{id}/questions`) produced a
+  queryable Langfuse trace: OTel exporter → `/api/public/otel/v1/traces` →
+  MinIO S3 → langfuse-worker → ClickHouse → `GET /api/public/traces`
+  returned `question_generation`.
+- Degradation-safe proven: Langfuse container stopped → same endpoint 201,
+  OTel exporter retried/dropped without crash or hang.
+- No local text LLM used; DeepSeek is the only text model in the path.
 
 ## Context
 
@@ -19,13 +32,13 @@ How to observe AI workflows without exposing sensitive data?
 - **Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability
   platform.** Langfuse Cloud and Enterprise-only features are NOT V1
   dependencies; no paid Langfuse subscription is required.
-- Langfuse Python SDK 4.x (OTel-based; `get_client()` singleton) as the
-  observability backend, self-hosted/local by default (Docker Compose
-  optional profile).
-- LangGraph traced via `langfuse.langchain.CallbackHandler` in graph config;
-  one trace per interview invocation, `thread_id`/`session_id` propagation.
-- LlamaIndex via `openinference-instrumentation-llama-index` (native callback
-  deprecated in SDK v4).
+- Langfuse Python SDK 4.x (OTel-based) via a degradation-safe facade in
+  `app/observability` (`LangfuseObservability` / `NullObservability`,
+  `trace_span` / `record_event`). Configured via `LANGFUSE_PUBLIC_KEY`,
+  `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (default http://127.0.0.1:3030).
+- Wire AI execution paths (question generation, retrieval, evaluation,
+  evidence extraction, role analysis) with `trace_span`; voice telemetry
+  (ASR/TTS latency, interruption count) via `record_event`.
 - Structured telemetry fields: request_id, session_id, turn_id, graph_node,
   model, provider, latency, tokens, cache_hit, retrieval_count,
   reranker_count, ASR latency, TTS latency, time_to_first_audio,

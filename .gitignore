@@ -141,3 +141,5 @@ generated/
 
 .runtime/
 .local/
+# pi agent local state (notebook, tasks)
+.pi/

@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.factory import build_inference_router
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.domain.enums import DocumentKind, EvidenceStatus
 from app.domain.errors import NotFoundError
+from app.knowledge.ingestion import IngestionService
+from app.knowledge.parsing import parse_document_with_timeout
+from app.repositories.document import DocumentChunkRepository
 from app.services.document import DocumentService
 from app.services.evidence import EvidenceService
+from app.services.extraction import ResumeExtractionRunner
+from app.services.role import RoleAnalysisService
 from app.services.user import CandidateService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -117,6 +125,7 @@ async def create_candidate(
         headline=body.headline,
         timezone=body.timezone,
     )
+    await session.commit()
     return CandidateProfileOut.model_validate(profile)
 
 
@@ -133,6 +142,7 @@ async def update_candidate(
         headline=body.headline,
         timezone=body.timezone,
     )
+    await session.commit()
     return CandidateProfileOut.model_validate(profile)
 
 
@@ -140,6 +150,7 @@ async def update_candidate(
 async def delete_candidate(user_id: int, session: SessionDep) -> None:
     svc = CandidateService(session)
     await svc.delete_user(user_id)  # cascades to all owned data
+    await session.commit()
 
 
 @router.get("/documents", response_model=list[DocumentOut])
@@ -162,15 +173,22 @@ async def upload_document(
     file: UploadFileDep,
 ) -> DocumentOut:
     settings = get_settings()
-    svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
+    svc = DocumentService(
+        session,
+        storage_dir=Path(settings.upload_storage_dir),
+        max_size_mb=settings.upload_max_mb,
+        max_pages=settings.document_max_pages,
+        parse_timeout_seconds=settings.document_parse_timeout_seconds,
+    )
     data = await file.read()
-    doc = await svc.upload(
+    doc, _parsed = await svc.upload(
         user_id=user_id,
         kind=kind,
         filename=file.filename or "unnamed",
         mime=file.content_type or "application/octet-stream",
         data=data,
     )
+    await session.commit()
     return DocumentOut.model_validate(doc)
 
 
@@ -195,6 +213,75 @@ async def delete_document(
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
     await svc.delete_document(user_id, document_id)
+    await session.commit()
+
+
+class DocumentIndexOut(BaseModel):
+    document_id: int
+    chunk_count: int
+    dimension: int = 0
+
+
+@router.post("/documents/{document_id}/index", response_model=DocumentIndexOut)
+async def index_document(
+    session: SessionDep,
+    document_id: int,
+    user_id: int = Query(...),
+) -> DocumentIndexOut:
+    """Chunk + embed + persist a parsed document (idempotent re-index)."""
+    settings = get_settings()
+    doc_svc = DocumentService(
+        session,
+        storage_dir=Path(settings.upload_storage_dir),
+        max_size_mb=settings.upload_max_mb,
+        max_pages=settings.document_max_pages,
+        parse_timeout_seconds=settings.document_parse_timeout_seconds,
+    )
+    doc = await doc_svc.get_document(user_id, document_id)
+    data = await doc_svc.read_stored_bytes(user_id, document_id)
+    parsed = await parse_document_with_timeout(
+        data=data,
+        kind=doc.kind,
+        mime=doc.mime,
+        filename=doc.filename,
+        content_hash=doc.content_hash,
+        max_pages=settings.document_max_pages,
+        timeout_seconds=settings.document_parse_timeout_seconds,
+    )
+    router = build_inference_router(settings)
+    # Phase D: production ingestion executes the LlamaIndex pipeline
+    # (RouterEmbeddings -> PramyaVectorStore); deterministic IngestionService
+    # stays as the reference/fallback layer.
+    try:
+        from app.knowledge.rag.service import LlamaIndexIngestionService
+
+        rag_ingestion = LlamaIndexIngestionService(
+            session,
+            router,
+            chunk_size=settings.knowledge_chunk_size,
+            chunk_overlap=settings.knowledge_chunk_overlap,
+        )
+        count = await rag_ingestion.index_document(doc, parsed.content)
+        if count:
+            await session.commit()
+            chunks = await DocumentChunkRepository(session).list_for_document(document_id)
+            dimension = len(chunks[0].embedding) if chunks and chunks[0].embedding else 0
+            return DocumentIndexOut(document_id=doc.id, chunk_count=count, dimension=dimension)
+    except Exception as exc:
+        # Degrade to the deterministic ingestion path (reference layer).
+        logging.getLogger(__name__).warning(
+            "llamaindex ingestion degraded to deterministic path: %s", exc
+        )
+    ingestion = IngestionService(
+        session,
+        router,
+        chunk_size=settings.knowledge_chunk_size,
+        chunk_overlap=settings.knowledge_chunk_overlap,
+        embed_batch_size=settings.knowledge_embed_batch_size,
+    )
+    rows = await ingestion.index_document(doc, parsed.content)
+    dimension = len(rows[0].embedding) if rows and rows[0].embedding else 0
+    return DocumentIndexOut(document_id=doc.id, chunk_count=len(rows), dimension=dimension)
 
 
 @router.get("/candidates/{user_id}/evidence", response_model=list[EvidenceOut])
@@ -220,4 +307,128 @@ async def patch_evidence(
     item = await svc.patch(
         user_id, evidence_id, status=body.status, strength=body.strength, notes=body.notes
     )
+    await session.commit()
     return EvidenceOut.model_validate(item)
+
+
+# --- Roles (Phase 2.5) -------------------------------------------------------
+
+
+class CompetencyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    category: str
+    level: int
+    importance: str
+    weight: float
+    importance_rank: int
+
+
+class RoleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    title: str
+    seniority: str | None = None
+    summary: str | None = None
+    created_at: datetime
+
+
+class RoleDetailOut(RoleOut):
+    competencies: list[CompetencyOut] = Field(default_factory=lambda: [])
+
+
+class RoleAnalyzeIn(BaseModel):
+    user_id: int
+    jd_text: str = Field(min_length=20, max_length=100_000)
+    source_document_id: int | None = None
+
+
+@router.post("/roles/analyze", response_model=RoleDetailOut, status_code=201)
+async def analyze_role(
+    body: RoleAnalyzeIn,
+    session: SessionDep,
+) -> RoleDetailOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    role = await svc.analyze(body.user_id, body.jd_text, source_document_id=body.source_document_id)
+    competencies = await svc.roles.list_competencies(role.id)
+    await session.commit()
+    # Build manually: model_validate(role) would lazy-load the competencies
+    # relationship outside the async greenlet (MissingGreenlet).
+    detail = RoleDetailOut(
+        id=role.id,
+        user_id=role.user_id,
+        title=role.title,
+        seniority=role.seniority,
+        summary=role.summary,
+        created_at=role.created_at,
+    )
+    detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
+    return detail
+
+
+@router.get("/roles/{role_id}", response_model=RoleDetailOut)
+async def get_role(
+    role_id: int,
+    session: SessionDep,
+    user_id: int = Query(...),
+) -> RoleDetailOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    role = await svc.roles.get_or_raise(role_id, name="role")
+    if role.user_id != user_id:
+        raise NotFoundError("role not found")
+    competencies = await svc.roles.list_competencies(role.id)
+    detail = RoleDetailOut(
+        id=role.id,
+        user_id=role.user_id,
+        title=role.title,
+        seniority=role.seniority,
+        summary=role.summary,
+        created_at=role.created_at,
+    )
+    detail.competencies = [CompetencyOut.model_validate(c) for c in competencies]
+    return detail
+
+
+@router.get("/roles", response_model=list[RoleOut])
+async def list_roles(
+    session: SessionDep,
+    user_id: int = Query(...),
+) -> list[RoleOut]:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    svc = RoleAnalysisService(session, router)
+    roles = await svc.roles.list_for_user(user_id)
+    return [RoleOut.model_validate(r) for r in roles]
+
+
+# --- Candidate extraction (Phase 2.4) ----------------------------------------
+
+
+class ExtractionOut(BaseModel):
+    extraction: dict[str, object]
+    evidence_count: int
+
+
+@router.post("/candidates/{user_id}/extract", response_model=ExtractionOut)
+async def extract_candidate(
+    session: SessionDep,
+    user_id: int,
+    document_id: int = Query(...),
+) -> ExtractionOut:
+    settings = get_settings()
+    router = build_inference_router(settings)
+    runner = ResumeExtractionRunner(session, router, storage_dir=Path(settings.upload_storage_dir))
+    extraction, count = await runner.extract_document(user_id, document_id)
+    await session.commit()
+    return ExtractionOut(
+        extraction=extraction.model_dump(),
+        evidence_count=count,
+    )

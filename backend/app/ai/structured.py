@@ -31,9 +31,7 @@ def _schema_text[T: BaseModel](schema_model: type[T]) -> str:
     return json.dumps(schema_model.model_json_schema(), sort_keys=True)
 
 
-def _feedback_message[T: BaseModel](
-    schema_model: type[T], errors: list[dict[str, object]]
-) -> str:
+def _feedback_message[T: BaseModel](schema_model: type[T], errors: list[dict[str, object]]) -> str:
     return (
         "Your previous response did not validate against the JSON Schema. "
         f"Validation errors: {json.dumps(errors, default=str)}. "
