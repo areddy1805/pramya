@@ -68,9 +68,11 @@ class StubTTS:
     synthesizes: list[str] = field(default_factory=list)
     gate: asyncio.Event | None = None  # if set, synthesize blocks until released
     chunk_delay: float = 0.0  # per-chunk sleep (deterministic mid-stream interrupts)
+    calls: list[str] = field(default_factory=list)  # ordered: warmup/synthesize
 
     async def synthesize(self, text: str) -> tuple[bytes, int]:
         self.synthesizes.append(text)
+        self.calls.append(f"syn:{text}")
         if self.gate is not None:
             await self.gate.wait()
         return self.pcm, self.sr
@@ -78,6 +80,7 @@ class StubTTS:
     async def synthesize_stream(self, text: str, *, streaming_interval: float = 1.0):
         """Streaming surface: yields PCM in 200ms (9600-byte) frames."""
         self.synthesizes.append(text)
+        self.calls.append(f"syn:{text}")
         if self.gate is not None:
             await self.gate.wait()
         for i in range(0, len(self.pcm), 9600):
@@ -88,7 +91,7 @@ class StubTTS:
                 await asyncio.sleep(self.chunk_delay)
 
     async def warmup(self) -> None:
-        return None
+        self.calls.append("warmup")
 
 
 class StubTranscripts:
@@ -772,7 +775,14 @@ async def test_long_run_multi_turn_endurance() -> None:
         await _open_listening(ws, engine, ms=2000)
         ws.push_bytes(b"\x00\x01" * 3200)
         ws.push_json({"type": "end_turn"})
-        if not await _wait_event(ws, "evaluation", ms=5000):
+        # R11: EVERY answer must produce its own deferred evaluation event
+        # (per-answer dedup, not a one-shot evaluation flag).
+        for _ in range(1000):
+            evals = [e for e in ws.json_out if e.get("type") == "evaluation"]
+            if len(evals) >= turn + 1:
+                break
+            await asyncio.sleep(0.005)
+        else:
             raise AssertionError(f"no evaluation on turn {turn}")
         # Let the next-question pipeline settle.
         for _ in range(200):
@@ -809,3 +819,28 @@ async def test_long_run_multi_turn_endurance() -> None:
     gens = [e.get("generation") for e in ws.json_out if e.get("type") == "tts_start"]
     assert gens == sorted(gens) and len(gens) == len(set(gens)), "generation must be monotonic"
     await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_tts_warmup_precedes_first_synthesis() -> None:
+    """R4 regression: the TTS model is warmed (awaited) BEFORE the first
+    question pipeline synthesizes, so the first real synthesis never queues
+    behind the warmup request on the serialized oMLX slot."""
+    ws = StubWS()
+    tts = StubTTS()
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "question", ms=5000)
+    # The worker synthesizes the first flushed segment right after the
+    # question event; poll until it has run.
+    for _ in range(400):
+        if any(c.startswith("syn:") for c in tts.calls):
+            break
+        await asyncio.sleep(0.005)
+    await _cancel_task(task)
+    assert tts.calls and tts.calls[0] == "warmup", f"expected warmup first, got {tts.calls}"
+    assert any(c.startswith("syn:") for c in tts.calls)
+    warmup_idx = tts.calls.index("warmup")
+    syn_idxs = [i for i, c in enumerate(tts.calls) if c.startswith("syn:")]
+    assert syn_idxs and warmup_idx < syn_idxs[0]

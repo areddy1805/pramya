@@ -86,7 +86,8 @@ class Settings(BaseSettings):
     voice_store_audio: bool = True
     audio_storage_dir: str = ".runtime/audio"
     # Turn finalization: silence (s) after speech ends auto-ends the turn.
-    voice_silence_seconds: float = 1.0
+    # 1.5s (V1 value): 1.0s truncated answers at natural sentence pauses.
+    voice_silence_seconds: float = 1.5
     # RMS energy threshold (0-32767) to consider speech present.
     voice_speech_rms: float = 400.0
     # Streaming playback chunk (samples per PCM16 audio_chunk frame).

@@ -47,7 +47,7 @@ from app.models.interview import AudioSegment, TranscriptSegment
 from app.repositories.interview import AudioSegmentRepository, TranscriptSegmentRepository
 from app.voice.asr import ASRClient
 from app.voice.profile import InterviewerVoiceProfile
-from app.voice.segmenter import TextSegmenter
+from app.voice.segmenter import QuestionStreamExtractor, TextSegmenter
 from app.voice.tts import TTSClient
 
 _logger = get_logger("app.voice.engine")
@@ -169,7 +169,7 @@ class VoiceEngine:
         # LISTENING window so it never shares the async DB session with the
         # question pipeline (concurrent AsyncSession use is unsafe).
         self._pending_evaluation: tuple[str, int] | None = None
-        self._evaluation_started = False
+        self._evaluated_qids: set[int] = set()  # per-answer evaluation dedup
         self._start_session_task: asyncio.Task[None] | None = None
         self._warmup_task: asyncio.Task[None] | None = None
         self._silence_task: asyncio.Task[None] | None = None
@@ -232,10 +232,12 @@ class VoiceEngine:
         self.ws = ws
         try:
             await self._set_state(VoiceState.IDLE)
-            # Warm the TTS runtime once per session (R4: model resident, no
-            # per-sentence load); best-effort and non-blocking.
-            self._warmup_task = asyncio.create_task(self._warmup_tts())
-            # Begin + first question run as background tasks.
+            # Begin + first question run as background tasks. The TTS warmup
+            # is AWAITED inside _start_session before the first question
+            # pipeline starts, so the first real synthesis never queues
+            # behind the warmup request on the serialized oMLX slot (R4
+            # sequencing defect fix: warmup -> question -> speak, never
+            # question -> [blocked behind warmup]).
             self._start_session_task = asyncio.create_task(self._start_session())
             while self._running and not self._disconnected:
                 try:
@@ -257,6 +259,7 @@ class VoiceEngine:
             await self._cancel_tts()
             await self._cancel_answer()
             await self._cancel_evaluation()
+            await self._cancel_warmup()
             self._stop_playback_timeout()
             try:
                 await ws.close()
@@ -265,11 +268,23 @@ class VoiceEngine:
 
     async def _warmup_tts(self) -> None:
         """R4: keep the TTS model resident so the first real sentence does not
-        pay the model-load cost. Runs once per session, never blocks the loop."""
+        pay the model-load cost. Runs once per session inside the session
+        task; awaited before the first question pipeline starts."""
         try:
             await self.tts.warmup()
         except Exception:  # noqa: BLE001
             _logger.debug("tts warmup skipped")
+
+    async def _cancel_warmup(self) -> None:
+        if self._warmup_task is not None and not self._warmup_task.done():
+            self._warmup_task.cancel()
+            try:
+                await self._warmup_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning("warmup task cancelled with error: %s", exc)
+        self._warmup_task = None
 
     async def _start_session(self) -> None:
         """Begin session if needed, then kick the first question task."""
@@ -282,6 +297,11 @@ class VoiceEngine:
             if str(session.status) in ("created", "planning"):
                 await self.interview.begin(self.session_id, self.user_id)
                 await self._set_state(VoiceState.STARTING)
+                # R4 sequencing: load/warm the TTS model BEFORE the first
+                # question pipeline streams, so the first segment synthesis
+                # never queues behind the warmup request on the serialized
+                # oMLX slot (cold-start correctness; ~1s when already warm).
+                await self._warmup_tts()
                 await self._ask_next_question()
             else:
                 # Reconnect (Phase H): session already in progress. Resync the
@@ -378,6 +398,10 @@ class VoiceEngine:
             speech_task = asyncio.create_task(self._speech_worker(segments, generation))
             self._speech_task = speech_task
             segmenter = TextSegmenter()
+            # Presentation boundary (P0): only the QUESTION: text section of
+            # the model stream is speakable — never TYPE/DIFFICULTY/RATIONALE/
+            # TARGET/HINTS metadata, never JSON of the structured question.
+            extractor = QuestionStreamExtractor()
             t_qstart = time.monotonic()
             llm_first_token_ms: float | None = None
             llm_done_ms: float | None = None
@@ -390,12 +414,17 @@ class VoiceEngine:
                 if kind == "token" and isinstance(payload, str):
                     if llm_first_token_ms is None:
                         llm_first_token_ms = round((time.monotonic() - t_qstart) * 1000, 1)
-                    for seg in segmenter.feed(payload):
-                        await segments.put(seg)
+                    for t in extractor.feed(payload):
+                        for seg in segmenter.feed(t):
+                            await segments.put(seg)
                 elif kind == "question":
                     question, turn = cast("tuple[Any, Any]", payload)
                     self._last_question_id = question.id
                     self._last_question_turn_id = turn.id
+                    # Flush extractor remainder, then segmenter remainder.
+                    for t in extractor.flush():
+                        for seg in segmenter.feed(t):
+                            await segments.put(seg)
                     tail = segmenter.flush()
                     if tail:
                         await segments.put(tail)
@@ -418,6 +447,11 @@ class VoiceEngine:
                 )
 
             await segments.put(None)  # signal end of stream to the worker
+            # Analytical lane (R11): the pending answer evaluation can now run
+            # safely — the question pipeline's DB writes are complete and the
+            # TTS worker holds no DB. Evals land during this question's speech
+            # instead of waiting for the next LISTENING window.
+            self._maybe_start_evaluation()
             await speech_task  # wait until ALL audio is sent
 
             from app.observability import record_event
@@ -467,25 +501,64 @@ class VoiceEngine:
     async def _speech_worker(
         self, segments: asyncio.Queue[str | None], generation: int
     ) -> None:
-        """Serialize segment synthesis on the single oMLX slot; stream PCM.
+        """Per-segment synthesis with producer/sender overlap.
 
-        Receives complete speakable segments (or None = end of stream),
-        synthesizes each via the streaming TTS endpoint and relays fixed-
-        200ms PCM frames to the browser. Holds ``_speech_lock`` per segment
-        (single serialized inference). Stops immediately when the generation
-        changes or the engine stops (interrupt/barge-in).
+        Receives complete speakable segments (or None = end of stream).
+        The PRODUCER synthesizes each segment as a complete WAV on the single
+        oMLX slot and splits it into fixed 200ms PCM16 frames; the SENDER
+        relays frames to the browser concurrently, so segment N+1 is
+        synthesized while segment N is still playing (continuous speech,
+        no chunk-chaining gaps). Each segment's frames are self-contained —
+        no cross-segment buffer merging, no native-stream interval artifacts.
+
+        Stops immediately when the generation changes or the engine stops
+        (interrupt/barge-in cancels both coroutines and closes the request).
         """
-        buf = bytearray()
+        frame_q: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=64)
         target_bytes = self.chunk_samples * 2  # 200ms @ 24kHz PCM16
-        first_state_sent = False
 
-        async def _flush_frames() -> None:
-            nonlocal first_state_sent
-            while len(buf) >= target_bytes:
+        async def producer() -> None:
+            while True:
+                seg = await segments.get()
+                if seg is None:
+                    await frame_q.put(None)
+                    return
                 if self._generation != generation or not self._running:
                     return
-                frame = bytes(buf[:target_bytes])
-                del buf[:target_bytes]
+                try:
+                    # Dev/observability: log the EXACT TTS-bound text (proves
+                    # only question text is spoken, never metadata).
+                    _logger.info(
+                        "tts segment: chars=%d text=%r", len(seg), seg[:160]
+                    )
+                    async with self._speech_lock:
+                        pcm, _sr = await self.tts.synthesize(seg)
+                    for i in range(0, len(pcm), target_bytes):
+                        if self._generation != generation or not self._running:
+                            return
+                        frame = pcm[i : i + target_bytes]
+                        if len(frame) < target_bytes:
+                            # Pad the final partial frame with silence so the
+                            # sender always relays uniform frames (no tiny
+                            # fragments, no boundary jitter).
+                            frame = frame + b"\x00\x00" * (target_bytes - len(frame))
+                        await frame_q.put(frame)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    # A failed segment must not kill the interview: skip it
+                    # and keep speaking the remaining sentences.
+                    _logger.warning("tts segment failed (%d chars): %s", len(seg), exc)
+                    continue
+
+        async def sender() -> None:
+            first_state_sent = False
+            while True:
+                frame = await frame_q.get()
+                if frame is None:
+                    return
+                if self._generation != generation or not self._running:
+                    return
                 if not first_state_sent:
                     first_state_sent = True
                     if self._first_audio_at is None:
@@ -494,31 +567,7 @@ class VoiceEngine:
                 await self._send_bytes(frame)
                 await asyncio.sleep(0)
 
-        while True:
-            seg = await segments.get()
-            if seg is None:
-                await _flush_frames()
-                break
-            try:
-                async with self._speech_lock:
-                    async for pcm in self.tts.synthesize_stream(
-                        seg, streaming_interval=self.tts_streaming_interval
-                    ):
-                        if self._generation != generation or not self._running:
-                            return
-                        buf.extend(pcm)
-                        await _flush_frames()
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                # A failed segment must not kill the interview: skip it and
-                # keep speaking the remaining sentences.
-                _logger.warning("tts segment failed (%d chars): %s", len(seg), exc)
-                continue
-        # end of stream
-        if first_state_sent is False and self._generation == generation:
-            # No audio was produced at all (all segments failed).
-            pass
+        await asyncio.gather(producer(), sender())
 
     async def _persist_question_transcript(
         self, text: str, turn_id: int, *, started: datetime | None = None
@@ -618,14 +667,22 @@ class VoiceEngine:
         self._maybe_start_evaluation()
 
     def _maybe_start_evaluation(self) -> None:
-        """Launch the deferred evaluation exactly once (two-lane)."""
-        if self._evaluation_started:
-            return
+        """Launch the deferred evaluation for the pending answer (two-lane).
+
+        Exactly once PER ANSWER: each new answer overwrites
+        _pending_evaluation; _evaluated_qids dedupes so a replay of the same
+        listening window can never double-evaluate. Runs only when the
+        question pipeline is quiescent (LISTENING window), so it never
+        contends with the question pipeline on the shared async session.
+        """
         pending = self._pending_evaluation
         if pending is None:
             return
-        self._evaluation_started = True
         transcript, qid = pending
+        if qid in self._evaluated_qids:
+            return
+        self._evaluated_qids.add(qid)
+        self._pending_evaluation = None
         self._evaluation_task = asyncio.create_task(
             self._evaluate_answer_background(transcript, qid)
         )

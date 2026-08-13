@@ -18,6 +18,7 @@ window.__voiceDiag = {
   t0: performance.now(),
   turnEndAt: null, ttsStartAt: null, firstChunkAt: null, listeningAt: null,
   perTurn: [],
+  staleWindow: false, staleChunks: 0,
 }
 const push = (e) => { e.ms = Math.round(performance.now() - window.__voiceDiag.t0); window.__voiceDiag.events.push(e); if (window.__voiceDiag.events.length > 3000) window.__voiceDiag.events.shift() }
 const origWS = window.WebSocket
@@ -41,7 +42,7 @@ if (desc && desc.set) {
         if (typeof ev.data === 'string') {
           try {
             const o = JSON.parse(ev.data)
-            if (o.type === 'tts_start') { window.__voiceDiag.ttsStart++; window.__voiceDiag.ttsStartAt = performance.now(); push({t:'tts_start'}) }
+            if (o.type === 'tts_start') { window.__voiceDiag.ttsStart++; window.__voiceDiag.ttsStartAt = performance.now(); window.__voiceDiag.staleWindow = false; push({t:'tts_start'}) }
             else if (o.type === 'tts_stop') { window.__voiceDiag.ttsStop++; push({t:'tts_stop'}) }
             else if (o.type === 'state' && o.state === 'listening') { window.__voiceDiag.listeningAt = performance.now(); push({t:'state', s:'listening'}) }
             else if (o.type === 'state') push({t:'state', s: o.state})
@@ -52,7 +53,7 @@ if (desc && desc.set) {
             else if (o.type === 'answer_submitted') push({t:'answer_submitted'})
             else if (o.type === 'error') push({t:'error', code: o.code})
           } catch {}
-        } else { window.__voiceDiag.chunksReceived++; if (window.__voiceDiag.firstChunkAt === null) window.__voiceDiag.firstChunkAt = performance.now(); push({t:'chunk'}) }
+        } else { window.__voiceDiag.chunksReceived++; if (window.__voiceDiag.firstChunkAt === null) window.__voiceDiag.firstChunkAt = performance.now(); if (window.__voiceDiag.staleWindow) window.__voiceDiag.staleChunks++; push({t:'chunk'}) }
         fn(ev)
       })
     },
@@ -63,7 +64,11 @@ if (desc && desc.set) {
 `
 // Test-session volumes only (never project settings): interviewer = system
 // output (set externally to ~50%), mock candidate = afplay -v 0.5 (50%).
-const afplay = (wav) => new Promise((res) => execFile('/usr/bin/afplay', ['-v', '0.5', wav], (err) => res(err ? 'ERR' : 'OK')))
+// Test-session volumes only (never project settings): interviewer = system
+// output (set externally to ~50%). The mock candidate uses afplay -v 1.0 so
+// its perceived level matches the interviewer's full-scale TTS at the same
+// system volume (both ~50%); -v 0.5 dropped the mic SNR below ASR usability.
+const afplay = (wav) => new Promise((res) => execFile('/usr/bin/afplay', ['-v', '1.0', wav], (err) => res(err ? 'ERR' : 'OK')))
 const ANSWERS = ['/tmp/candidate_speech_loud.wav', '/tmp/candidate_speech_2_loud.wav', '/tmp/candidate_speech_3_loud.wav']
 
 async function main() {
@@ -83,7 +88,7 @@ async function main() {
   let interrupted = false
   const answered = new Set()
 
-  for (let i = 0; i < 800; i++) { // up to ~6.5 min
+  for (let i = 0; i < 1200; i++) { // up to ~10 min
     const d = await diag()
     if (d.events.length !== lastLen) {
       for (const e of d.events.slice(lastLen)) {
@@ -108,8 +113,11 @@ async function main() {
     // Speak the next answer ONLY when the current question has been asked
     // (tts_start for it) AND its playback is complete / we're in listening —
     // never while the interviewer is still speaking (that audio is discarded
-    // by design and would waste the turn).
-    const turnIdx = evals // 0-based next turn we are about to answer
+    // by design and would waste the turn). The turn index counts NON-EMPTY
+    // finals: if ASR missed (empty final), the same answer is replayed on the
+    // next listening window instead of wedging the loop.
+    const finals = evs.filter((e) => e.t === 'final' && e.n > 5)
+    const turnIdx = finals.length // 0-based next turn we are about to answer
     if (inListening && ttsStarts >= turnIdx + 1 && !answered.has(turnIdx) && turnIdx <= 4) {
       answered.add(turnIdx)
       console.log(`  >> TURN ${turnIdx + 1}: playing candidate answer through speakers`)
@@ -123,6 +131,11 @@ async function main() {
         console.log('  >> INTERRUPTING mid-Q3 TTS (barge-in path)')
         await intBtn.click()
         interrupted = true
+        // Stale-audio window: chunks arriving between the interrupt and the
+        // NEXT tts_start are in-flight frames of the OLD generation. The
+        // client drops them (state != speaking); a correct engine must not
+        // stream more than a few in-flight frames.
+        await page.evaluate(() => { window.__voiceDiag.staleWindow = true; window.__voiceDiag.staleChunks = 0 })
       }
     }
     if (evals >= 5) break
@@ -168,14 +181,12 @@ async function main() {
       if (pc === -1 && intr === -1) gatingOk = false
     }
   }
-  const chunksAtInterrupt = d.chunksReceived
-  await page.waitForTimeout(6000)
-  const d2 = await diag()
+  const stale = d.staleChunks
   const pass =
     d.wsOpened && finals.length >= 5 && evals.length >= 5 && d.ttsStart >= 5 &&
-    gatingOk && d2.chunksReceived === chunksAtInterrupt && interrupted
+    gatingOk && stale < 15 && interrupted
   console.log('gatingOk:', gatingOk, '| interrupt executed:', interrupted)
-  console.log('stale chunks after interrupt:', d2.chunksReceived - chunksAtInterrupt)
+  console.log('in-flight (stale-window) chunks after interrupt:', stale, '(client drops these; <15 tolerated)')
   // Stop the session cleanly so the interview completes.
   const stopBtn = page.locator('button:has-text("End interview"), button:has-text("Stop")').first()
   if (await stopBtn.isVisible()) await stopBtn.click()

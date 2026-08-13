@@ -158,11 +158,15 @@ export function InterviewPage() {
             const base = t.filter((l) => !(l.role === 'candidate' && l.partial))
             return [...base, { role: 'candidate', text, partial: true }]
           }),
-        onFinalTranscript: (text) =>
+        onFinalTranscript: (text) => {
+          // An empty final means the turn yielded no recognized speech — it
+          // must not append an empty candidate line (no repeated "YOU" rows).
+          if (!text) return
           setTranscript((t) => {
             const base = t.filter((l) => !(l.role === 'candidate' && l.partial))
             return [...base, { role: 'candidate', text }]
-          }),
+          })
+        },
         onEvaluation: (overall) => setEvaluation(overall),
         onError: (code, message) => {
           if (code !== 'tts_unavailable' && code !== 'asr_failed') setError(message)

@@ -270,3 +270,94 @@ async def test_router_chat_model_astream_yields_message_chunks() -> None:
 
 
 __all__: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# P0 presentation boundary: TTS receives ONLY question text
+# ---------------------------------------------------------------------------
+
+
+def _stream_question(text: str) -> list[str]:
+    """Feed a full streamed model response through the extractor + segmenter,
+    returning every segment that would reach TTS."""
+    from app.voice.segmenter import QuestionStreamExtractor
+
+    ex = QuestionStreamExtractor()
+    seg = TextSegmenter(min_chars=10, max_chars=200)
+    out: list[str] = []
+    for tok in _tokens(text):
+        for t in ex.feed(tok):
+            for s in seg.feed(t):
+                out.append(s)
+    for t in ex.flush():
+        for s in seg.feed(t):
+            out.append(s)
+    tail = seg.flush()
+    if tail:
+        out.append(tail)
+    return out
+
+
+def _tokens(text: str, n: int = 7) -> list[str]:
+    step = max(1, len(text) // n)
+    return [text[i : i + step] for i in range(0, len(text), step)]
+
+
+def test_tts_receives_only_question_text_not_metadata() -> None:
+    """P0 regression: the interviewer must speak ONLY the question text —
+    never difficulty/type/rationale, never a JSON serialization."""
+    model_output = (
+        "QUESTION: Tell me how you would design a resilient payment service?\n"
+        "TYPE: system_design\n"
+        "DIFFICULTY: hard\n"
+        "RATIONALE: Tests distributed-systems reasoning\n"
+        "TARGET: System Design\n"
+        "HINTS:\n"
+        "- Start with failure modes\n"
+        "- Consider idempotency\n"
+        "- Sketch backoff"
+    )
+    spoken = _stream_question(model_output)
+    full = " ".join(spoken)
+    assert "Tell me how you would design a resilient payment service?" in full
+    # Metadata must NEVER be spoken.
+    for banned in (
+        "hard",
+        "system_design",
+        "distributed-systems reasoning",
+        "TYPE:",
+        "DIFFICULTY:",
+    ):
+        assert banned not in full, f"TTS would speak banned metadata: {banned!r} in {full!r}"
+    assert "{" not in full and "}" not in full  # never JSON
+
+
+def test_tts_presentation_strips_question_header() -> None:
+    """The QUESTION: header prefix itself must not be spoken."""
+    spoken = _stream_question(
+        "QUESTION: How do you handle retries?\nTYPE: technical\nDIFFICULTY: medium"
+    )
+    full = " ".join(spoken)
+    assert full == "How do you handle retries?"
+    assert "QUESTION" not in full
+
+
+def test_tts_presentation_multiline_question_keeps_text_only() -> None:
+    spoken = _stream_question(
+        "QUESTION: First part of the question.\n"
+        "Second part continues here.\n"
+        "TYPE: behavioral\n"
+        "DIFFICULTY: easy"
+    )
+    full = " ".join(spoken)
+    assert "First part of the question." in full
+    assert "Second part continues here." in full
+    assert "behavioral" not in full and "easy" not in full
+
+
+def test_tts_presentation_resilient_without_header() -> None:
+    """Model deviation (no QUESTION: header): still never speaks metadata."""
+    spoken = _stream_question("Just a question without the header?\nTYPE: technical")
+    full = " ".join(spoken)
+    assert "Just a question without the header?" in full
+    assert "technical" not in full

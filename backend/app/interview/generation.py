@@ -31,7 +31,10 @@ _Q_STREAM_PROMPT = "question_generation/adaptive_question_stream.txt"
 _EVAL_PROMPT = "answer_evaluation/answer_eval.txt"
 _HINT_PROMPT = "question_generation/hint.txt"
 
-_KEY_LINES = {"DIFFICULTY", "TYPE", "RATIONALE", "RATIONAL", "TARGET"}
+# Metadata keys that follow the QUESTION: section in the streamed format.
+# The TTS presentation boundary strips everything after the first of
+# these (the interviewer must never speak workflow metadata).
+QUESTION_META_PREFIXES = ("TYPE:", "DIFFICULTY:", "RATIONALE:", "RATIONAL:", "TARGET:", "HINTS:")
 
 
 def parse_question_output(text: str, default_competency: str = "general") -> InterviewQuestion:
@@ -56,9 +59,7 @@ def parse_question_output(text: str, default_competency: str = "general") -> Int
                 if rest:
                     question_lines.append(rest)
                 continue
-            is_key = upper.startswith("HINTS:") or any(
-                upper.startswith(k + ":") for k in _KEY_LINES
-            )
+            is_key = upper.startswith(QUESTION_META_PREFIXES)
             if not is_key:
                 question_lines.append(ln)
                 continue
@@ -68,7 +69,7 @@ def parse_question_output(text: str, default_competency: str = "general") -> Int
                 mode = "hints"
                 continue
             key, _, value = ln.partition(":")
-            if key.strip().upper() in _KEY_LINES and value.strip():
+            if key.strip().upper() + ":" in QUESTION_META_PREFIXES and value.strip():
                 kv[key.strip().upper()] = value.strip()
             continue
         if mode == "hints":

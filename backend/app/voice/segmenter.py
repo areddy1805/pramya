@@ -93,3 +93,72 @@ class TextSegmenter:
 
 
 __all__ = ["TextSegmenter"]
+
+
+_META_PREFIXES = ("TYPE:", "DIFFICULTY:", "RATIONALE:", "RATIONAL:", "TARGET:", "HINTS:")
+
+
+class QuestionStreamExtractor:
+    """Presentation boundary (V1.1 P0): extracts ONLY the user-facing
+    interviewer question text from the streamed model output.
+
+    The model streams the plain-text format::
+
+        QUESTION: <spoken question, 1-3 sentences>
+        TYPE: ...
+        DIFFICULTY: ...
+        RATIONALE: ...
+        TARGET: ...
+        HINTS:
+        - ...
+
+    The QUESTION: section is the TTS script; everything after the first
+    metadata key line is WORKFLOW DATA (state/UI/persistence) and must
+    never reach TTS. This extractor streams question-text tokens only —
+    header stripped, metadata cut — so the segmenter/TTS never speak
+    "TYPE: technical" or a JSON serialization of the question.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._in_question = False
+        self._done = False
+
+    def feed(self, token: str) -> list[str]:
+        """Return question-text tokens (header stripped, metadata cut)."""
+        if self._done or not token:
+            return []
+        self._buf += token
+        out: list[str] = []
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            out.extend(self._process_line(line))
+            if self._done:
+                break
+        return out
+
+    def flush(self) -> list[str]:
+        """Process the remaining partial line at end-of-stream."""
+        if self._done or not self._buf:
+            return []
+        line = self._buf
+        self._buf = ""
+        return self._process_line(line)
+
+    def _process_line(self, line: str) -> list[str]:
+        stripped = line.strip()
+        upper = stripped.upper()
+        if upper.startswith(_META_PREFIXES):
+            # Metadata section reached: the question is complete. Cut here.
+            self._done = True
+            return []
+        if upper.startswith("QUESTION:"):
+            self._in_question = True
+            rest = line[len("QUESTION:") :]
+            return [rest] if rest.strip() else []
+        if not self._in_question:
+            # Model deviated (no QUESTION: header): emit up to the first
+            # metadata line anyway (resilient, still never metadata).
+            return [line]
+        # Continuation line of a multi-line question.
+        return [line]
