@@ -7,6 +7,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ### Added
 
+- **Long-run + playback quality (live voice):** bounded SSE event bus
+  (per-session queues removed when the last consumer leaves; full queues drop
+  oldest instead of growing — voice sessions no longer accumulate events when
+  no tab is listening). Gapless TTS playback on the client: consecutive
+  `AudioBufferSourceNode`s are pre-scheduled on the AudioContext clock instead
+  of chained on `onended`, eliminating the inter-node scheduling gap that
+  caused audible cracking at every 200 ms chunk boundary; interrupt/pause now
+  stop in-flight sources (not just queued buffers). 40-turn engine endurance
+  unit test asserts bounded tasks/buffers and monotonic generations.
 - **Physical-mic speaker integrity (live voice):** playback-completion
   gating — `tts_stop` no longer opens candidate listening; the client sends
   `playback_complete{generation}` only after the real playback queue drains,

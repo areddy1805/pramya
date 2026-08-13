@@ -79,20 +79,53 @@ class InterviewEvent:
 
 
 class EventBus:
-    """Per-session in-memory event queues (single-process dev runtime)."""
+    """Per-session in-memory event queues (single-process dev runtime).
+
+    Long-run safety: queues are bounded and are removed when the last SSE
+    consumer unsubscribes, so a session whose browser tab closed cannot grow
+    its queue forever (voice interviews publish events even without an SSE
+    listener).
+    """
+
+    _MAX_QUEUE = 2000
 
     def __init__(self) -> None:
         self._queues: dict[int, asyncio.Queue[InterviewEvent]] = {}
+        self._consumers: dict[int, int] = {}
 
     def publish(self, session_id: int, event: InterviewEvent) -> None:
         queue = self._queues.get(session_id)
-        if queue is not None:
+        if queue is None:
+            return  # no subscriber: nothing to accumulate
+        try:
             queue.put_nowait(event)
+        except asyncio.QueueFull:
+            # Bounded queue: drop the oldest event instead of growing memory
+            # or blocking the producer (dev runtime; SSE is best-effort).
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
 
     def subscribe(self, session_id: int) -> asyncio.Queue[InterviewEvent]:
         if session_id not in self._queues:
-            self._queues[session_id] = asyncio.Queue()
+            self._queues[session_id] = asyncio.Queue(maxsize=self._MAX_QUEUE)
+            self._consumers[session_id] = 0
+        self._consumers[session_id] += 1
         return self._queues[session_id]
+
+    def unsubscribe(self, session_id: int) -> None:
+        """Drop this consumer; remove the queue when the last one leaves."""
+        remaining = self._consumers.get(session_id, 1) - 1
+        if remaining <= 0:
+            self._consumers.pop(session_id, None)
+            self._queues.pop(session_id, None)
+        else:
+            self._consumers[session_id] = remaining
 
 
 event_bus = EventBus()
@@ -621,4 +654,5 @@ class InterviewService:
                 ):
                     return
         finally:
+            event_bus.unsubscribe(session_id)
             queue.task_done()

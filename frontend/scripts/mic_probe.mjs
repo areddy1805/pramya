@@ -77,7 +77,6 @@ async function main() {
   console.log('captured PCM bytes:', pcm.length)
   writeFileSync('/tmp/mic_probe.pcm', Buffer.from(pcm))
   // wrap WAV + post to oMLX
-  const { spawnSync } = await import('node:child_process')
   const fs = await import('node:fs')
   const hdr = Buffer.alloc(44)
   const dataLen = pcm.length

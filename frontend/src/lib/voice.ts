@@ -107,7 +107,6 @@ export class VoiceClient {
   private audioCtx: AudioContext | null = null
   private captureNode: AudioWorkletNode | null = null
   private playbackQueue: AudioBuffer[] = []
-  private playing = false
   private closedByUser = false
   private heartbeat?: ReturnType<typeof setInterval>
   public state: VoiceState = 'idle'
@@ -129,6 +128,8 @@ export class VoiceClient {
   async start(): Promise<void> {
     this.closedByUser = false
     this.playbackQueue = []
+    this.activeSources.clear()
+    this.nextPlaybackAt = 0
     this.currentGeneration = -1
     this.pendingPlaybackGeneration = -1
 
@@ -223,8 +224,7 @@ export class VoiceClient {
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close()
     this.ws = null
     // Flush playback buffer + close context (no stale audio).
-    this.playbackQueue = []
-    this.playing = false
+    this.flushPlayback()
     this.currentGeneration = -1
     this.pendingPlaybackGeneration = -1
     if (this.audioCtx) {
@@ -264,8 +264,7 @@ export class VoiceClient {
     // H.7: invalidate current generation so any in-flight chunk is dropped.
     this.currentGeneration = -1
     this.pendingPlaybackGeneration = -1
-    this.playbackQueue = []
-    this.playing = false
+    this.flushPlayback()
     this.sendControl('interrupt')
   }
 
@@ -308,8 +307,7 @@ export class VoiceClient {
           // after the server stops accepting audio for this window.
           this.currentGeneration = -1
           this.pendingPlaybackGeneration = -1
-          this.playbackQueue = []
-          this.playing = false
+          this.flushPlayback()
         }
         this.handlers.onState?.(this.state)
         break
@@ -360,7 +358,7 @@ export class VoiceClient {
         // queue has fully drained, notifyPlaybackComplete() unlocks the
         // server's LISTENING state (speaker-integrity handshake).
         this.handlers.onTTSStop?.(payload.generation)
-        if (this.playbackQueue.length === 0 && !this.playing) {
+        if (this.playbackQueue.length === 0 && this.activeSources.size === 0) {
           this.notifyPlaybackComplete()
         }
         break
@@ -370,7 +368,18 @@ export class VoiceClient {
     }
   }
 
-  // -- playback (H.6/H.7) ---------------------------------------------------
+  // -- playback (H.6/H.7 + gapless scheduling) ------------------------------
+
+  /**
+   * AudioContext clock (seconds) when the next buffer may start. Scheduled
+   * start times, not onended-chaining, drive playback: chaining a new
+   * AudioBufferSourceNode after each onended leaves an inter-node scheduling
+   * gap (~5-20ms at 5Hz for 200ms chunks) which audibly cracks/click at
+   * every chunk boundary. Pre-scheduling consecutive nodes keeps PCM
+   * sample-continuous across the whole utterance.
+   */
+  private nextPlaybackAt = 0
+  private activeSources = new Set<AudioBufferSourceNode>()
 
   private enqueuePlayback(data: ArrayBuffer): void {
     if (!this.audioCtx || this.audioCtx.state !== 'running') return
@@ -381,36 +390,52 @@ export class VoiceClient {
     const channel = buffer.getChannelData(0)
     for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768
     this.playbackQueue.push(buffer)
-    void this.drainPlayback()
+    this.scheduleQueuedPlayback()
   }
 
-  private async drainPlayback(): Promise<void> {
-    if (this.playing || !this.audioCtx || this.playbackQueue.length === 0) return
-    if (this.audioCtx.state !== 'running') return
-    this.playing = true
-    try {
-      while (this.playbackQueue.length > 0) {
-        // H.7: stop draining ONLY on interruption/cancellation — normal
-        // tts_stop must let already-queued chunks finish playing.
-        if (this.state === 'interrupted' || this.state === 'cancelled') {
-          this.playbackQueue = []
-          break
-        }
-        const buf = this.playbackQueue.shift()
-        if (!buf) break
-        await new Promise<void>((resolve) => {
-          const src = this.audioCtx!.createBufferSource()
-          src.buffer = buf
-          src.connect(this.audioCtx!.destination)
-          src.onended = () => resolve()
-          src.start()
-        })
-      }
-    } finally {
-      this.playing = false
-      // Real playback finished (queue empty): unlock the server's LISTENING.
-      this.notifyPlaybackComplete()
+  private scheduleQueuedPlayback(): void {
+    const ctx = this.audioCtx
+    if (!ctx || ctx.state !== 'running') return
+    // H.7: stop scheduling once the stream is no longer current.
+    if (this.state !== 'speaking' || this.currentGeneration < 0) {
+      this.playbackQueue = []
+      return
     }
+    const now = ctx.currentTime
+    let t = Math.max(this.nextPlaybackAt, now + 0.04) // 40ms lookahead (absorbs jitter)
+    while (this.playbackQueue.length > 0) {
+      const buf = this.playbackQueue.shift()
+      if (!buf) break
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.connect(ctx.destination)
+      src.onended = () => {
+        this.activeSources.delete(src)
+        // Real playback completion: queue empty AND every scheduled node ended
+        // -> unlock the server's LISTENING (speaker-integrity handshake).
+        if (this.activeSources.size === 0 && this.playbackQueue.length === 0) {
+          this.notifyPlaybackComplete()
+        }
+      }
+      src.start(t)
+      this.activeSources.add(src)
+      t += buf.duration
+      this.nextPlaybackAt = t
+    }
+  }
+
+  /** Stop all in-flight playback immediately (interrupt/pause/cancel). */
+  private flushPlayback(): void {
+    for (const src of this.activeSources) {
+      try {
+        src.stop()
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.activeSources.clear()
+    this.playbackQueue = []
+    this.nextPlaybackAt = 0
   }
 }
 

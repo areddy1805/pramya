@@ -711,3 +711,57 @@ async def test_reconnect_restores_state_with_mic_gating() -> None:
     assert engine.asr.calls, "mic frames accepted after reconnect in LISTENING"  # type: ignore[attr-defined]
     assert engine._playback_confirmed is True
     await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_long_run_multi_turn_endurance() -> None:
+    """Long-running interview: 40 consecutive Q/A turns must keep the engine
+    state bounded — no task accumulation, audio buffers cleared per turn,
+    per-turn transcripts persisted, generation counter monotonic."""
+    ws = StubWS()
+    engine = _engine(ws)
+    engine.playback_timeout_seconds = 0.2  # fast turn cycling in tests
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "question", ms=5000)
+    for turn in range(40):
+        # Open the listening window via the real handshake.
+        await _open_listening(ws, engine, ms=2000)
+        ws.push_bytes(b"\x00\x01" * 3200)
+        ws.push_json({"type": "end_turn"})
+        if not await _wait_event(ws, "evaluation", ms=5000):
+            raise AssertionError(f"no evaluation on turn {turn}")
+        # Let the next-question pipeline settle.
+        for _ in range(200):
+            if len([e for e in ws.json_out if e.get("type") == "question"]) >= turn + 2:
+                break
+            await asyncio.sleep(0.005)
+    # State invariants after 40 turns.
+    assert engine._turns_completed == 40
+    assert engine._audio_buf == bytearray(), "audio buffer must be empty between turns"
+    # 40 candidate answers persisted with unambiguous speaker identity; the
+    # interviewer side has 40+ (a 41st question may already be asked).
+    for _ in range(400):
+        if (
+            len([sg for sg in engine._transcripts.segments if sg.get("speaker") == "candidate"])
+            >= 40
+        ):
+            break
+        await asyncio.sleep(0.005)
+    cands = [sg for sg in engine._transcripts.segments if sg.get("speaker") == "candidate"]
+    inters = [sg for sg in engine._transcripts.segments if sg.get("speaker") == "interviewer"]
+    assert len(cands) == 40, f"candidate segments: {len(cands)}"
+    assert len(inters) >= 40, f"interviewer segments: {len(inters)}"
+    assert all(sg["speaker"] in ("interviewer", "candidate") for sg in engine._transcripts.segments)
+    # No orphaned background tasks beyond the expected set.
+    expected = {
+        engine._tts_task,
+        engine._answer_task,
+        engine._start_session_task,
+        engine._silence_task,
+    }
+    alive = [t for t in expected if t is not None and not t.done()]
+    assert len(alive) <= 2, f"leaked tasks: {len(alive)}"
+    # Generations strictly increase per TTS stream (no reuse).
+    gens = [e.get("generation") for e in ws.json_out if e.get("type") == "tts_start"]
+    assert gens == sorted(gens) and len(gens) == len(set(gens)), "generation must be monotonic"
+    await _cancel_task(task)
