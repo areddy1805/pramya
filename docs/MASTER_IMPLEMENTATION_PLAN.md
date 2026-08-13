@@ -870,7 +870,7 @@ Phase 9  Interrupt/Pause/Resume      COMPLETE (voice engine H.1-H.12; audio pers
 Phase 10 Progress/History/Practice   COMPLETE (progress aggregation, practice sessions, history page, interview record endpoint, debrief UI, story bank)
 Phase 11 MCP/Observability/Security  COMPLETE for V1 (Langfuse facade done; security done; demo done; evals done; MCP DEFERRED from V1 per ADR-006)
 Phase 12 E2E/Deploy/Docs/Polish      COMPLETE (browser E2E; fresh-clone verified; release acceptance matrix + final docs pass)
-Voice speaker-integrity (physical mic)  COMPLETE for software boundaries (playback-completion gating, server mic gating, speaker column, diagnostics); physical-mic acoustic E2E NOT_VERIFIED (machine mic silent at OS level) — see VOICE_ARCHITECTURE.md §12
+Voice speaker-integrity (physical mic)  COMPLETE (playback-completion gating, server mic gating, speaker column, diagnostics) + PHYSICAL-MIC E2E PASSED 2026-08-13 (real mic + speakers, open lid) — see VOICE_ARCHITECTURE.md §12
 ```
 
 - Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)

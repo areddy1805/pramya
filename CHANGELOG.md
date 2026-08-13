@@ -20,8 +20,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/); versions follow
   `voice_listening` (playback_confirmed), `voice_answer` (accepted/discarded
   frames+bytes, listening_ms, interruptions). 7 new voice unit tests (gating
   contract, stale-generation handshake, timeout guard, pause/stop gating,
-  barge-in, reconnect). Physical-mic E2E recorded as NOT_VERIFIED (machine
-  mic silent at OS level — evidence in `docs/ai/VOICE_ARCHITECTURE.md §12`).
+  barge-in, reconnect). **Physical-mic E2E PASSED** (2026-08-13, real
+  built-in mic + speakers, open-lid MacBook): interviewer TTS played aloud,
+  playback-completion gating held, candidate speech captured acoustically
+  and transcribed (211 chars), answer submitted + evaluated, adaptive Q2,
+  interrupt mid-TTS with zero stale chunks — evidence in
+  `docs/ai/VOICE_ARCHITECTURE.md §12`.
 
 
 - **Phase H — voice persistence & communication:** candidate audio persisted

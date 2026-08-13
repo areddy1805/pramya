@@ -25,7 +25,7 @@
 | H.16 diagnostics | ✅ | `voice_listening` (playback_confirmed), `voice_answer` (accepted/discarded frames+bytes, listening_ms, interruptions), `voice_tts`/`voice_asr`/`voice_interrupt` telemetry |
 | H.17 voice barge-in (opt-in) | ✅ | `voice_barge_in_enabled` (default OFF): sustained mic energy ≥ `voice_barge_in_rms` for `voice_barge_in_ms` during SPEAKING cancels TTS. Explicit `interrupt` control remains the guaranteed path |
 | Real-model E2E (fake-device mic) | ✅ | passed 2026-08-12 (sessions 39/40/41) + 2026-08-13 with the new gating contract: `tts_stop → playback_complete → state:listening` verified with real Qwen3-TTS + Parakeet |
-| Physical-mic E2E (real speakers+mic) | ⏳ NOT_VERIFIED | see §12 — the machine's physical mic delivered digital silence at the OS level (AVAudioRecorder peak 0); every software boundary verified; gating contract proven with real browser playback |
+| Physical-mic E2E (real speakers+mic) | ✅ PASSED 2026-08-13 | full acoustic loop on the open-lid MacBook: interviewer TTS played aloud → `playback_complete` gating → candidate speech played through speakers captured by the real built-in mic → 211-char candidate transcript → answer submitted → evaluation → adaptive Q2 → interrupt mid-TTS with zero stale chunks. See §12 |
 
 **Observable event contract (acceptance):** `state` (idle→starting→speaking→listening→processing…) → `question` → `tts_start{generation}` → binary chunks → `tts_stop{generation}` → `partial_transcript` → `turn_ended` → `final_transcript` → `answer_submitted` → `evaluation` → next `question` → … Interrupt: `interrupt` control → `state: interrupted` → `state: listening`, generation bumped, zero stale chunks.
 
@@ -176,35 +176,44 @@ normal, fast, slow, long, short, silence, background noise, interruption, double
 
 ## 12. Physical-Microphone E2E — evidence (2026-08-13)
 
-**Verdict: NOT_VERIFIED — physical microphone E2E blocked by the machine's
-microphone state.** The fix's deterministic + controlled real-model evidence
-is below; the acoustic acceptance could not be completed because the Mac's
-physical mic delivered digital silence at the OS level.
+**Verdict: PASSED.** Full acoustic loop with the REAL built-in microphone and
+REAL speakers (MacBook open; in clamshell mode the built-in mic delivers
+digital silence at the OS level — verified AVAudioRecorder peak 0 closed,
+peak 199 open).
 
-What WAS verified with real models + a real headed browser (real playback
-through speakers, real WebSocket, real backend):
+Setup: headed Chromium (Playwright, `--use-fake-ui-for-media-stream` only —
+no fake device), real mic auto-granted, browser playback through the Mac
+speakers, candidate speech played through the same speakers via `afplay`
+(real room-acoustic path). Harness: `frontend/scripts/voice_e2e_physical.mjs`.
 
-1. `frontend/scripts/voice_e2e_real.mjs` (Playwright fake-device mic): Q1 TTS
-   played (120 chunks / 1.15 MB, Qwen3-TTS), then `tts_stop → playback_complete
-   → state:listening` — **speaker-integrity gating true**: listening only
-   opened after the client's playback-confirmation handshake. Zero stale
-   chunks after interrupt.
-2. `frontend/scripts/voice_e2e_physical.mjs` (headed Chromium, REAL mic
-   auto-granted, speakers): Q1 played aloud (128 chunks), `playback_complete`
-   sent, `state:listening` opened, mic stream live (81 968 frames / ~7 MB),
-   ASR invoked every ~2 s, candidate speech played through the speakers
-   (afplay, loud) — **ASR returned 0 chars because the captured mic stream
-   was digital silence**.
-3. `frontend/scripts/mic_probe.mjs` (raw capture, AEC/NS/gain OFF): 9 s
-   capture during speaker playback → PCM peak **0** — the browser is not
-   filtering; the stream itself is silence.
-4. OS-level probe (AVAudioRecorder, 3 s): **peak 0** — the physical mic
-   delivers silence to any app in this environment (input volume 44, device
-   present, TCC not inspectable). Not a Pramya defect.
+Observed event contract (session 76):
 
-Interpretation: the software boundaries all held (playback gating, server
-mic gating, speaker attribution, barge-in, diagnostics). The remaining
-unknown is purely acoustic: with a working physical mic, whether
-room-captured speaker audio transcribes at acceptable quality. Re-run
-`frontend/scripts/voice_e2e_physical.mjs` after confirming the mic captures
-audio in System Settings (e.g. Voice Memos records speech).
+```
+state:starting → state:speaking → question → tts_start
+  → 106 PCM chunks (Qwen3-TTS, real audio) → tts_stop
+  → playback_complete (client, after queue drained) → state:listening   ← gating
+  → afplay candidate speech → turn_ended → processing
+  → final_transcript (211 chars: "I led the migration of our payments platform…")
+  → answer_submitted → evaluation (overall 2)
+  → state:speaking → question (adaptive follow-up: "…optimistic concurrency with retries…")
+  → tts_start → INTERRUPT mid-TTS (button) → no further chunks (106 stays)
+```
+
+Persisted transcript (DB, `speaker` column):
+
+| speaker | text |
+|---|---|
+| interviewer | Talk me through a time you had to balance a high-availability… |
+| candidate | I led the migration of our payments platform from a monolith… |
+| interviewer | You mentioned using optimistic concurrency with retries to keep… |
+
+Assertions held: `gatingOk` (state:listening only after playback_complete),
+candidate transcript ≠ interviewer question (speaker integrity), answer
+submitted + evaluated, second question adaptive to the transcribed answer,
+zero stale chunks after interrupt. The interviewer's own playback was
+captured by the mic during SPEAKING and discarded (server-authoritative
+gating); it never became a candidate answer.
+
+Known limitation: evaluation scored 2/10 — the "candidate" was a 13 s canned
+TTS clip, not an interactive answer; the score reflects the scripted,
+non-responsive answer, which is correct behavior.
