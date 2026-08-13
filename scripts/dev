@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Pramya canonical dev launcher — `make dev` (or ./scripts/dev).
+#
+#   up|start   start the full local development environment
+#   down       stop backend + frontend started by this launcher (docker stays)
+#   status     show readiness + process state of every dev service
+#   logs       tail aggregated backend/frontend logs
+#   check      probe-only verification (no starting) — CI/fresh-clone friendly
+#   reset      stop launcher processes + docker compose down (db container,
+#              volume preserved; see docs/DEVELOPMENT.md for full wipe)
+#
+# Design: dependency checks -> db (docker) -> optional Langfuse -> migrations
+# -> backend -> health wait -> frontend -> health wait -> banner. Readiness is
+# probe-based (never arbitrary sleeps). Ctrl-C stops backend+frontend; Docker
+# infrastructure is left in its intended state.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME="$ROOT/.runtime/dev"
+B_PID="$RUNTIME/backend.pid"
+F_PID="$RUNTIME/frontend.pid"
+B_LOG="$RUNTIME/backend.log"
+F_LOG="$RUNTIME/frontend.log"
+
+# Actual dev ports (project conventions; APP_PORT overridable via .env).
+APP_PORT="$(grep -E '^APP_PORT=' "$ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+APP_PORT="${APP_PORT:-8001}"
+FRONTEND_PORT="$(grep -E '^FRONTEND_PORT=' "$ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+BACKEND_URL="http://127.0.0.1:${APP_PORT}"
+FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
+LANGFUSE_URL="$(grep -E '^LANGFUSE_HOST=' "$ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+LANGFUSE_URL="${LANGFUSE_URL:-http://127.0.0.1:3030}"
+
+mkdir -p "$RUNTIME"
+
+red()  { printf '\033[31m%s\033[0m\n' "$*"; }
+grn()  { printf '\033[32m%s\033[0m\n' "$*"; }
+ylw()  { printf '\033[33m%s\033[0m\n' "$*"; }
+
+fail() { red "ERROR: $*"; exit 1; }
+
+http_code() { curl -s -o /dev/null -m 3 -w '%{http_code}' "$1" 2>/dev/null || echo 000; }
+
+port_listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+
+need() { # need <cmd> <hint>
+  command -v "$1" >/dev/null 2>&1 || fail "'$1' not found. $2"
+}
+
+pid_alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+
+wait_http() { # wait_http <url> <timeout_s> <what>
+  local url="$1" tries=$(( $2 * 2 )) what="$3" i
+  for i in $(seq 1 "$tries"); do
+    [ "$(http_code "$url")" = 200 ] && return 0
+    [ $((i % 4)) = 0 ] && echo "  waiting for $what... (${i}0%)" >&2
+    sleep 0.5
+  done
+  fail "$what did not become ready at $url within ${2}s. Check: tail -n 50 '$B_LOG' / '$F_LOG'"
+}
+
+db_container() { docker compose -f "$ROOT/docker-compose.yml" ps -q db 2>/dev/null | head -1; }
+
+db_healthy() {
+  local cid; cid="$(db_container)"
+  [ -n "$cid" ] || return 1
+  [ "$(docker inspect --format '{{.State.Health.Status}}' "$cid" 2>/dev/null)" = healthy ]
+}
+
+wait_db() {
+  local tries=120 i
+  for i in $(seq 1 "$tries"); do
+    db_healthy && return 0
+    [ $((i % 10)) = 0 ] && echo "  waiting for PostgreSQL... ($((i / 2))s)" >&2
+    sleep 0.5
+  done
+  fail "PostgreSQL did not become healthy within 60s. Run 'docker compose ps' / 'docker compose logs db'."
+}
+
+# ---------------------------------------------------------------------------
+# dependency + environment checks
+# ---------------------------------------------------------------------------
+check_deps() {
+  need docker      "Install Docker Desktop (https://docs.docker.com/get-docker/) and start it."
+  docker compose version >/dev/null 2>&1 \
+    || fail "docker compose plugin is required (Docker Desktop 4.23+ / docker-compose v2)."
+  need uv          "Install uv (https://docs.astral.sh/uv/)."
+  need pnpm        "Install pnpm (npm i -g pnpm)."
+  need node        "Install Node.js 20+."
+  need curl        "curl is required for readiness probes."
+  [ -f "$ROOT/.env" ] || fail "Missing $ROOT/.env — copy .env.example:  cp .env.example .env  (then add DEEPSEEK_API_KEY)."
+  if ! docker info >/dev/null 2>&1; then
+    if [ "$(uname)" = Darwin ] && command -v open >/dev/null 2>&1; then
+      echo "  Docker daemon is down — launching Docker Desktop…"
+      open -a Docker 2>/dev/null || true
+      local tries=240 i
+      for i in $(seq 1 "$tries"); do
+        docker info >/dev/null 2>&1 && break
+        [ $((i % 20)) = 0 ] && echo "  waiting for Docker daemon... ($((i / 2))s)" >&2
+        sleep 0.5
+      done
+      docker info >/dev/null 2>&1 \
+        || fail "Docker daemon did not start within 120s. Open Docker Desktop manually, then re-run: make dev"
+    else
+      fail "Docker daemon is not running. Start Docker, then re-run: make dev"
+    fi
+  fi
+}
+
+already_running() {
+  if port_listening "$APP_PORT" || port_listening "$FRONTEND_PORT"; then
+    ylw "Pramya dev services are already running (backend:$APP_PORT / frontend:$FRONTEND_PORT)."
+    ylw "Use:  make dev-status   (state)   make dev-down   (stop)"
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# start
+# ---------------------------------------------------------------------------
+start() {
+  echo
+  ylw "PRAMYA DEV"
+  ylw "────────────────────────────"
+  check_deps
+  already_running && exit 0
+
+  # Stale langfuse containers from the old shared-project layout would
+  # collide with the own-project stack (data lives in named volumes — safe).
+  docker rm -f $(docker ps -aq --filter "name=^pramya-langfuse" 2>/dev/null) >/dev/null 2>&1 || true
+
+  echo "  [1/6] Starting PostgreSQL (docker compose up -d db)…"
+  docker compose -f "$ROOT/docker-compose.yml" up -d db
+  wait_db
+
+  local langfuse_on=0
+  if [ "${PRAMYA_DEV_LANGFUSE:-1}" != 0 ]; then
+    echo "  [2/6] Starting Langfuse OSS stack (skip with PRAMYA_DEV_LANGFUSE=0)…"
+    docker compose -f "$ROOT/docker-compose.langfuse.yml" --profile langfuse up -d \
+      || fail "Langfuse stack failed to start. Inspect: docker compose -f docker-compose.langfuse.yml ps / logs"
+    wait_http "$LANGFUSE_URL" 300 "Langfuse (first run pulls images; can take minutes)"
+    langfuse_on=1
+  else
+    echo "  [2/6] Langfuse skipped (PRAMYA_DEV_LANGFUSE=0)"
+  fi
+
+  echo "  [3/6] Applying migrations (alembic upgrade head)…"
+  ( cd "$ROOT/backend" && uv run alembic upgrade head ) \
+    || fail "Migrations failed. Fix and re-run: make dev"
+
+  echo "  [4/6] Starting backend (uvicorn :${APP_PORT})…"
+  ( cd "$ROOT/backend" && nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$APP_PORT" \
+      >> "$B_LOG" 2>&1 & echo $! > "$B_PID" )
+  wait_http "$BACKEND_URL/api/v1/health" 90 "backend"
+
+  echo "  [5/6] Starting frontend (vite :${FRONTEND_PORT})…"
+  ( cd "$ROOT/frontend" && nohup pnpm dev --port "$FRONTEND_PORT" \
+      >> "$F_LOG" 2>&1 & echo $! > "$F_PID" )
+  wait_http "$FRONTEND_URL" 60 "frontend"
+
+  echo "  [6/6] Verifying frontend -> backend proxy…"
+  local proxied; proxied="$(http_code "$FRONTEND_URL/api/v1/health")"
+  [ "$proxied" = 200 ] || ylw "  WARNING: frontend proxy to backend returned HTTP $proxied (backend may still be warming)."
+
+  grn ""
+  grn "PRAMYA DEV — READY"
+  grn "────────────────────────────"
+  grn "Backend     $BACKEND_URL"
+  grn "API Docs    $BACKEND_URL/docs"
+  grn "Frontend    $FRONTEND_URL"
+  grn "Postgres    localhost:5432 (docker: $(db_container | cut -c1-12))"
+  if [ "$langfuse_on" = 1 ]; then grn "Langfuse    $LANGFUSE_URL"; else ylw "Langfuse    $LANGFUSE_URL (skipped; PRAMYA_DEV_LANGFUSE=0)"; fi
+  grn "────────────────────────────"
+  grn "Status      READY"
+  echo   "Logs        .runtime/dev/backend.log, .runtime/dev/frontend.log"
+  echo   "Stop        Ctrl-C  or  make dev-down   (docker infra stays up)"
+}
+
+# ---------------------------------------------------------------------------
+# down / status / logs / check / reset
+# ---------------------------------------------------------------------------
+kill_pid() { # kill_pid <pidfile> <name>
+  local pf="$1" name="$2" pid
+  [ -f "$pf" ] || return 0
+  pid="$(cat "$pf" 2>/dev/null || true)"
+  rm -f "$pf"
+  [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null || return 0
+  # children first (uvicorn --reload spawns a worker; pnpm may spawn node)
+  pkill -TERM -P "$pid" 2>/dev/null || true
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in $(seq 1 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  kill -0 "$pid" 2>/dev/null && { kill -9 "$pid" 2>/dev/null || true; }
+  echo "  stopped $name (pid $pid)"
+}
+
+down() {
+  echo "Stopping Pramya dev services…"
+  kill_pid "$B_PID" "backend"
+  kill_pid "$F_PID" "frontend"
+  echo "Stopping docker dev infrastructure (containers preserved; restart with make dev)…"
+  docker compose -f "$ROOT/docker-compose.yml" stop db >/dev/null 2>&1 || true
+  docker compose -f "$ROOT/docker-compose.langfuse.yml" stop >/dev/null 2>&1 || true
+  echo "Done."
+}
+
+status() {
+  local b=000 f=000 db="down" lf=000
+  [ "$(http_code "$BACKEND_URL/api/v1/health")" = 200 ] && b=200
+  f="$(http_code "$FRONTEND_URL")"
+  db_healthy && db="healthy"
+  if [ "$(http_code "$LANGFUSE_URL")" = 200 ]; then lf=200; fi
+  local lf_n=0
+  docker compose -f "$ROOT/docker-compose.langfuse.yml" ps --status running -q 2>/dev/null | grep -c . | read -r lf_n || true
+  echo
+  ylw "PRAMYA DEV — STATUS"
+  ylw "────────────────────────────"
+  printf "Backend   %-8s %s\n" "$BACKEND_URL" "$([ "$b" = 200 ] && grn READY || red DOWN)"
+  printf "Frontend  %-8s %s\n" "$FRONTEND_URL" "$([ "$f" = 200 ] && grn READY || red DOWN)"
+  printf "Postgres  %-8s %s\n" "localhost:5432" "$([ "$db" = healthy ] && grn READY || red DOWN)"
+  printf "Langfuse  %-8s %s\n" "$LANGFUSE_URL" "$([ "$lf" = 200 ] && grn READY || ylw "off (opt-in)")"
+  if pid_alive "$B_PID"; then echo "  backend pid: $(cat "$B_PID")"; fi
+  if pid_alive "$F_PID"; then echo "  frontend pid: $(cat "$F_PID")"; fi
+  echo "  docker containers: $(docker compose -f "$ROOT/docker-compose.yml" ps -q 2>/dev/null | grep -c .) (db stack) / ${lf_n:-0} running (langfuse stack)"
+}
+
+logs() {
+  [ -f "$B_LOG" ] || [ -f "$F_LOG" ] || fail "No launcher logs yet — start the environment first: make dev"
+  tail -n 100 -f "$B_LOG" "$F_LOG"
+}
+
+check() {
+  # Probe-only verification (no starting): the lightweight launcher test.
+  local ok=0
+  echo "checking dependencies…"
+  check_deps
+  echo "checking services…"
+  printf "  PostgreSQL   "; db_healthy && grn OK || { red "NOT READY"; ok=1; }
+  printf "  Backend      "; [ "$(http_code "$BACKEND_URL/api/v1/health")" = 200 ] && grn OK || { red "NOT READY"; ok=1; }
+  printf "  Frontend     "; [ "$(http_code "$FRONTEND_URL")" = 200 ] && grn OK || { red "NOT READY"; ok=1; }
+  printf "  Proxy api->backend "; [ "$(http_code "$FRONTEND_URL/api/v1/health")" = 200 ] && grn OK || { red "NOT READY"; ok=1; }
+  [ "$ok" = 0 ] && { grn "All services READY."; return 0; }
+  red "Some services are not ready. Start the environment: make dev"
+  return 1
+}
+
+reset() {
+  red "Resetting Pramya dev environment…"
+  down
+  docker compose -f "$ROOT/docker-compose.yml" down >/dev/null 2>&1 || true
+  docker compose -f "$ROOT/docker-compose.langfuse.yml" down >/dev/null 2>&1 || true
+  echo "Containers removed (volumes preserved: pgdata, langfuse volumes)."
+  echo "Full wipe (destructive): docker volume rm pramya_pgdata $(docker volume ls -q | grep -E 'langfuse|clickhouse|minio|redis' | tr '\n' ' ')"
+}
+
+# Ctrl-C: stop what the launcher started, leave docker alone.
+trap 'echo; red "Interrupted — stopping dev services…"; down; exit 130' INT TERM
+
+CMD="${1:-up}"
+case "$CMD" in
+  up|start) start ;;
+  down)     down ;;
+  status)   status ;;
+  logs)     logs ;;
+  check)    check ;;
+  reset)    reset ;;
+  *) echo "usage: $0 {up|down|status|logs|check|reset}" >&2; exit 2 ;;
+esac
