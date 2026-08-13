@@ -126,6 +126,18 @@ class VoiceEngine:
     audio_storage_dir: str | None = None
     store_audio: bool = True
     retention_days: int = 30
+    # Playback-completion gating (physical-mic speaker integrity): the engine
+    # stays SPEAKING after tts_stop until the client confirms ACTUAL playback
+    # completion (playback_complete control). The timeout is a failure-mode
+    # guard for dead/glitched clients — never the enabling mechanism.
+    playback_timeout_seconds: float = 45.0
+    # Voice-triggered barge-in (opt-in): mic energy during SPEAKING above
+    # barge_in_rms sustained for barge_in_ms cancels TTS and opens listening.
+    # Off by default — the explicit 'interrupt' control is the guaranteed
+    # barge-in path; voice detection must never resurrect echo leakage.
+    barge_in_enabled: bool = False
+    barge_in_rms: float = 900.0
+    barge_in_ms: float = 250.0
 
     def __post_init__(self) -> None:
         self.state: VoiceState = VoiceState.IDLE
@@ -154,6 +166,19 @@ class VoiceEngine:
         self._turn_started_wall: datetime | None = None
         self._listen_started_at: float | None = None
         self._first_speech_at: float | None = None
+        # Playback-completion gating state (physical-mic speaker integrity).
+        self._playback_pending_generation: int | None = None
+        self._playback_pending_at: float | None = None
+        self._playback_timeout_task: asyncio.Task[None] | None = None
+        self._playback_confirmed: bool = True  # latest LISTENING was playback-gated
+        self._barge_in_since: float | None = None
+        # Mic-gating diagnostics (counts for the current listening window).
+        self._discarded_tts_bytes = 0
+        self._discarded_tts_frames = 0
+        self._discarded_other_bytes = 0
+        self._discarded_other_frames = 0
+        self._accepted_bytes = 0
+        self._accepted_frames = 0
 
     # -- state ---------------------------------------------------------------
 
@@ -208,6 +233,7 @@ class VoiceEngine:
         finally:
             await self._cancel_tts()
             await self._cancel_answer()
+            self._stop_playback_timeout()
             try:
                 await ws.close()
             except Exception:  # noqa: BLE001 — client already gone
@@ -241,8 +267,9 @@ class VoiceEngine:
                         "question": text,
                     }
                 )
-                await self._set_state(VoiceState.LISTENING)
-                await self._start_silence_watchdog()
+                # Reconnect: no playback is in flight, so the mic window is
+                # safe to open immediately (authoritative LISTENING).
+                await self._start_listening(playback_confirmed=True)
         except PramyaError as exc:
             if not self._disconnected:
                 await self._emit({"type": "error", "code": exc.code, "message": exc.message})
@@ -266,6 +293,15 @@ class VoiceEngine:
             await self._start_listening()
         elif mtype == "end_turn":
             await self._request_end_turn()
+        elif mtype == "playback_complete":
+            # Physical-mic speaker integrity: the ONLY way TTS_PLAYING ->
+            # LISTENING in the normal flow. Ignored unless it matches the
+            # current pending generation.
+            gen = typed.get("generation")
+            if isinstance(gen, int):
+                await self._on_playback_complete(gen)
+            else:
+                raise ValidationFailedError("playback_complete requires generation")
         elif mtype == "interrupt":
             await self._interrupt()
         elif mtype == "pause":
@@ -334,13 +370,13 @@ class VoiceEngine:
                 await asyncio.sleep(0)  # yield so interrupt can land
             if self._generation == generation:
                 await self._emit({"type": "tts_stop", "generation": generation})
-                await self._set_state(VoiceState.LISTENING)
-                self._speech_active = False
-                self._speech_ended_at = None
-                await self._start_silence_watchdog()
-                self._turn_started_wall = datetime.now(UTC)
-                self._listen_started_at = time.monotonic()
-                self._first_speech_at = None
+                # Speaker integrity: stay SPEAKING until the client confirms
+                # ACTUAL playback completion. Never transition TTS_PLAYING ->
+                # LISTENING on synthesis alone — the browser queue may still be
+                # sounding, and the physical mic would capture the interviewer.
+                self._playback_pending_generation = generation
+                self._playback_pending_at = time.monotonic()
+                self._start_playback_timeout()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -374,12 +410,53 @@ class VoiceEngine:
                 seq=seq + 1,
                 partial=False,
                 text=text,
+                speaker="interviewer",
                 timestamps=timestamps,
             )
         )
         await self.interview.session.commit()
 
-    async def _start_listening(self) -> None:
+    def _start_playback_timeout(self) -> None:
+        """Failure-mode guard: a dead/glitched client must not deadlock the
+        session. Normal flow is the playback_complete handshake; this only
+        fires when the client never confirms playback."""
+        if self._playback_timeout_task is not None and not self._playback_timeout_task.done():
+            return
+        self._playback_timeout_task = asyncio.create_task(self._playback_timeout_guard())
+
+    async def _playback_timeout_guard(self) -> None:
+        await asyncio.sleep(self.playback_timeout_seconds)
+        gen = self._playback_pending_generation
+        if gen is not None and self.state is VoiceState.SPEAKING and self._generation == gen:
+            _logger.warning(
+                "playback completion not confirmed within %.1fs (gen %s); "
+                "forcing listening with playback_confirmed=False",
+                self.playback_timeout_seconds,
+                gen,
+            )
+            await self._start_listening(playback_confirmed=False)
+
+    def _stop_playback_timeout(self) -> None:
+        if self._playback_timeout_task is not None and not self._playback_timeout_task.done():
+            self._playback_timeout_task.cancel()
+        self._playback_timeout_task = None
+
+    async def _on_playback_complete(self, generation: int) -> None:
+        """Client confirmed real playback completion -> authoritative LISTENING.
+
+        Only a playback_complete for the CURRENT pending generation opens the
+        mic window; stale generations are ignored so a delayed ack from a
+        previous stream can never unlock capture.
+        """
+        if self.state is not VoiceState.SPEAKING:
+            return
+        if self._playback_pending_generation != generation:
+            return
+        self._playback_pending_generation = None
+        self._stop_playback_timeout()
+        await self._start_listening(playback_confirmed=True)
+
+    async def _start_listening(self, playback_confirmed: bool = True) -> None:
         self._audio_buf.clear()
         self._partial_since = 0
         self._speech_active = False
@@ -387,6 +464,25 @@ class VoiceEngine:
         self._turn_started_wall = datetime.now(UTC)
         self._listen_started_at = time.monotonic()
         self._first_speech_at = None
+        self._playback_confirmed = playback_confirmed
+        # Reset per-window mic-gating diagnostics.
+        self._discarded_tts_bytes = 0
+        self._discarded_tts_frames = 0
+        self._discarded_other_bytes = 0
+        self._discarded_other_frames = 0
+        self._accepted_bytes = 0
+        self._accepted_frames = 0
+        from app.observability import record_event
+
+        pending_at = self._playback_pending_at
+        self._playback_pending_generation = None
+        self._playback_pending_at = None
+        record_event(
+            "voice_listening",
+            session_id=self.session_id,
+            playback_confirmed=playback_confirmed,
+            pending_ms=round((time.monotonic() - pending_at) * 1000, 1) if pending_at else None,
+        )
         await self._set_state(VoiceState.LISTENING)
         await self._start_silence_watchdog()
 
@@ -409,14 +505,45 @@ class VoiceEngine:
     # -- audio + ASR ---------------------------------------------------------
 
     async def _on_audio(self, chunk: bytes) -> None:
-        if self.state is not VoiceState.LISTENING:
-            return
-        self._audio_buf.extend(chunk)
-        self._update_speech_state(chunk)
-        # Partial transcripts every ~2s of accumulated audio.
-        if len(self._audio_buf) - self._partial_since >= self.partial_interval_samples * 2:
-            self._partial_since = len(self._audio_buf)
-            await self._emit_partial()
+        if self.state is VoiceState.LISTENING:
+            # Authoritative candidate window: accepted for ASR.
+            self._audio_buf.extend(chunk)
+            self._accepted_bytes += len(chunk)
+            self._accepted_frames += 1
+            self._update_speech_state(chunk)
+            # Partial transcripts every ~2s of accumulated audio.
+            if len(self._audio_buf) - self._partial_since >= self.partial_interval_samples * 2:
+                self._partial_since = len(self._audio_buf)
+                await self._emit_partial()
+        elif self.state is VoiceState.SPEAKING:
+            # Interviewer playback window: candidate mic must never become the
+            # candidate's answer here. Count for diagnostics; never ASR.
+            self._discarded_tts_bytes += len(chunk)
+            self._discarded_tts_frames += 1
+            if self.barge_in_enabled:
+                await self._maybe_voice_barge_in(chunk)
+        else:
+            # processing / paused / interrupted / completed / cancelled / idle:
+            # no candidate audio is accepted outside the listening window.
+            self._discarded_other_bytes += len(chunk)
+            self._discarded_other_frames += 1
+
+    async def _maybe_voice_barge_in(self, chunk: bytes) -> None:
+        """Opt-in voice-triggered barge-in: sustained mic energy during
+        SPEAKING cancels TTS and opens listening. Explicit interrupt control
+        remains the guaranteed path; this is headphone-safe convenience."""
+        if _rms(chunk) >= self.barge_in_rms:
+            if self._barge_in_since is None:
+                self._barge_in_since = time.monotonic()
+            elif (time.monotonic() - self._barge_in_since) >= self.barge_in_ms / 1000.0:
+                self._barge_in_since = None
+                _logger.info(
+                    "voice barge-in: sustained mic energy during TTS (session %s)",
+                    self.session_id,
+                )
+                await self._interrupt()
+        else:
+            self._barge_in_since = None
 
     def _update_speech_state(self, chunk: bytes) -> None:
         energy = _rms(chunk)
@@ -488,6 +615,23 @@ class VoiceEngine:
                 asr_latency_ms=asr_ms,
                 audio_bytes=len(audio),
                 model="Parakeet-TDT",
+            )
+            record_event(
+                "voice_answer",
+                session_id=self.session_id,
+                answer_bytes=len(audio),
+                accepted_frames=self._accepted_frames,
+                accepted_bytes=self._accepted_bytes,
+                discarded_tts_frames=self._discarded_tts_frames,
+                discarded_tts_bytes=self._discarded_tts_bytes,
+                discarded_other_frames=self._discarded_other_frames,
+                playback_confirmed=self._playback_confirmed,
+                listening_ms=(
+                    round((time.monotonic() - self._listen_started_at) * 1000, 1)
+                    if self._listen_started_at is not None
+                    else None
+                ),
+                interruptions=self._interruptions,
             )
             if not transcript.strip():
                 await self._emit({"type": "final_transcript", "text": ""})
@@ -587,6 +731,7 @@ class VoiceEngine:
                 seq=seq + 1,
                 partial=False,
                 text=text,
+                speaker="candidate",
                 timestamps=timestamps,
             )
         )
@@ -622,10 +767,15 @@ class VoiceEngine:
             "voice_interrupt",
             session_id=self.session_id,
             interruption_count=self._interruptions,
+            discarded_tts_bytes=self._discarded_tts_bytes,
         )
         await self._cancel_tts()
         await self._cancel_answer()
         await self._stop_silence_watchdog()
+        self._playback_pending_generation = None
+        self._playback_pending_at = None
+        self._stop_playback_timeout()
+        self._barge_in_since = None
         self._audio_buf.clear()
         self._partial_since = 0
         self._speech_active = False
@@ -670,6 +820,9 @@ class VoiceEngine:
             if self.state is VoiceState.SPEAKING:
                 # Stop talking; resume returns to listening (same question).
                 await self._cancel_tts()
+                self._playback_pending_generation = None
+                self._playback_pending_at = None
+                self._stop_playback_timeout()
             await self._stop_silence_watchdog()
             self._resume_state = VoiceState.LISTENING
             await self._set_state(VoiceState.PAUSED)
@@ -691,6 +844,9 @@ class VoiceEngine:
         await self._cancel_tts()
         await self._cancel_answer()
         await self._stop_silence_watchdog()
+        self._playback_pending_generation = None
+        self._playback_pending_at = None
+        self._stop_playback_timeout()
         await self._set_state(VoiceState.COMPLETED)
         self._running = False
 
@@ -699,5 +855,8 @@ class VoiceEngine:
         await self._cancel_tts()
         await self._cancel_answer()
         await self._stop_silence_watchdog()
+        self._playback_pending_generation = None
+        self._playback_pending_at = None
+        self._stop_playback_timeout()
         await self._set_state(VoiceState.CANCELLED)
         self._running = False

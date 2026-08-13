@@ -385,12 +385,18 @@ async def interview_communication(
     inputs: list[SegmentInput] = []
     interruptions = 0
     for seg in segments:
-        ts = seg.timestamps or {}
-        role = ts.get("role")
-        if not isinstance(role, str):
-            kind = turn_kinds.get(seg.turn_id or -1)
-            role = "candidate" if kind == str(InterviewTurnKind.ANSWER) else "interviewer"
-        raw_int = ts.get("interruptions")
+        # Speaker identity: explicit column is authoritative; legacy rows fall
+        # back to the JSONB role, then to the turn kind.
+        role = seg.speaker
+        if role not in ("interviewer", "candidate"):
+            ts = seg.timestamps or {}
+            json_role = ts.get("role")
+            if isinstance(json_role, str):
+                role = json_role
+            else:
+                kind = turn_kinds.get(seg.turn_id or -1)
+                role = "candidate" if kind == str(InterviewTurnKind.ANSWER) else "interviewer"
+        raw_int = (seg.timestamps or {}).get("interruptions")
         if isinstance(raw_int, int):
             interruptions = max(interruptions, raw_int)
         inputs.append(SegmentInput(text=seg.text, role=role, timestamps=seg.timestamps))

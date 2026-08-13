@@ -14,7 +14,7 @@ const LAUNCH_ARGS = [
 const INIT = `
 window.__voiceDiag = {
   wsOpened: false, wsClosed: false,
-  ttsStart: 0, ttsStop: 0, chunksReceived: 0, chunkBytes: 0,
+  ttsStart: 0, ttsStop: 0, playbackCompleteSent: 0, chunksReceived: 0, chunkBytes: 0,
   audioCtxState: [], ctxResumeCalls: 0,
   bufferSourcesStarted: 0,
   micTrackState: null, getUserMediaCalls: 0,
@@ -28,6 +28,12 @@ window.WebSocket = class extends origWS {
   constructor(...a) { super(...a); window.__voiceDiag.wsOpened = true; this.__bin = 0 }
   send(data) {
     if (typeof data !== 'string') { window.__voiceDiag.micSends++; window.__voiceDiag.micBytes += data.byteLength || 0 }
+    else {
+      try {
+        const o = JSON.parse(data)
+        if (o.type === 'playback_complete') { window.__voiceDiag.playbackCompleteSent++; push({t:'playback_complete', g: o.generation}) }
+      } catch {}
+    }
     return super.send(data)
   }
 }
@@ -124,7 +130,7 @@ async function main() {
   const d = await diag()
   console.log('=== DIAG ===')
   console.log('wsOpened:', d.wsOpened, 'wsClosed:', d.wsClosed)
-  console.log('ttsStart:', d.ttsStart, 'ttsStop:', d.ttsStop)
+  console.log('ttsStart:', d.ttsStart, 'ttsStop:', d.ttsStop, 'playbackCompleteSent:', d.playbackCompleteSent)
   console.log('chunksReceived:', d.chunksReceived, 'bytes:', d.chunkBytes)
   console.log('audioCtxState:', d.audioCtxState, 'resumeCalls:', d.ctxResumeCalls)
   console.log('bufferSourcesStarted:', d.bufferSourcesStarted)
@@ -140,6 +146,13 @@ async function main() {
   console.log('micSends after:', d2.micSends)
 
   await browser.close()
+  // Speaker-integrity contract: any 'state:listening' event must be preceded
+  // by a client-sent playback_complete (playback-completion gating) — the
+  // microphone window may only open after real playback finished.
+  const events = d.events
+  const firstListening = events.findIndex((e) => e.t === 'state' && e.s === 'listening')
+  const playbackAcked = events.findIndex((e) => e.t === 'playback_complete')
+  const gatingOk = firstListening === -1 || (playbackAcked !== -1 && playbackAcked < firstListening)
   const pass =
     d.wsOpened &&
     d.ttsStart >= 1 &&
@@ -149,7 +162,9 @@ async function main() {
     d.getUserMediaCalls >= 1 &&
     d.micTrackState === 'live' &&
     d.micSends > 0 &&
+    gatingOk &&
     d2.chunksReceived === d.chunksReceived // no stale chunks after interrupt
+  console.log('speaker-integrity gating (listening only after playback_complete):', gatingOk)
   console.log(pass ? 'E2E DIAGNOSTIC PASSED' : 'E2E DIAGNOSTIC FAILED')
   process.exit(pass ? 0 : 1)
 }

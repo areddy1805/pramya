@@ -91,6 +91,17 @@ class Settings(BaseSettings):
     voice_speech_rms: float = 400.0
     # Streaming playback chunk (samples per PCM16 audio_chunk frame).
     voice_chunk_samples: int = 4800  # 200 ms @ 24 kHz
+    # Playback-completion gating: the engine stays SPEAKING after tts_stop
+    # until the client confirms real playback completion. This timeout is a
+    # failure-mode guard for dead/glitched clients, never the enablement.
+    voice_playback_timeout_seconds: float = 45.0
+    # Voice-triggered barge-in (opt-in): sustained mic energy above the RMS
+    # threshold during TTS cancels the interviewer. OFF by default — the
+    # explicit 'interrupt' control is the guaranteed barge-in path and voice
+    # detection must never resurrect echo leakage on speaker hardware.
+    voice_barge_in_enabled: bool = False
+    voice_barge_in_rms: float = 900.0
+    voice_barge_in_ms: float = 250.0
 
     @property
     def audio_storage_path(self) -> Path:

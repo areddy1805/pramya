@@ -128,6 +128,10 @@ class TranscriptSegment(Base, TimestampMixin):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     partial: Mapped[bool] = mapped_column(nullable=False, default=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    # Unambiguous speaker identity (speaker-integrity guarantee).
+    speaker: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="unknown", server_default="unknown"
+    )
     timestamps: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
 

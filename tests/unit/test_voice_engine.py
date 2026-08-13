@@ -87,7 +87,10 @@ class StubTranscripts:
         turn_id = obj.turn_id  # type: ignore[attr-defined]
         text = obj.text  # type: ignore[attr-defined]
         timestamps = getattr(obj, "timestamps", None)
-        self.segments.append({"turn_id": turn_id, "text": text, "timestamps": timestamps})
+        speaker = getattr(obj, "speaker", "unknown")
+        self.segments.append(
+            {"turn_id": turn_id, "text": text, "timestamps": timestamps, "speaker": speaker}
+        )
 
 
 class StubAudios:
@@ -199,6 +202,7 @@ def _engine(ws: StubWS) -> VoiceEngine:
         ws=ws,
         silence_seconds=0.05,  # fast silence finalization in tests
         speech_rms=10.0,  # near-zero: any audio counts as speech
+        playback_timeout_seconds=0.5,  # fast failure-mode guard in tests
         transcripts=StubTranscripts(),  # type: ignore[arg-type]
     )
 
@@ -231,6 +235,18 @@ async def _wait_state_event(ws: StubWS, state: str, ms: int = 3000) -> bool:
     return any(e.get("type") == "state" and str(e.get("state")) == state for e in ws.json_out)
 
 
+async def _open_listening(ws: StubWS, engine: VoiceEngine, ms: int = 3000) -> None:
+    """Confirm playback completion so the engine opens the listening window."""
+    if engine.state is VoiceState.LISTENING:
+        return
+    if not await _wait_event(ws, "tts_stop", ms=ms):
+        raise AssertionError("no tts_stop received")
+    gen = next(e["generation"] for e in ws.json_out if e.get("type") == "tts_stop")
+    ws.push_json({"type": "playback_complete", "generation": gen})
+    if not await _wait_state(engine, ws, VoiceState.LISTENING, ms=ms):
+        raise AssertionError("engine did not reach LISTENING after playback_complete")
+
+
 async def _cancel_task(task: asyncio.Task[None]) -> None:
     task.cancel()
     try:
@@ -240,16 +256,73 @@ async def _cancel_task(task: asyncio.Task[None]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_engine_streams_question_then_listens() -> None:
+async def test_engine_streams_question_then_listens_after_playback_complete() -> None:
+    """Speaker-integrity contract: tts_stop does NOT open listening.
+
+    The engine must stay SPEAKING until the client confirms ACTUAL playback
+    completion (playback_complete). The physical-mic defect — interviewer
+    audio captured as a candidate answer — is impossible while LISTENING is
+    only reachable via playback confirmation (or the failure-mode guard).
+    """
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
     assert await _wait_event(ws, "question", ms=5000)
     assert ws.bytes_out, "expected TTS audio chunks"
+    assert await _wait_event(ws, "tts_stop", ms=5000)
+    # Defect regression: after tts_stop the engine must NOT be listening yet.
+    await asyncio.sleep(0.05)
+    assert engine.state is VoiceState.SPEAKING, (
+        "LISTENING must not begin on tts_stop alone (playback may still sound)"
+    )
+    assert "listening" not in _states(ws)
+    # Mic frames during SPEAKING are discarded, never ASR'd.
+    ws.push_bytes(b"\x7f\x7f" * 3200)
+    await asyncio.sleep(0.05)
+    assert engine._discarded_tts_frames >= 1
+    assert engine.asr.calls == []  # type: ignore[attr-defined]  # no candidate ASR
+    # Playback confirmation opens the authoritative listening window.
+    gen = next(e["generation"] for e in ws.json_out if e.get("type") == "tts_stop")
+    ws.push_json({"type": "playback_complete", "generation": gen})
     assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    ws.push_json({"type": "end_turn"})
+    assert await _wait_event(ws, "final_transcript", ms=5000)
+    assert engine.asr.calls, "candidate frames must reach ASR after playback_complete"  # type: ignore[attr-defined]
+    assert engine.interview.answer_texts == ["my spoken answer"]
     questions = [e for e in ws.json_out if e.get("type") == "question"]
     assert questions[0]["text"] == "Tell me about a hard problem you solved."
     assert "tts_start" in {e.get("type") for e in ws.json_out}
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_stale_playback_complete_ignored() -> None:
+    """A delayed playback_complete from a previous generation must not open
+    the mic window (generation-gated handshake)."""
+    ws = StubWS()
+    engine = _engine(ws)
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_stop", ms=5000)
+    assert await _wait_state(engine, ws, VoiceState.SPEAKING)
+    gen = next(e["generation"] for e in ws.json_out if e.get("type") == "tts_stop")
+    ws.push_json({"type": "playback_complete", "generation": gen + 99})
+    await asyncio.sleep(0.05)
+    assert engine.state is VoiceState.SPEAKING, "stale generation must not unlock capture"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_playback_timeout_guard_opens_listening() -> None:
+    """Failure-mode guard: a dead client must not deadlock the session. The
+    guard is NOT the enabling mechanism — normal flow is playback_complete."""
+    ws = StubWS()
+    engine = _engine(ws)
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_stop", ms=5000)
+    assert await _wait_state(engine, ws, VoiceState.SPEAKING)
+    assert await _wait_state(engine, ws, VoiceState.LISTENING, ms=2000)  # guard fires
+    assert engine._playback_confirmed is False
     await _cancel_task(task)
 
 
@@ -315,7 +388,7 @@ async def test_manual_end_turn_transcribes_and_evaluates() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_bytes(b"\x00\x01" * 3200)
     ws.push_json({"type": "end_turn"})
     assert await _wait_event(ws, "evaluation", ms=5000)
@@ -335,7 +408,7 @@ async def test_auto_end_turn_on_silence() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     # Loud audio (speech) then quiet audio (silence).
     ws.push_bytes(b"\x7f\x7f" * 3200)  # speech energy
     ws.push_bytes(b"\x00\x00" * 3200)  # silence begins
@@ -350,7 +423,7 @@ async def test_pause_resume_stop() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_json({"type": "pause"})
     assert await _wait_state(engine, ws, VoiceState.PAUSED)
     ws.push_json({"type": "resume"})
@@ -386,7 +459,7 @@ async def test_transcript_segments_persisted() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_bytes(b"\x00\x01" * 3200)
     ws.push_json({"type": "end_turn"})
     assert await _wait_event(ws, "evaluation", ms=5000)
@@ -395,6 +468,13 @@ async def test_transcript_segments_persisted() -> None:
     texts = [s["text"] for s in segments]
     assert any("Tell me about" in t for t in texts), "question transcript missing"
     assert any(t == "my spoken answer" for t in texts), "answer transcript missing"
+    # Speaker integrity (C/D): interviewer question and candidate answer must
+    # carry unambiguous, distinct speaker identity — never merged.
+    q = next(s for s in segments if "Tell me about" in s["text"])
+    a = next(s for s in segments if s["text"] == "my spoken answer")
+    assert q["speaker"] == "interviewer", "question must be interviewer"
+    assert a["speaker"] == "candidate", "answer must be candidate"
+    assert a["timestamps"]["role"] == "candidate"
     await _cancel_task(task)
 
 
@@ -403,7 +483,7 @@ async def test_cancel_reaches_cancelled() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_json({"type": "cancel"})
     assert await _wait_state(engine, ws, VoiceState.CANCELLED)
     await _cancel_task(task)
@@ -415,7 +495,7 @@ async def test_heartbeat_ack_returns_state() -> None:
     ws = StubWS()
     engine = _engine(ws)
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_json({"type": "heartbeat"})
     assert await _wait_event(ws, "heartbeat_ack", ms=3000)
     ack = [e for e in ws.json_out if e.get("type") == "heartbeat_ack"][-1]
@@ -459,7 +539,7 @@ async def test_answer_audio_persisted_when_store_enabled(tmp_path) -> None:
         retention_days=30,
     )
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_bytes(b"\x00\x01" * 3200)
     ws.push_json({"type": "end_turn"})
     assert await _wait_event(ws, "answer_submitted", ms=5000)
@@ -499,10 +579,135 @@ async def test_audio_not_stored_when_disabled(tmp_path) -> None:
         store_audio=False,
     )
     task = asyncio.create_task(engine.run(ws))
-    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    await _open_listening(ws, engine)
     ws.push_bytes(b"\x00\x01" * 3200)
     ws.push_json({"type": "end_turn"})
     assert await _wait_event(ws, "answer_submitted", ms=5000)
     await asyncio.sleep(0.05)
     assert audios.added == []
+    await _cancel_task(task)
+
+
+# -- physical-microphone speaker-integrity (Phase N) -------------------------
+
+
+@pytest.mark.asyncio
+async def test_mic_frames_during_paused_discarded() -> None:
+    """G: mic gating stays correct across pause — frames sent while PAUSED
+    are discarded, never accepted into an answer window."""
+    ws = StubWS()
+    engine = _engine(ws)
+    task = asyncio.create_task(engine.run(ws))
+    await _open_listening(ws, engine)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    for _ in range(200):
+        if engine._accepted_frames >= 1:
+            break
+        await asyncio.sleep(0.005)
+    assert engine._accepted_frames == 1
+    ws.push_json({"type": "pause"})
+    assert await _wait_state(engine, ws, VoiceState.PAUSED)
+    ws.push_bytes(b"\x7f\x7f" * 3200)
+    await asyncio.sleep(0.03)
+    assert engine._discarded_other_frames >= 1, "frames during PAUSED must be discarded"
+    # Resume reopens the listening window (counters reset per window).
+    ws.push_json({"type": "resume"})
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    for _ in range(200):
+        if engine._accepted_frames >= 1:
+            break
+        await asyncio.sleep(0.005)
+    assert engine._accepted_frames == 1, "resume reopened capture cleanly"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_stop_cancel_rejects_frames() -> None:
+    """H: stop/cancel terminate capture — later frames are never ASR'd."""
+    ws = StubWS()
+    engine = _engine(ws)
+    task = asyncio.create_task(engine.run(ws))
+    await _open_listening(ws, engine)
+    ws.push_json({"type": "stop"})
+    assert await _wait_state(engine, ws, VoiceState.COMPLETED)
+    asr_calls_before = len(engine.asr.calls)  # type: ignore[attr-defined]
+    ws.push_bytes(b"\x7f\x7f" * 3200)
+    ws.push_json({"type": "end_turn"})
+    await asyncio.sleep(0.05)
+    assert len(engine.asr.calls) == asr_calls_before  # type: ignore[attr-defined]
+    assert engine.interview.answer_texts == []
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_barge_in_interrupt_discards_playback_residue() -> None:
+    """E: explicit barge-in mid-TTS cancels synthesis, clears accumulated
+    audio, and opens a clean candidate window — pre-interrupt frames (the
+    interviewer's own playback picked up by the mic) never become the answer."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Interviewer-playback frames leak into the mic during SPEAKING...
+    ws.push_bytes(b"\x7f\x7f" * 3200)
+    await asyncio.sleep(0.02)
+    assert engine._discarded_tts_frames >= 1
+    # ...and the candidate barges in explicitly.
+    ws.push_json({"type": "interrupt"})
+    assert await _wait_state_event(ws, "interrupted", ms=2000)
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    tts.gate.set()
+    await asyncio.sleep(0.05)
+    # Candidate speech after the interrupt is accepted as the answer.
+    ws.push_bytes(b"\x00\x01" * 3200)
+    ws.push_json({"type": "end_turn"})
+    assert await _wait_event(ws, "evaluation", ms=5000)
+    assert engine.interview.answer_texts == ["my spoken answer"]
+    # The answer audio is the POST-interrupt window only (buffer was cleared).
+    assert engine.asr.calls and len(engine.asr.calls[-1]) == 3200 * 2  # type: ignore[attr-defined]
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_voice_barge_in_optin_detects_sustained_speech_during_tts() -> None:
+    """Opt-in voice-triggered barge-in: sustained mic energy during SPEAKING
+    cancels TTS and opens listening (explicit, threshold-gated detection)."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.barge_in_enabled = True
+    engine.barge_in_rms = 100.0  # low threshold for the test
+    engine.barge_in_ms = 40.0
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Sustained loud mic frames while the interviewer is speaking.
+    for _ in range(20):
+        ws.push_bytes(b"\x7f\x7f" * 1600)
+        await asyncio.sleep(0.01)
+    assert await _wait_state_event(ws, "interrupted", ms=2000)
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    assert engine._interruptions == 1
+    tts.gate.set()
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_reconnect_restores_state_with_mic_gating() -> None:
+    """F: reconnect to an in-progress session restores LISTENING (no playback
+    in flight) and capture is accepted only in that authoritative state."""
+    ws = StubWS()
+    engine = _engine(ws)
+    engine.interview.session_status = "questioning"  # type: ignore[attr-defined]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "resume", ms=5000)
+    assert await _wait_state(engine, ws, VoiceState.LISTENING)
+    ws.push_bytes(b"\x00\x01" * 3200)
+    ws.push_json({"type": "end_turn"})
+    assert await _wait_event(ws, "final_transcript", ms=5000)
+    assert engine.asr.calls, "mic frames accepted after reconnect in LISTENING"  # type: ignore[attr-defined]
+    assert engine._playback_confirmed is True
     await _cancel_task(task)

@@ -7,6 +7,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/); versions follow
 
 ### Added
 
+- **Physical-mic speaker integrity (live voice):** playback-completion
+  gating — `tts_stop` no longer opens candidate listening; the client sends
+  `playback_complete{generation}` only after the real playback queue drains,
+  and the server stays SPEAKING until then (failure-mode guard
+  `VOICE_PLAYBACK_TIMEOUT_SECONDS`). The interviewer can no longer become the
+  candidate through the physical microphone. Server-authoritative mic
+  gating counts discarded frames during SPEAKING/other states (never ASR'd).
+  Explicit `speaker` column on `transcript_segment` (migration 0002 +
+  backfill). Opt-in voice-triggered barge-in (`VOICE_BARGE_IN_*`, default
+  off; the Interrupt button remains the guaranteed path). Diagnostics:
+  `voice_listening` (playback_confirmed), `voice_answer` (accepted/discarded
+  frames+bytes, listening_ms, interruptions). 7 new voice unit tests (gating
+  contract, stale-generation handshake, timeout guard, pause/stop gating,
+  barge-in, reconnect). Physical-mic E2E recorded as NOT_VERIFIED (machine
+  mic silent at OS level — evidence in `docs/ai/VOICE_ARCHITECTURE.md §12`).
+
+
 - **Phase H — voice persistence & communication:** candidate audio persisted
   as WAV + `audio_segment` rows (opt-in `VOICE_STORE_AUDIO`, retention days);
   replay endpoints (`GET /interviews/{id}/voice/audio[/{segment_id}]`);

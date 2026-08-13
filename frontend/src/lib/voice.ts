@@ -112,6 +112,7 @@ export class VoiceClient {
   private heartbeat?: ReturnType<typeof setInterval>
   public state: VoiceState = 'idle'
   private currentGeneration = -1
+  private pendingPlaybackGeneration = -1
   private url: string
   private handlers: VoiceHandlers
 
@@ -129,6 +130,7 @@ export class VoiceClient {
     this.closedByUser = false
     this.playbackQueue = []
     this.currentGeneration = -1
+    this.pendingPlaybackGeneration = -1
 
     // H.6: create + resume AudioContext synchronously inside the user
     // gesture (start() is called directly from the click handler).
@@ -167,7 +169,12 @@ export class VoiceClient {
       numberOfOutputs: 0,
     })
     this.captureNode.port.onmessage = (ev: MessageEvent) => {
-      if (this.ws?.readyState === WebSocket.OPEN && this.state === 'listening') {
+      // Mic frames flow while the session is in an audio-relevant state:
+      // LISTENING (accepted by the server for candidate ASR) or SPEAKING
+      // (discarded by the server, counted as diagnostics, and usable for
+      // opt-in voice barge-in). The SERVER is authoritative about whether
+      // audio becomes a candidate answer — the client never decides that.
+      if (this.ws?.readyState === WebSocket.OPEN && (this.state === 'listening' || this.state === 'speaking')) {
         this.ws.send(ev.data as ArrayBuffer)
       }
     }
@@ -219,6 +226,7 @@ export class VoiceClient {
     this.playbackQueue = []
     this.playing = false
     this.currentGeneration = -1
+    this.pendingPlaybackGeneration = -1
     if (this.audioCtx) {
       await this.audioCtx.close()
       this.audioCtx = null
@@ -227,9 +235,27 @@ export class VoiceClient {
 
   // -- controls -------------------------------------------------------------
 
-  sendControl(type: string): void {
+  sendControl(type: string, extra: Record<string, unknown> = {}): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type }))
+      this.ws.send(JSON.stringify({ type, ...extra }))
+    }
+  }
+
+  /**
+   * Speaker-integrity handshake: called only when the playback queue has
+   * ACTUALLY drained (or nothing was queued). Tells the server that real
+   * playback finished, so it can authoritatively open LISTENING. The server
+   * ignores stale generations, so a late ack can never unlock capture.
+   */
+  private notifyPlaybackComplete(): void {
+    const gen = this.pendingPlaybackGeneration
+    if (
+      this.ws?.readyState === WebSocket.OPEN &&
+      gen >= 0 &&
+      gen === this.currentGeneration
+    ) {
+      this.pendingPlaybackGeneration = -1
+      this.sendControl('playback_complete', { generation: gen })
     }
   }
 
@@ -237,6 +263,7 @@ export class VoiceClient {
   interrupt(): void {
     // H.7: invalidate current generation so any in-flight chunk is dropped.
     this.currentGeneration = -1
+    this.pendingPlaybackGeneration = -1
     this.playbackQueue = []
     this.playing = false
     this.sendControl('interrupt')
@@ -275,10 +302,12 @@ export class VoiceClient {
     switch (payload.type) {
       case 'state':
         this.state = payload.state ?? 'idle'
-        if (payload.state === 'interrupted' || payload.state === 'cancelled') {
-          // Server confirmed interruption: flush local playback + drop
-          // any stale generation (H.7).
+        if (payload.state === 'interrupted' || payload.state === 'cancelled' || payload.state === 'paused') {
+          // Server confirmed interruption/pause/cancel: flush local playback
+          // + drop any stale generation. Playback must not continue sounding
+          // after the server stops accepting audio for this window.
           this.currentGeneration = -1
+          this.pendingPlaybackGeneration = -1
           this.playbackQueue = []
           this.playing = false
         }
@@ -321,13 +350,19 @@ export class VoiceClient {
       case 'tts_start':
         // H.7: remember the active generation; only this generation plays.
         this.currentGeneration = payload.generation ?? -1
+        this.pendingPlaybackGeneration = payload.generation ?? -1
         this.handlers.onTTSStart?.(payload.generation)
         break
       case 'tts_stop':
         // H.7: the generation stays valid for QUEUED playback — chunks already
         // received must finish playing. Only interrupt/cancel flushes the
-        // queue; a stale generation is dropped at enqueue time.
+        // queue; a stale generation is dropped at enqueue time. When the
+        // queue has fully drained, notifyPlaybackComplete() unlocks the
+        // server's LISTENING state (speaker-integrity handshake).
         this.handlers.onTTSStop?.(payload.generation)
+        if (this.playbackQueue.length === 0 && !this.playing) {
+          this.notifyPlaybackComplete()
+        }
         break
       case 'error':
         this.handlers.onError?.(payload.code ?? 'error', payload.message ?? 'Voice error')
@@ -373,6 +408,8 @@ export class VoiceClient {
       }
     } finally {
       this.playing = false
+      // Real playback finished (queue empty): unlock the server's LISTENING.
+      this.notifyPlaybackComplete()
     }
   }
 }

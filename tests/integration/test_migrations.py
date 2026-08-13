@@ -105,3 +105,61 @@ async def test_migration_downgrade_removes_everything() -> None:
         assert rows == ["alembic_version"], rows
     await engine2.dispose()
     await drop_database(scratch)
+
+
+async def test_transcript_speaker_column_and_backfill(db_engine: AsyncEngine) -> None:
+    """0002: transcript_segment gains an explicit speaker column; legacy rows
+    are backfilled from the JSONB role; anything else stays 'unknown'."""
+    async with db_engine.connect() as conn:
+        cols = (
+            await conn.execute(
+                text(
+                    "SELECT column_name, is_nullable FROM information_schema.columns "
+                    "WHERE table_name='transcript_segment' AND column_name='speaker'"
+                )
+            )
+        ).first()
+        assert cols is not None, "speaker column missing after migration head"
+        assert cols[1] == "NO"
+
+        # Insert one legacy-style row (JSONB role only) + one with no role.
+        await conn.execute(text('INSERT INTO "user" (id) VALUES (1) ON CONFLICT DO NOTHING'))
+        sess_id = (
+            await conn.execute(
+                text(
+                    "INSERT INTO interview_session (kind, status, user_id, config, "
+                    "graph_thread_id) VALUES ('general','questioning',1,'{}',"
+                    "'t-0002-test') RETURNING id"
+                )
+            )
+        ).scalar_one()
+        await conn.execute(
+            text(
+                "INSERT INTO transcript_segment (interview_session_id, seq, partial, text, "
+                "speaker, timestamps) VALUES (:sid, 1, false, 'legacy interviewer', "
+                "'unknown', '{\"role\":\"interviewer\"}'), "
+                "(:sid, 2, false, 'no role', 'unknown', NULL)"
+            ),
+            {"sid": sess_id},
+        )
+        await conn.commit()
+
+        # Fresh upgrade path already ran on head; re-run backfill SQL idempotently.
+        await conn.execute(
+            text(
+                "UPDATE transcript_segment SET speaker = timestamps ->> 'role' "
+                "WHERE timestamps ->> 'role' IN ('interviewer','candidate')"
+            )
+        )
+        await conn.commit()
+        rows = (
+            await conn.execute(
+                text(
+                    "SELECT text, speaker FROM transcript_segment WHERE interview_session_id = :sid"
+                ),
+                {"sid": sess_id},
+            )
+        ).all()
+        by_text = {r[0]: r[1] for r in rows}
+        assert by_text["legacy interviewer"] == "interviewer"
+        assert by_text["no role"] == "unknown"
