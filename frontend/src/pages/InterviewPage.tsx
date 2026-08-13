@@ -66,6 +66,8 @@ export function InterviewPage() {
   const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string; rationale: string | null } | null>(null)
   const keyCounter = useRef(0)
   const voiceRef = useRef<VoiceClient | null>(null)
+  const modeRef = useRef<'text' | 'voice'>(mode)
+  modeRef.current = mode
   const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   const create = useCreateInterview()
@@ -77,7 +79,14 @@ export function InterviewPage() {
   useSSE(sessionId ? `/api/v1/interviews/${sessionId}/events?user_id=${DEFAULT_USER_ID}` : '', {
     enabled: sessionId != null,
     onEvent: (event) => {
-      if (event.type === 'question' && typeof event.data.text === 'string') {
+      // Question ownership: in VOICE mode the WebSocket owns the question +
+      // transcript (the server publishes to both SSE and WS). The SSE branch
+      // must NOT append a second interviewer line for the same question.
+      if (
+        event.type === 'question' &&
+        typeof event.data.text === 'string' &&
+        modeRef.current !== 'voice'
+      ) {
         setCurrentQuestion({
           id: Number(event.data.question_id),
           text: event.data.text,

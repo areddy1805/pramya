@@ -14,13 +14,16 @@ const LAUNCH_ARGS = [
 const INIT = `
 window.__voiceDiag = {
   wsOpened: false, ttsStart: 0, ttsStop: 0, playbackCompleteSent: 0,
-  chunksReceived: 0, micSends: 0, events: [],
+  chunksReceived: 0, micSends: 0, sourcesStarted: 0, events: [],
   t0: performance.now(),
   turnEndAt: null, ttsStartAt: null, firstChunkAt: null, listeningAt: null,
   perTurn: [],
   staleWindow: false, staleChunks: 0,
 }
 const push = (e) => { e.ms = Math.round(performance.now() - window.__voiceDiag.t0); window.__voiceDiag.events.push(e); if (window.__voiceDiag.events.length > 3000) window.__voiceDiag.events.shift() }
+const _origSrcStart = AudioBufferSourceNode.prototype.start
+AudioBufferSourceNode.prototype.start = function (...a) { window.__voiceDiag.sourcesStarted++; return _origSrcStart.apply(this, a) }
+
 const origWS = window.WebSocket
 window.WebSocket = class extends origWS {
   constructor(...a) { super(...a); window.__voiceDiag.wsOpened = true }
@@ -184,13 +187,35 @@ async function main() {
   const stale = d.staleChunks
   const pass =
     d.wsOpened && finals.length >= 5 && evals.length >= 5 && d.ttsStart >= 5 &&
-    gatingOk && stale < 15 && interrupted
+    gatingOk && stale < 15 && interrupted && stopSilence && stopSources && dup.dupes.length === 0
   console.log('gatingOk:', gatingOk, '| interrupt executed:', interrupted)
   console.log('in-flight (stale-window) chunks after interrupt:', stale, '(client drops these; <15 tolerated)')
-  // Stop the session cleanly so the interview completes.
+  // Stop the session cleanly so the interview completes. P0: audio must
+  // stop IMMEDIATELY — no new chunks received, no new playback sources.
   const stopBtn = page.locator('button:has-text("End interview"), button:has-text("Stop")').first()
+  const beforeStop = await diag()
   if (await stopBtn.isVisible()) await stopBtn.click()
-  await page.waitForTimeout(1500)
+  await page.waitForTimeout(2000)
+  const afterStop = await diag()
+  const stopSilence = afterStop.chunksReceived === beforeStop.chunksReceived
+  const stopSources = afterStop.sourcesStarted === beforeStop.sourcesStarted
+  console.log('post-End: chunks stopped:', stopSilence, '| sources stopped:', stopSources)
+
+  // P0: transcript dedup — each interviewer question must appear EXACTLY once.
+  const dup = await page.evaluate(() => {
+    const box = document.querySelector('.max-h-72')
+    if (!box) return { lines: 0, dupes: [] }
+    const items = [...box.querySelectorAll('div.flex')].map((el) => {
+      const label = el.querySelector('p.text-[11px]')?.textContent ?? ''
+      const text = el.querySelector('p.mt-0.5')?.textContent ?? ''
+      return { label, text }
+    })
+    const interviewer = items.filter((i) => i.label.includes('Interviewer')).map((i) => i.text)
+    const seen = new Map()
+    for (const t of interviewer) seen.set(t, (seen.get(t) ?? 0) + 1)
+    return { lines: interviewer.length, dupes: [...seen.entries()].filter(([, n]) => n > 1).map(([t]) => t) }
+  })
+  console.log('transcript interviewer lines:', dup.lines, '| duplicated:', dup.dupes.length)
   await browser.close()
   console.log(pass ? 'LIVE 5-TURN PASSED' : 'LIVE 5-TURN FAILED')
   process.exit(pass ? 0 : 1)

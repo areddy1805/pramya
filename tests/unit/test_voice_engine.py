@@ -844,3 +844,49 @@ async def test_tts_warmup_precedes_first_synthesis() -> None:
     warmup_idx = tts.calls.index("warmup")
     syn_idxs = [i for i, c in enumerate(tts.calls) if c.startswith("syn:")]
     assert syn_idxs and warmup_idx < syn_idxs[0]
+
+
+@pytest.mark.asyncio
+async def test_stop_mid_tts_halts_all_audio_sends() -> None:
+    """P0: stopping the interview while the interviewer is mid-TTS must halt
+    the audio sender immediately — no further bytes reach the browser even
+    if synthesis had buffered more audio."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Let the producer enqueue a few frames, then stop mid-speech.
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "stop"})
+    assert await _wait_state(engine, ws, VoiceState.COMPLETED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    # Release the synthesis gate: any frames still in the pipeline must NOT
+    # be transmitted after the session is completed.
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after stop"
+    assert engine._generation >= 1  # generation invalidated
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_cancel_mid_tts_halts_all_audio_sends() -> None:
+    """P0: cancelling the interview mid-TTS halts the audio sender too."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "cancel"})
+    assert await _wait_state(engine, ws, VoiceState.CANCELLED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after cancel"
+    await _cancel_task(task)

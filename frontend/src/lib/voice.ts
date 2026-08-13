@@ -186,6 +186,12 @@ export class VoiceClient {
     this.ws.binaryType = 'arraybuffer'
     this.ws.onmessage = (ev) => this.handleMessage(ev)
     this.ws.onclose = () => {
+      // Any close — server-completed session, network drop, or cancel — must
+      // stop local playback immediately: buffered interviewer audio must not
+      // keep playing after the connection/session is gone.
+      this.currentGeneration = -1
+      this.pendingPlaybackGeneration = -1
+      this.flushPlayback()
       this.state = 'idle'
       this.handlers.onClosed?.()
       if (!this.closedByUser) {
@@ -302,10 +308,16 @@ export class VoiceClient {
     switch (payload.type) {
       case 'state':
         this.state = payload.state ?? 'idle'
-        if (payload.state === 'interrupted' || payload.state === 'cancelled' || payload.state === 'paused') {
-          // Server confirmed interruption/pause/cancel: flush local playback
-          // + drop any stale generation. Playback must not continue sounding
-          // after the server stops accepting audio for this window.
+        if (
+          payload.state === 'interrupted' ||
+          payload.state === 'cancelled' ||
+          payload.state === 'paused' ||
+          payload.state === 'completed' ||
+          payload.state === 'error'
+        ) {
+          // ANY terminal/abandoned server state kills local playback
+          // immediately: stop/cancel/end/error must never leave queued
+          // interviewer audio sounding.
           this.currentGeneration = -1
           this.pendingPlaybackGeneration = -1
           this.flushPlayback()
