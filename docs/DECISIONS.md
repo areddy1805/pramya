@@ -34,6 +34,7 @@
 | ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Superseded (framework realignment) | inline below |
 | ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Superseded (framework realignment) | inline below |
 | ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
+| ADR-025 | TTS provider: Qwen3-TTS (oMLX) for V1.1; Pocket TTS BENCHMARKED/CANDIDATE only | Accepted | docs/architecture/ADR-025-tts-provider-qwen3-v11.md |
 
 ---
 
