@@ -123,7 +123,15 @@ async def test_transcript_speaker_column_and_backfill(db_engine: AsyncEngine) ->
         assert cols[1] == "NO"
 
         # Insert one legacy-style row (JSONB role only) + one with no role.
+        # The explicit id bypasses the sequence: sync it so later ORM inserts
+        # (autoincrement) never collide with this row (test-isolation fix).
         await conn.execute(text('INSERT INTO "user" (id) VALUES (1) ON CONFLICT DO NOTHING'))
+        await conn.execute(
+            text(
+                "SELECT setval(pg_get_serial_sequence('\"user\"', 'id'), "
+                "(SELECT GREATEST(COALESCE(MAX(id), 0) + 1, 1) FROM \"user\"), false)"
+            )
+        )
         sess_id = (
             await conn.execute(
                 text(
