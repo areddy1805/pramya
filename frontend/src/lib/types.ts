@@ -17,12 +17,33 @@ export interface CandidateProfile {
   created_at: string
 }
 
+// Career profile (multi-profile workspace).
+export interface CareerProfile {
+  id: number
+  user_id: number
+  name: string
+  slug: string | null
+  positioning: string | null
+  status: string
+  seniority_target: string | null
+  headline: string | null
+  timezone: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+export interface ActiveProfile {
+  profile_id: number | null
+  profile: CareerProfile | null
+}
+
 export type DocumentKind = 'resume' | 'jd' | 'debrief' | 'transcript'
 export type DocumentStatus = 'pending' | 'parsing' | 'parsed' | 'failed'
 
 export interface Document {
   id: number
   user_id: number
+  profile_id: number | null
   kind: DocumentKind
   filename: string
   mime: string
@@ -31,6 +52,17 @@ export interface Document {
   status: DocumentStatus
   parsed_at: string | null
   created_at: string
+}
+
+// Idempotent upload result: created or deduplicated.
+export interface DocumentUploadResult {
+  status: 'created' | 'deduplicated'
+  created: boolean
+  document_id: number
+  profile_id: number | null
+  processing_status: string
+  kind: DocumentKind
+  filename: string
 }
 
 export interface DocumentIndexResult {

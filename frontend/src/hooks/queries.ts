@@ -1,12 +1,17 @@
 // TanStack Query hooks per backend resource.
 // Server state lives here; components stay thin.
 
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, qs } from '../lib/api'
+import { useProfileStore } from '../stores/profile'
 import type {
+  ActiveProfile,
   CandidateProfile,
+  CareerProfile,
   Document,
   DocumentIndexResult,
+  DocumentUploadResult,
   Evidence,
   ExtractionResult,
   Health,
@@ -22,6 +27,117 @@ import type {
 } from '../lib/types'
 
 export const DEFAULT_USER_ID = 1
+
+// --- career profiles ---------------------------------------------------------
+
+export function useProfiles(userId: number) {
+  return useQuery({
+    queryKey: ['profiles', userId],
+    queryFn: () => api.get<CareerProfile[]>(`/api/v1/candidates/${userId}/profiles`),
+    retry: false,
+  })
+}
+
+export function useCreateProfile(userId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      name: string
+      slug?: string
+      positioning?: string
+      status?: string
+      seniority_target?: string
+      headline?: string
+      timezone?: string
+    }) => api.post<CareerProfile>(`/api/v1/candidates/${userId}/profiles`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['profiles', userId] }),
+  })
+}
+
+export function useUpdateProfile(userId: number, profileId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      name?: string
+      slug?: string
+      positioning?: string
+      status?: string
+      seniority_target?: string
+      headline?: string
+      timezone?: string
+    }) => api.patch<CareerProfile>(`/api/v1/candidates/${userId}/profiles/${profileId}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles', userId] })
+      qc.invalidateQueries({ queryKey: ['active-profile', userId] })
+    },
+  })
+}
+
+export function useDeleteProfile(userId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (profileId: number) =>
+      api.delete(`/api/v1/candidates/${userId}/profiles/${profileId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['profiles', userId] }),
+  })
+}
+
+export function useActiveProfile(userId: number) {
+  return useQuery({
+    queryKey: ['active-profile', userId],
+    queryFn: () => api.get<ActiveProfile>(`/api/v1/candidates/${userId}/active-profile`),
+    retry: false,
+  })
+}
+
+export function useSetActiveProfile(userId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (profileId: number) =>
+      api.put<ActiveProfile>(`/api/v1/candidates/${userId}/active-profile`, { profile_id: profileId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['active-profile', userId] })
+      qc.invalidateQueries({ queryKey: ['profiles', userId] })
+      qc.invalidateQueries()
+    },
+  })
+}
+
+/**
+ * Effective active profile id for a user: server truth first, then the
+ * user's first profile, then null (no profiles yet). Keeps the zustand
+ * mirror in sync so the switcher reflects the persisted selection.
+ */
+export function useResolvedProfile(userId: number): {
+  active: CareerProfile | null
+  activeId: number | null
+  profiles: CareerProfile[]
+  isLoading: boolean
+} {
+  const profilesQuery = useProfiles(userId)
+  const activeQuery = useActiveProfile(userId)
+  const setActiveProfile = useProfileStore((s) => s.setActiveProfile)
+
+  const profiles = profilesQuery.data ?? []
+  let active: CareerProfile | null = activeQuery.data?.profile ?? null
+  if (!active && profiles.length > 0) {
+    active = profiles[0]
+  }
+  const activeId = active?.id ?? null
+
+  useEffect(() => {
+    if (userId > 0 && activeId != null) {
+      setActiveProfile(userId, activeId)
+    }
+  }, [userId, activeId, setActiveProfile])
+
+  return {
+    active,
+    activeId,
+    profiles,
+    isLoading: profilesQuery.isLoading || activeQuery.isLoading,
+  }
+}
 
 export function useHealth() {
   return useQuery({ queryKey: ['health'], queryFn: () => api.get<Health>('/api/v1/health') })
@@ -57,53 +173,89 @@ export function useUpdateCandidate(userId: number) {
 
 // --- documents ---------------------------------------------------------------
 
-export function useDocuments(userId: number, kind?: string) {
+export function useDocuments(userId: number, profileId: number | null, kind?: string) {
   return useQuery({
-    queryKey: ['documents', userId, kind ?? 'all'],
+    queryKey: ['documents', userId, profileId, kind ?? 'all'],
     queryFn: () =>
-      api.get<Document[]>(`/api/v1/documents${qs({ user_id: userId, kind })}`),
+      api.get<Document[]>(`/api/v1/documents${qs({ user_id: userId, profile_id: profileId, kind })}`),
+    enabled: profileId !== null && profileId > 0,
   })
 }
 
 export function useUploadDocument() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ userId, kind, file }: { userId: number; kind: string; file: File }) => {
+    mutationFn: ({
+      userId,
+      profileId,
+      kind,
+      file,
+    }: {
+      userId: number
+      profileId: number
+      kind: string
+      file: File
+    }) => {
       const form = new FormData()
       form.append('user_id', String(userId))
+      form.append('profile_id', String(profileId))
       form.append('kind', kind)
       form.append('file', file)
-      return api.upload<Document>('/api/v1/documents', form)
+      return api.upload<DocumentUploadResult>('/api/v1/documents', form)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ['documents', vars.userId, vars.profileId] }),
   })
 }
 
 export function useIndexDocument() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ userId, documentId }: { userId: number; documentId: number }) =>
-      api.post<DocumentIndexResult>(`/api/v1/documents/${documentId}/index${qs({ user_id: userId })}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+    mutationFn: ({
+      userId,
+      profileId,
+      documentId,
+    }: {
+      userId: number
+      profileId: number
+      documentId: number
+    }) =>
+      api.post<DocumentIndexResult>(
+        `/api/v1/documents/${documentId}/index${qs({ user_id: userId, profile_id: profileId })}`,
+      ),
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ['documents', vars.userId, vars.profileId] }),
+  })
+}
+
+export function useDeleteDocument(userId: number, profileId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (documentId: number) =>
+      api.delete(`/api/v1/documents/${documentId}${qs({ user_id: userId, profile_id: profileId })}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents', userId, profileId] }),
   })
 }
 
 // --- evidence ----------------------------------------------------------------
 
-export function useEvidence(userId: number, status?: string) {
+export function useEvidence(userId: number, profileId: number | null, status?: string) {
   return useQuery({
-    queryKey: ['evidence', userId, status ?? 'all'],
+    queryKey: ['evidence', userId, profileId, status ?? 'all'],
     queryFn: () =>
-      api.get<Evidence[]>(`/api/v1/candidates/${userId}/evidence${qs({ status })}`),
+      api.get<Evidence[]>(
+        `/api/v1/candidates/${userId}/evidence${qs({ profile_id: profileId, status })}`,
+      ),
+    enabled: profileId !== null && profileId > 0,
   })
 }
 
-export function useExtractResume(userId: number) {
+export function useExtractResume(userId: number, profileId: number | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ documentId }: { documentId: number }) =>
       api.post<ExtractionResult>(
-        `/api/v1/candidates/${userId}/extract${qs({ document_id: documentId })}`,
+        `/api/v1/candidates/${userId}/extract${qs({ document_id: documentId, profile_id: profileId })}`,
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['evidence'] })
@@ -112,7 +264,7 @@ export function useExtractResume(userId: number) {
   })
 }
 
-export function usePatchEvidence(userId: number) {
+export function usePatchEvidence(userId: number, profileId: number | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({
@@ -123,7 +275,7 @@ export function usePatchEvidence(userId: number) {
       patch: { status?: string; strength?: number; notes?: string }
     }) =>
       api.patch<Evidence>(
-        `/api/v1/candidates/${userId}/evidence/${evidenceId}`,
+        `/api/v1/candidates/${userId}/evidence/${evidenceId}${qs({ profile_id: profileId })}`,
         patch,
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['evidence'] }),
@@ -132,28 +284,35 @@ export function usePatchEvidence(userId: number) {
 
 // --- roles -------------------------------------------------------------------
 
-export function useRoles(userId: number) {
+export function useRoles(userId: number, profileId: number | null) {
   return useQuery({
-    queryKey: ['roles', userId],
-    queryFn: () => api.get<Role[]>(`/api/v1/roles${qs({ user_id: userId })}`),
+    queryKey: ['roles', userId, profileId],
+    queryFn: () =>
+      api.get<Role[]>(`/api/v1/roles${qs({ user_id: userId, profile_id: profileId })}`),
+    enabled: profileId !== null && profileId > 0,
   })
 }
 
 export function useAnalyzeRole() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { user_id: number; jd_text: string; source_document_id?: number }) =>
-      api.post<Role>('/api/v1/roles/analyze', body),
+    mutationFn: (body: {
+      user_id: number
+      profile_id?: number
+      jd_text: string
+      source_document_id?: number
+    }) => api.post<Role>('/api/v1/roles/analyze', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['roles'] }),
   })
 }
 
 // --- interviews --------------------------------------------------------------
 
-export function useInterviews(userId: number) {
+export function useInterviews(userId: number, profileId: number | null = null) {
   return useQuery({
-    queryKey: ['interviews', userId],
-    queryFn: () => api.get<InterviewSession[]>(`/api/v1/interviews${qs({ user_id: userId })}`),
+    queryKey: ['interviews', userId, profileId],
+    queryFn: () =>
+      api.get<InterviewSession[]>(`/api/v1/interviews${qs({ user_id: userId, profile_id: profileId })}`),
   })
 }
 
@@ -174,6 +333,7 @@ export function useCreateInterview() {
       user_id: number
       kind: string
       role_id?: number
+      profile_id?: number
       duration_minutes: number
       focus_competency_ids: number[]
       mode: string
@@ -321,19 +481,20 @@ export function useAnalyzeDebrief() {
 
 // --- readiness / preparation / progress --------------------------------------
 
-export function useReadiness(userId: number) {
+export function useReadiness(userId: number, profileId: number | null = null) {
   return useQuery({
-    queryKey: ['readiness', userId],
-    queryFn: () => api.get<Readiness>(`/api/v1/readiness/latest${qs({ user_id: userId })}`),
+    queryKey: ['readiness', userId, profileId],
+    queryFn: () =>
+      api.get<Readiness>(`/api/v1/readiness/latest${qs({ user_id: userId, profile_id: profileId })}`),
     retry: false,
   })
 }
 
-export function useComputeReadiness(userId: number) {
+export function useComputeReadiness(userId: number, profileId: number | null = null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (roleId?: number) =>
-      api.post<Readiness>(`/api/v1/readiness${qs({ user_id: userId, role_id: roleId })}`),
+      api.post<Readiness>(`/api/v1/readiness${qs({ user_id: userId, role_id: roleId, profile_id: profileId })}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['readiness'] })
       qc.invalidateQueries({ queryKey: ['preparation'] })
@@ -341,26 +502,30 @@ export function useComputeReadiness(userId: number) {
   })
 }
 
-export function usePreparation(userId: number) {
+export function usePreparation(userId: number, profileId: number | null = null) {
   return useQuery({
-    queryKey: ['preparation', userId],
-    queryFn: () => api.get<PreparationItem[]>(`/api/v1/preparation${qs({ user_id: userId })}`),
+    queryKey: ['preparation', userId, profileId],
+    queryFn: () =>
+      api.get<PreparationItem[]>(`/api/v1/preparation${qs({ user_id: userId, profile_id: profileId })}`),
   })
 }
 
-export function useRegeneratePreparation(userId: number) {
+export function useRegeneratePreparation(userId: number, profileId: number | null = null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () =>
-      api.post<PreparationItem[]>(`/api/v1/preparation/regenerate${qs({ user_id: userId })}`),
+      api.post<PreparationItem[]>(
+        `/api/v1/preparation/regenerate${qs({ user_id: userId, profile_id: profileId })}`,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['preparation'] }),
   })
 }
 
-export function useProgress(userId: number) {
+export function useProgress(userId: number, profileId: number | null = null) {
   return useQuery({
-    queryKey: ['progress', userId],
-    queryFn: () => api.get<ProgressSummary>(`/api/v1/progress${qs({ user_id: userId })}`),
+    queryKey: ['progress', userId, profileId],
+    queryFn: () =>
+      api.get<ProgressSummary>(`/api/v1/progress${qs({ user_id: userId, profile_id: profileId })}`),
   })
 }
 

@@ -1,9 +1,10 @@
-import { useProgress, useInterviews, DEFAULT_USER_ID } from '../hooks/queries'
+import { useProgress, useInterviews, useResolvedProfile, DEFAULT_USER_ID } from '../hooks/queries'
 import { EmptyState, Meter, Pill, SectionHeading, Skeleton, Stat, Surface } from '../components/ui'
 
 export function ProgressPage() {
-  const progress = useProgress(DEFAULT_USER_ID)
-  const sessions = useInterviews(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const progress = useProgress(DEFAULT_USER_ID, activeId)
+  const sessions = useInterviews(DEFAULT_USER_ID, activeId)
 
   if (progress.isLoading) return <Skeleton className="h-64" />
 

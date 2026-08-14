@@ -17,10 +17,12 @@ from app.ai.langchain.structured import generate_structured
 from app.ai.policy import TaskClass
 from app.ai.router import InferenceRouter
 from app.domain.enums import CompetencyCategory, CompetencyImportance
-from app.domain.errors import ValidationFailedError
+from app.domain.errors import NotFoundError, ValidationFailedError
 from app.domain.schemas import RoleAnalysis
 from app.models.role import Competency, Role
+from app.observability import record_event
 from app.repositories.misc import RoleRepository
+from app.repositories.user import CandidateProfileRepository
 from app.services.prompts import load_prompt
 
 _PROMPT = "role_analysis/jd_analysis.txt"
@@ -43,6 +45,7 @@ class RoleAnalysisService:
         self.session = session
         self.router = router
         self.roles = RoleRepository(session)
+        self.profiles = CandidateProfileRepository(session)
         self.prompt_text = (
             prompt_path.read_text()
             if prompt_path is not None and prompt_path.exists()
@@ -55,10 +58,21 @@ class RoleAnalysisService:
         jd_text: str,
         *,
         source_document_id: int | None = None,
+        profile_id: int | None = None,
     ) -> Role:
-        """Analyze JD text, persist role + competencies, return the role."""
+        """Analyze JD text, persist role + competencies, return the role.
+
+        ``profile_id`` attributes the target role to a career profile
+        (ownership verified server-side).
+        """
         if not jd_text.strip():
             raise ValidationFailedError("JD text is empty")
+        if profile_id is not None:
+            profile = await self.profiles.get_for_user(user_id, profile_id)
+            if profile is None:
+                raise NotFoundError("candidate profile not found")
+        elif source_document_id is not None:
+            profile_id = None  # legacy path: no profile attribution
 
         messages = [
             ChatMessage(role="system", content=self.prompt_text),
@@ -78,6 +92,7 @@ class RoleAnalysisService:
 
         role = Role(
             user_id=user_id,
+            profile_id=profile_id,
             source_document_id=source_document_id,
             title=analysis.title,
             seniority=analysis.seniority,
@@ -87,6 +102,13 @@ class RoleAnalysisService:
 
         competencies = self._build_competencies(analysis, role.id)
         await self.roles.add_all_competencies(competencies)
+        record_event(
+            "target_role_created",
+            user_id=user_id,
+            profile_id=profile_id,
+            role_id=role.id,
+            title=role.title,
+        )
         return role
 
     @staticmethod

@@ -1,0 +1,150 @@
+"""Career profile routes: multi-profile CRUD + active profile.
+
+Ownership model: every profile operation takes an explicit profile_id and
+verifies it belongs to the caller's user_id (server-side). The active
+profile is a persisted UX preference (user.active_profile_id); it is never
+an authorization boundary.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.db import get_session
+from app.services.user import CandidateService
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+router = APIRouter()
+
+
+class ProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    name: str
+    slug: str | None = None
+    positioning: str | None = None
+    status: str
+    seniority_target: str | None = None
+    headline: str | None = None
+    timezone: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+
+class ProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    slug: str | None = Field(default=None, max_length=200)
+    positioning: str | None = None
+    status: str | None = Field(default="active", max_length=32)
+    seniority_target: str | None = Field(default=None, max_length=100)
+    headline: str | None = Field(default=None, max_length=300)
+    timezone: str | None = Field(default=None, max_length=64)
+
+
+class ProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    slug: str | None = Field(default=None, max_length=200)
+    positioning: str | None = None
+    status: str | None = Field(default=None, max_length=32)
+    seniority_target: str | None = Field(default=None, max_length=100)
+    headline: str | None = Field(default=None, max_length=300)
+    timezone: str | None = Field(default=None, max_length=64)
+
+
+class ActiveProfileOut(BaseModel):
+    profile_id: int | None = None
+    profile: ProfileOut | None = None
+
+
+class ActiveProfileSet(BaseModel):
+    profile_id: int
+
+
+def _out(profile: object) -> ProfileOut:
+    return ProfileOut.model_validate(profile)
+
+
+@router.get("/candidates/{user_id}/profiles", response_model=list[ProfileOut])
+async def list_profiles(user_id: int, session: SessionDep) -> list[ProfileOut]:
+    svc = CandidateService(session)
+    profiles = await svc.list_profiles(user_id)
+    return [_out(p) for p in profiles]
+
+
+@router.post("/candidates/{user_id}/profiles", response_model=ProfileOut, status_code=201)
+async def create_profile(user_id: int, body: ProfileCreate, session: SessionDep) -> ProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.create_profile(
+        user_id=user_id,
+        name=body.name,
+        slug=body.slug,
+        positioning=body.positioning,
+        status=body.status,
+        seniority_target=body.seniority_target,
+        headline=body.headline,
+        timezone=body.timezone,
+    )
+    await session.commit()
+    return _out(profile)
+
+
+@router.get("/candidates/{user_id}/profiles/{profile_id}", response_model=ProfileOut)
+async def get_profile(user_id: int, profile_id: int, session: SessionDep) -> ProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.require_profile(user_id, profile_id)
+    return _out(profile)
+
+
+@router.patch("/candidates/{user_id}/profiles/{profile_id}", response_model=ProfileOut)
+async def update_profile(
+    user_id: int, profile_id: int, body: ProfileUpdate, session: SessionDep
+) -> ProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.update_profile(
+        user_id,
+        profile_id,
+        name=body.name,
+        slug=body.slug,
+        positioning=body.positioning,
+        status=body.status,
+        seniority_target=body.seniority_target,
+        headline=body.headline,
+        timezone=body.timezone,
+    )
+    await session.commit()
+    return _out(profile)
+
+
+@router.delete("/candidates/{user_id}/profiles/{profile_id}", status_code=204)
+async def delete_profile(user_id: int, profile_id: int, session: SessionDep) -> None:
+    svc = CandidateService(session)
+    await svc.delete_profile(user_id, profile_id)
+    await session.commit()
+
+
+@router.get("/candidates/{user_id}/active-profile", response_model=ActiveProfileOut)
+async def get_active_profile(user_id: int, session: SessionDep) -> ActiveProfileOut:
+    svc = CandidateService(session)
+    active_id = await svc.get_active_profile_id(user_id)
+    profile = await svc.get_profile(user_id, active_id) if active_id is not None else None
+    if profile is None:
+        return ActiveProfileOut(profile_id=None, profile=None)
+    return ActiveProfileOut(profile_id=profile.id, profile=_out(profile))
+
+
+@router.put("/candidates/{user_id}/active-profile", response_model=ActiveProfileOut)
+async def set_active_profile(
+    user_id: int, body: ActiveProfileSet, session: SessionDep
+) -> ActiveProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.set_active_profile(user_id, body.profile_id)
+    await session.commit()
+    return ActiveProfileOut(profile_id=profile.id, profile=_out(profile))

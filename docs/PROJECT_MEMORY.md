@@ -161,3 +161,34 @@ V1.1 ARCHITECTURE (implemented, tests green):
 KNOWN DEFECT FIXED: LangGraph aget_state returns StateSnapshot (has .values, not .get) — fixed in service.py next_question_streaming. Live run before fix: 'StateSnapshot' object has no attribute 'get' (question pipeline degraded). After fix: 194 unit + 9 contract + 38 integration green, mypy/pyright/ruff clean, frontend tsc/lint/build green.
 
 NEXT (resume point): restart backend on 8001, run frontend/scripts/voice_e2e_5turns.mjs (volume 50%) — verify streaming loop + TURN_TO_FIRST_AUDIO per turn; then R13 TTS benchmark (Pocket TTS research time-boxed), R10 barge-in live check, R14 reconnect, R18 V1-vs-V1.1 benchmark, R19 docs (ADR-025, VOICE_ARCHITECTURE, OBSERVABILITY, MODEL_CATALOG, README, CHANGELOG), R20 final validation + report. Uncommitted V1.1 work sits in the working tree (checkpoint commit to follow).
+
+## Profile workspace system (2026-08-14, ADR-026)
+
+- `candidate_profile` is now the multi-instance career profile container
+  (unique `(user_id, name)`; name/slug/positioning/status added). USER !=
+  PROFILE: one user owns many profiles.
+- Ownership path: entity -> profile -> user. `document`, `role`,
+  `evidence`, `readiness_snapshot`, `preparation_item`, `practice_session`
+  carry `profile_id` (CASCADE); `interview_session.candidate_profile_id`
+  is now populated at creation. Migrations: 0003 (profile identity +
+  document/role/evidence), 0004 (analytics tables).
+- `user.active_profile_id` = persisted UX preference ONLY (SET NULL), never
+  an authorization boundary. First profile auto-becomes active. Switching
+  survives refresh + backend restart.
+- Authorization: every profile-scoped API verifies profile belongs to
+  user_id server-side (404 on mismatch). Never trust client profile_id.
+- Duplicate uploads: identical content within same (user, profile) -> HTTP
+  200 `{status: "deduplicated", created: false, document_id, ...}` (idempotent
+  dedup, NOT a 422). Same file in a different profile = distinct document.
+  Legacy uploads without profile_id attribute to default (first) profile.
+- Readiness/prep/progress are profile-scoped: they aggregate ONLY the
+  requested profile's evidence/evaluations; endpoints accept profile_id.
+- Frontend: `/profile` ProfilePage (CRUD + switcher + resume/JD/roles/
+  evidence per profile), header ProfileSwitcher, zustand store mirror
+  (localStorage) — server value authoritative.
+- Tests: tests/integration/test_career_profiles.py (9) +
+  test_profile_workspace.py (9); browser E2E
+  frontend/e2e/profile-workspace.spec.ts (rerun-tolerant, uses user 1).
+- E2E note: the frontend still hardcodes DEFAULT_USER_ID=1 (no auth
+  system in dev); profile E2E drives user 1's real workspace and never
+  deletes user 1 data.

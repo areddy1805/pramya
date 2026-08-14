@@ -55,13 +55,14 @@ class ExtractionService:
         )
 
     async def extract_resume(
-        self, user_id: int, document: Document, content: str
+        self, user_id: int, document: Document, content: str, *, profile_id: int | None = None
     ) -> ResumeExtraction:
         """Run structured extraction and persist claimed evidence.
 
         Returns the validated extraction. Evidence rows are created for
         roles, technologies, projects, achievements, certifications,
-        strengths, gaps, and explicit claims — all status=claimed.
+        strengths, gaps, and explicit claims — all status=claimed and
+        attributed to ``profile_id`` when provided.
         """
         if not content.strip():
             raise ValidationFailedError("resume content is empty")
@@ -80,11 +81,16 @@ class ExtractionService:
                 self.router, TaskClass.EXTRACTION, messages, ResumeExtraction
             )
 
-        await self._persist(user_id, document, extraction)
+        await self._persist(user_id, document, extraction, profile_id=profile_id)
         return extraction
 
     async def _persist(
-        self, user_id: int, document: Document, extraction: ResumeExtraction
+        self,
+        user_id: int,
+        document: Document,
+        extraction: ResumeExtraction,
+        *,
+        profile_id: int | None = None,
     ) -> None:
         rows: list[Evidence] = []
         source_ref = f"document:{document.id}"
@@ -97,33 +103,54 @@ class ExtractionService:
                     f"Role: {role.title}"
                     + (f" at {role.company}" if role.company else "")
                     + (f" ({role.years:g} yrs)" if role.years else ""),
+                    profile_id=profile_id,
                 )
             )
         for tech in extraction.technologies:
-            rows.append(self._claim(user_id, source_ref, f"Technology: {tech}"))
+            rows.append(
+                self._claim(user_id, source_ref, f"Technology: {tech}", profile_id=profile_id)
+            )
         for proj in extraction.projects:
             if proj.name:
-                rows.append(self._claim(user_id, source_ref, f"Project: {proj.name}"))
+                rows.append(
+                    self._claim(user_id, source_ref, f"Project: {proj.name}", profile_id=profile_id)
+                )
             for ach in proj.achievements:
-                rows.append(self._claim(user_id, source_ref, f"Achievement ({proj.name}): {ach}"))
+                rows.append(
+                    self._claim(
+                        user_id,
+                        source_ref,
+                        f"Achievement ({proj.name}): {ach}",
+                        profile_id=profile_id,
+                    )
+                )
         for ach in extraction.achievements:
-            rows.append(self._claim(user_id, source_ref, f"Achievement: {ach}"))
+            rows.append(
+                self._claim(user_id, source_ref, f"Achievement: {ach}", profile_id=profile_id)
+            )
         for cert in extraction.certifications:
-            rows.append(self._claim(user_id, source_ref, f"Certification: {cert}"))
+            rows.append(
+                self._claim(user_id, source_ref, f"Certification: {cert}", profile_id=profile_id)
+            )
         for claim in extraction.claims:
-            rows.append(self._claim(user_id, source_ref, claim))
+            rows.append(self._claim(user_id, source_ref, claim, profile_id=profile_id))
         for strength in extraction.strengths:
-            rows.append(self._claim(user_id, source_ref, f"Strength: {strength}"))
+            rows.append(
+                self._claim(user_id, source_ref, f"Strength: {strength}", profile_id=profile_id)
+            )
         for gap in extraction.gaps:
-            rows.append(self._claim(user_id, source_ref, f"Gap: {gap}"))
+            rows.append(self._claim(user_id, source_ref, f"Gap: {gap}", profile_id=profile_id))
 
         if rows:
             await self.evidence.add_all(rows)
 
     @staticmethod
-    def _claim(user_id: int, source_ref: str, claim: str) -> Evidence:
+    def _claim(
+        user_id: int, source_ref: str, claim: str, *, profile_id: int | None = None
+    ) -> Evidence:
         return Evidence(
             user_id=user_id,
+            profile_id=profile_id,
             source_kind=EvidenceSourceKind.RESUME,
             source_ref=source_ref,
             claim=claim,
@@ -142,7 +169,7 @@ class ResumeExtractionRunner:
         self.storage_dir = storage_dir
 
     async def extract_document(
-        self, user_id: int, document_id: int
+        self, user_id: int, document_id: int, *, profile_id: int | None = None
     ) -> tuple[ResumeExtraction, int]:
         """Extract from document id; returns (extraction, evidence_count)."""
         doc_svc = DocumentService(self.session, storage_dir=self.storage_dir)
@@ -167,7 +194,10 @@ class ResumeExtractionRunner:
             timeout_seconds=settings.document_parse_timeout_seconds,
         )
         extraction = await ExtractionService(self.session, self.router).extract_resume(
-            user_id, document, parsed.content
+            user_id,
+            document,
+            parsed.content,
+            profile_id=profile_id if profile_id is not None else document.profile_id,
         )
         return extraction, await _count_evidence(self.session, user_id)
 

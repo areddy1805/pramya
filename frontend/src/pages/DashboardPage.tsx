@@ -1,16 +1,17 @@
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../lib/api'
-import { useCandidate, useDocuments, usePreparation, useProgress, useReadiness, useRoles, DEFAULT_USER_ID } from '../hooks/queries'
+import { useCandidate, useDocuments, usePreparation, useProgress, useReadiness, useRoles, useResolvedProfile, DEFAULT_USER_ID } from '../hooks/queries'
 import { Button, Divider, EmptyState, ErrorState, Meter, Pill, SectionHeading, Skeleton, Stat, Surface } from '../components/ui'
 
 export function DashboardPage() {
   const navigate = useNavigate()
   const candidate = useCandidate(DEFAULT_USER_ID)
-  const readiness = useReadiness(DEFAULT_USER_ID)
-  const preparation = usePreparation(DEFAULT_USER_ID)
-  const progress = useProgress(DEFAULT_USER_ID)
-  const documents = useDocuments(DEFAULT_USER_ID)
-  const roles = useRoles(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const readiness = useReadiness(DEFAULT_USER_ID, activeId)
+  const preparation = usePreparation(DEFAULT_USER_ID, activeId)
+  const progress = useProgress(DEFAULT_USER_ID, activeId)
+  const documents = useDocuments(DEFAULT_USER_ID, activeId)
+  const roles = useRoles(DEFAULT_USER_ID, activeId)
 
   const loading = candidate.isLoading || readiness.isLoading
   const targetRole = roles.data?.at(-1)

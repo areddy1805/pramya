@@ -28,6 +28,10 @@ class PreparationItem(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Profile-scoped: the preparation queue belongs to one career profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     competency_id: Mapped[int | None] = mapped_column(
         ForeignKey("competency.id", ondelete="SET NULL"), nullable=True
     )
@@ -49,6 +53,10 @@ class PracticeSession(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Profile-scoped: practice history belongs to one career profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
     )
     preparation_item_id: Mapped[int | None] = mapped_column(
         ForeignKey("preparation_item.id", ondelete="SET NULL"), nullable=True

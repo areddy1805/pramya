@@ -871,6 +871,7 @@ Phase 10 Progress/History/Practice   COMPLETE (progress aggregation, practice se
 Phase 11 MCP/Observability/Security  COMPLETE for V1 (Langfuse facade done; security done; demo done; evals done; MCP DEFERRED from V1 per ADR-006)
 Phase 12 E2E/Deploy/Docs/Polish      COMPLETE (browser E2E; fresh-clone verified; release acceptance matrix + final docs pass)
 Voice speaker-integrity (physical mic)  COMPLETE (playback-completion gating, server mic gating, speaker column, diagnostics) + PHYSICAL-MIC E2E PASSED 2026-08-13 (real mic + speakers, open lid) — see VOICE_ARCHITECTURE.md §12
+Profile Workspace (ADR-026)        COMPLETE 2026-08-14: multi-profile career workspace (candidate_profile = profile container, unique (user_id,name)); profile_id on document/role/evidence/readiness/prep/practice; interview_session.candidate_profile_id populated; user.active_profile_id UX preference; profile-scoped authorization (404 on cross-user/cross-profile); idempotent duplicate-upload dedup (200 status=deduplicated); profile-scoped readiness/prep/progress; /profile UI + header switcher; 18 new tests + browser E2E; migrations 0003, 0004
 ```
 
 - Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)

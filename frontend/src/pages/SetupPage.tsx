@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiError } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
 import {
   useAnalyzeRole,
   useCandidate,
@@ -7,6 +7,7 @@ import {
   useDocuments,
   useExtractResume,
   useIndexDocument,
+  useResolvedProfile,
   useRoles,
   useUpdateCandidate,
   useUploadDocument,
@@ -15,14 +16,16 @@ import {
 import { Button, ErrorState, Field, Pill, SectionHeading, Select, Spinner, Surface, TextArea, TextInput } from '../components/ui'
 
 export function SetupPage() {
+  const navigate = useNavigate()
   const candidate = useCandidate(DEFAULT_USER_ID)
+  const { activeId, active, isLoading: profilesLoading } = useResolvedProfile(DEFAULT_USER_ID)
   const updateCandidate = useUpdateCandidate(DEFAULT_USER_ID)
   const createCandidate = useCreateCandidate()
-  const documents = useDocuments(DEFAULT_USER_ID)
+  const documents = useDocuments(DEFAULT_USER_ID, activeId)
   const upload = useUploadDocument()
   const index = useIndexDocument()
-  const extract = useExtractResume(DEFAULT_USER_ID)
-  const roles = useRoles(DEFAULT_USER_ID)
+  const extract = useExtractResume(DEFAULT_USER_ID, activeId)
+  const roles = useRoles(DEFAULT_USER_ID, activeId)
   const analyzeRole = useAnalyzeRole()
 
   const [headline, setHeadline] = useState('')
@@ -39,22 +42,22 @@ export function SetupPage() {
   async function onUploadResume(file: File) {
     setError(null)
     setNotice(null)
+    if (activeId == null) return
     try {
       setStage('Parsing resume…')
-      const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'resume', file })
-      setStage('Indexing into knowledge base…')
-      await index.mutateAsync({ userId: DEFAULT_USER_ID, documentId: doc.id })
-      setStage('Extracting claims…')
-      await extract.mutateAsync({ documentId: doc.id })
-      setStage(null)
-    } catch (err) {
-      setStage(null)
-      if (err instanceof ApiError && err.code === 'validation_failed' && err.details.document_id) {
-        // Identical content already uploaded: show the existing document, not an error.
-        setNotice('That exact file was already uploaded — it is listed below.')
+      const result = await upload.mutateAsync({ userId: DEFAULT_USER_ID, profileId: activeId, kind: 'resume', file })
+      if (result.status === 'deduplicated') {
+        setNotice(`That exact file was already uploaded — reusing document #${result.document_id}.`)
         void documents.refetch()
         return
       }
+      setStage('Indexing into knowledge base…')
+      await index.mutateAsync({ userId: DEFAULT_USER_ID, profileId: activeId, documentId: result.document_id })
+      setStage('Extracting claims…')
+      await extract.mutateAsync({ documentId: result.document_id })
+      setStage(null)
+    } catch (err) {
+      setStage(null)
       setError(err instanceof Error ? err.message : 'Resume processing failed')
     }
   }
@@ -62,19 +65,20 @@ export function SetupPage() {
   async function onUploadJd(file: File) {
     setError(null)
     setNotice(null)
+    if (activeId == null) return
     try {
       setStage('Parsing JD…')
-      const doc = await upload.mutateAsync({ userId: DEFAULT_USER_ID, kind: 'jd', file })
-      setStage('Indexing JD…')
-      await index.mutateAsync({ userId: DEFAULT_USER_ID, documentId: doc.id })
-      setStage(null)
-    } catch (err) {
-      setStage(null)
-      if (err instanceof ApiError && err.code === 'validation_failed' && err.details.document_id) {
-        setNotice('That exact file was already uploaded — it is listed below.')
+      const result = await upload.mutateAsync({ userId: DEFAULT_USER_ID, profileId: activeId, kind: 'jd', file })
+      if (result.status === 'deduplicated') {
+        setNotice(`That exact file was already uploaded — reusing document #${result.document_id}.`)
         void documents.refetch()
         return
       }
+      setStage('Indexing JD…')
+      await index.mutateAsync({ userId: DEFAULT_USER_ID, profileId: activeId, documentId: result.document_id })
+      setStage(null)
+    } catch (err) {
+      setStage(null)
       setError(err instanceof Error ? err.message : 'JD processing failed')
     }
   }
@@ -86,8 +90,9 @@ export function SetupPage() {
       if (candidate.data) {
         await updateCandidate.mutateAsync(patch)
       } else {
-        // First run: create the single-user profile (fresh install).
+        // First run: create the user's default career profile (fresh install).
         await createCandidate.mutateAsync(patch)
+        navigate('/profile')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
@@ -95,11 +100,11 @@ export function SetupPage() {
   }
 
   async function onAnalyzeJd() {
-    if (!jdText.trim()) return
+    if (!jdText.trim() || activeId == null) return
     setError(null)
     try {
       setStage('Analyzing role & competencies…')
-      await analyzeRole.mutateAsync({ user_id: DEFAULT_USER_ID, jd_text: jdText })
+      await analyzeRole.mutateAsync({ user_id: DEFAULT_USER_ID, profile_id: activeId, jd_text: jdText })
       setJdText('')
       setStage(null)
     } catch (err) {
@@ -118,7 +123,10 @@ export function SetupPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Profile & role</h1>
-        <p className="mt-1 text-sm text-fg-2">Three inputs unlock everything else: who you are, what you've done, where you're going.</p>
+        <p className="mt-1 text-sm text-fg-2">
+          Three inputs unlock everything else: who you are, what you've done, where you're going.
+          {active ? <span className="text-accent"> Working in profile “{active.name}”.</span> : null}
+        </p>
       </header>
 
       {/* Setup progress */}
@@ -155,10 +163,13 @@ export function SetupPage() {
             </Select>
           </Field>
         </div>
-        <div className="mt-4">
-          <Button onClick={() => void onSaveProfile()} disabled={updateCandidate.isPending}>
+        <div className="mt-4 flex items-center gap-3">
+          <Button onClick={() => void onSaveProfile()} disabled={updateCandidate.isPending || profilesLoading}>
             {updateCandidate.isPending ? 'Saving…' : 'Save profile'}
           </Button>
+          <button type="button" onClick={() => navigate('/profile')} className="text-sm text-accent hover:underline">
+            Manage profiles →
+          </button>
         </div>
       </Surface>
 
@@ -217,7 +228,7 @@ export function SetupPage() {
           onChange={(e) => setJdText(e.target.value)}
         />
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
+          <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending || activeId == null}>
             {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
           </Button>
           <label className="text-sm text-fg-2">

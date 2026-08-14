@@ -200,9 +200,11 @@ class InterviewService:
         duration_minutes: int,
         focus_competency_ids: list[int],
         mode: str = "text",
+        profile_id: int | None = None,
     ) -> InterviewSession:
         session_row = InterviewSession(
             user_id=user_id,
+            candidate_profile_id=profile_id,
             role_id=role_id,
             kind=kind,
             status=InterviewSessionStatus.CREATED,

@@ -4,6 +4,7 @@ import {
   usePreparation,
   useReadiness,
   useRegeneratePreparation,
+  useResolvedProfile,
   useRoles,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
@@ -11,11 +12,12 @@ import { Button, EmptyState, ErrorState, Meter, Pill, SectionHeading, Skeleton, 
 
 export function PreparationPage() {
   const navigate = useNavigate()
-  const readiness = useReadiness(DEFAULT_USER_ID)
-  const compute = useComputeReadiness(DEFAULT_USER_ID)
-  const prep = usePreparation(DEFAULT_USER_ID)
-  const regenerate = useRegeneratePreparation(DEFAULT_USER_ID)
-  const roles = useRoles(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const readiness = useReadiness(DEFAULT_USER_ID, activeId)
+  const compute = useComputeReadiness(DEFAULT_USER_ID, activeId)
+  const prep = usePreparation(DEFAULT_USER_ID, activeId)
+  const regenerate = useRegeneratePreparation(DEFAULT_USER_ID, activeId)
+  const roles = useRoles(DEFAULT_USER_ID, activeId)
 
   const roleId = roles.data?.at(-1)?.id
   const busy = compute.isPending || regenerate.isPending

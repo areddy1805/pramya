@@ -12,9 +12,12 @@ import { ModelStatusPage } from '../pages/ModelStatusPage'
 import { HistoryPage } from '../pages/HistoryPage'
 import { DebriefPage } from '../pages/DebriefPage'
 import { TranscriptPage } from '../pages/TranscriptPage'
+import { ProfilePage } from '../pages/ProfilePage'
+import { ProfileSwitcher } from './ProfileSwitcher'
 
 const primaryNav = [
   { to: '/dashboard', label: 'Overview' },
+  { to: '/profile', label: 'Profiles' },
   { to: '/setup', label: 'Profile & Role' },
   { to: '/preparation', label: 'Preparation' },
   { to: '/interview', label: 'Practice' },
@@ -54,6 +57,7 @@ export function AppShell() {
             <span className="text-[17px] font-semibold tracking-tight">Pramya</span>
             <span className="hidden text-[11px] font-medium text-fg-3 sm:block">evidence-driven interview prep</span>
           </div>
+          <ProfileSwitcher />
           <nav aria-label="Primary" className="flex flex-wrap items-center gap-1">
             {primaryNav.map((item) => (
               <NavLinkItem key={item.to} {...item} />
@@ -70,6 +74,7 @@ export function AppShell() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/preparation" element={<PreparationPage />} />
           <Route path="/interview" element={<InterviewPage />} />

@@ -106,9 +106,10 @@ async def compute_readiness(
     session: SessionDep,
     user_id: int = Query(...),
     role_id: int | None = Query(default=None),
+    profile_id: int | None = Query(default=None),
 ) -> ReadinessOut:
     svc = ReadinessService(session)
-    result, snapshot = await svc.compute_and_save(user_id, role_id)
+    result, snapshot = await svc.compute_and_save(user_id, role_id, profile_id=profile_id)
     return ReadinessOut(
         overall=result.overall,
         confidence=result.confidence,
@@ -133,9 +134,10 @@ async def compute_readiness(
 async def latest_readiness(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
 ) -> ReadinessOut:
     svc = ReadinessService(session)
-    snapshot = await svc.latest(user_id)
+    snapshot = await svc.latest(user_id, profile_id=profile_id)
     if snapshot is None:
         return ReadinessOut(
             overall=0.0,
@@ -168,9 +170,10 @@ async def latest_readiness(
 async def regenerate_preparation(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
 ) -> list[PreparationItemOut]:
     svc = PreparationService(session)
-    rows = await svc.regenerate(user_id)
+    rows = await svc.regenerate(user_id, profile_id=profile_id)
     return await _prep_items_out(session, list(rows))
 
 
@@ -178,9 +181,10 @@ async def regenerate_preparation(
 async def list_preparation(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
 ) -> list[PreparationItemOut]:
     svc = PreparationService(session)
-    rows = await svc.items.list_open_for_user(user_id)
+    rows = await svc.items.list_open_for_user(user_id, profile_id=profile_id)
     return await _prep_items_out(session, list(rows))
 
 
@@ -188,9 +192,10 @@ async def list_preparation(
 async def progress_summary(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
 ) -> ProgressOut:
     svc = ProgressService(session)
-    summary = await svc.summary(user_id)
+    summary = await svc.summary(user_id, profile_id=profile_id)
     return ProgressOut(
         total_evaluations=summary.total_evaluations,
         sessions=summary.sessions,

@@ -51,11 +51,16 @@ class ReadinessService:
         role_id: int | None,
         *,
         candidate_profile_id: int | None = None,
+        profile_id: int | None = None,
     ) -> tuple[ReadinessResult, ReadinessSnapshot]:
-        competencies, evidence, evaluations = await self._load(user_id, role_id)
+        # Back-compat: legacy callers pass candidate_profile_id; profile_id
+        # is the canonical career-profile id.
+        effective_profile = profile_id if profile_id is not None else candidate_profile_id
+        competencies, evidence, evaluations = await self._load(user_id, role_id, effective_profile)
         result = compute_readiness(competencies, evidence, evaluations)
         snapshot = ReadinessSnapshot(
             user_id=user_id,
+            profile_id=effective_profile,
             role_id=role_id,
             overall=result.overall,
             per_competency={
@@ -76,11 +81,13 @@ class ReadinessService:
         await self.session.commit()
         return result, snapshot
 
-    async def latest(self, user_id: int) -> ReadinessSnapshot | None:
-        return await self.snapshots.latest_for_user(user_id)
+    async def latest(
+        self, user_id: int, *, profile_id: int | None = None
+    ) -> ReadinessSnapshot | None:
+        return await self.snapshots.latest_for_user(user_id, profile_id=profile_id)
 
     async def _load(
-        self, user_id: int, role_id: int | None
+        self, user_id: int, role_id: int | None, profile_id: int | None = None
     ) -> tuple[list[CompetencyInput], list[EvidenceInput], list[EvaluationInput]]:
         competencies: list[CompetencyInput] = []
         if role_id is not None:
@@ -95,7 +102,9 @@ class ReadinessService:
                 )
                 for c in rows
             ]
-        evidence_rows: Sequence[Evidence] = await self.evidence.list_for_user(user_id, limit=500)
+        evidence_rows: Sequence[Evidence] = await self.evidence.list_for_user(
+            user_id, profile_id=profile_id, limit=500
+        )
         evidence = [
             EvidenceInput(
                 competency_id=e.competency_id,
@@ -112,12 +121,16 @@ class ReadinessService:
                 confidence=ev.confidence,
                 created_at=ev.created_at,
             )
-            for ev in await self._load_evaluations(user_id)
+            for ev in await self._load_evaluations(user_id, profile_id)
         ]
         return competencies, evidence, evaluations
 
-    async def _load_evaluations(self, user_id: int) -> Sequence[Evaluation]:
-        sessions = await InterviewSessionRepository(self.session).list_for_user(user_id, limit=200)
+    async def _load_evaluations(
+        self, user_id: int, profile_id: int | None = None
+    ) -> Sequence[Evaluation]:
+        sessions = await InterviewSessionRepository(self.session).list_for_user(
+            user_id, limit=200, profile_id=profile_id
+        )
         session_ids = [s.id for s in sessions]
         if not session_ids:
             return []
@@ -146,8 +159,10 @@ class PreparationService:
         self.items = PreparationItemRepository(session)
         self.snapshots = ReadinessSnapshotRepository(session)
 
-    async def regenerate(self, user_id: int) -> list[PreparationItem]:
-        snapshot = await self.snapshots.latest_for_user(user_id)
+    async def regenerate(
+        self, user_id: int, *, profile_id: int | None = None
+    ) -> list[PreparationItem]:
+        snapshot = await self.snapshots.latest_for_user(user_id, profile_id=profile_id)
         if snapshot is None or not snapshot.critical_gaps:
             return []
         gaps = [
@@ -162,10 +177,11 @@ class PreparationService:
             for g in snapshot.critical_gaps
         ]
         plan = plan_preparation(gaps)
-        await self.items.reopen_open(user_id)
+        await self.items.reopen_open(user_id, profile_id=profile_id)
         rows = [
             PreparationItem(
                 user_id=user_id,
+                profile_id=profile_id,
                 competency_id=item.competency_id,
                 priority=item.priority,
                 estimated_minutes=item.estimated_minutes,
@@ -189,8 +205,8 @@ class ProgressService:
         self.session = session
         self.sessions = InterviewSessionRepository(session)
 
-    async def summary(self, user_id: int) -> ProgressSummary:
-        sessions = await self.sessions.list_for_user(user_id, limit=200)
+    async def summary(self, user_id: int, *, profile_id: int | None = None) -> ProgressSummary:
+        sessions = await self.sessions.list_for_user(user_id, limit=200, profile_id=profile_id)
         if not sessions:
             return aggregate_progress([])
         session_ids = [s.id for s in sessions]

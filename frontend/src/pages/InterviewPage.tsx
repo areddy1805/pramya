@@ -5,6 +5,7 @@ import {
   useInterview,
   useInterviewAction,
   useInterviews,
+  useResolvedProfile,
   useRoles,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
@@ -72,8 +73,9 @@ export function InterviewPage() {
   const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   const create = useCreateInterview()
-  const sessions = useInterviews(DEFAULT_USER_ID)
-  const roles = useRoles(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const sessions = useInterviews(DEFAULT_USER_ID, activeId)
+  const roles = useRoles(DEFAULT_USER_ID, activeId)
   const session = useInterview(sessionId ?? 0, DEFAULT_USER_ID)
   const actions = useInterviewAction()
 
@@ -126,6 +128,7 @@ export function InterviewPage() {
         user_id: DEFAULT_USER_ID,
         kind,
         role_id: roles.data?.at(-1)?.id,
+        profile_id: activeId ?? undefined,
         duration_minutes: duration,
         focus_competency_ids: [],
         mode: 'text',
@@ -149,6 +152,7 @@ export function InterviewPage() {
         user_id: DEFAULT_USER_ID,
         kind,
         role_id: roles.data?.at(-1)?.id,
+        profile_id: activeId ?? undefined,
         duration_minutes: duration,
         focus_competency_ids: [],
         mode: 'voice',

@@ -42,6 +42,7 @@ class InterviewCreate(BaseModel):
     user_id: int
     kind: InterviewKind = InterviewKind.GENERAL
     role_id: int | None = None
+    profile_id: int | None = None
     duration_minutes: int = Field(default=30, ge=5, le=120)
     focus_competency_ids: list[int] = Field(default_factory=lambda: [])
     mode: str = "text"
@@ -153,16 +154,19 @@ async def create_interview(body: InterviewCreate, session: SessionDep) -> Interv
         duration_minutes=body.duration_minutes,
         focus_competency_ids=body.focus_competency_ids,
         mode=body.mode,
+        profile_id=body.profile_id,
     )
     return InterviewSessionOut.model_validate(row)
 
 
 @router.get("/interviews", response_model=list[InterviewSessionOut])
 async def list_interviews(
-    session: SessionDep, user_id: int = Query(...)
+    session: SessionDep,
+    user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
 ) -> list[InterviewSessionOut]:
     svc = _service(session)
-    rows = await svc.sessions.list_for_user(user_id)
+    rows = await svc.sessions.list_for_user(user_id, profile_id=profile_id)
     return [InterviewSessionOut.model_validate(r) for r in rows]
 
 

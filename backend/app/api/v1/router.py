@@ -2,11 +2,12 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import analytics, crud, demo, health, interviews, models, stories, voice
+from app.api.v1 import analytics, crud, demo, health, interviews, models, profiles, stories, voice
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(crud.router, tags=["candidates", "documents", "evidence"])
+api_router.include_router(profiles.router, tags=["profiles"])
 api_router.include_router(demo.router, tags=["demo"])
 api_router.include_router(interviews.router, tags=["interviews"])
 api_router.include_router(models.router, tags=["models"])

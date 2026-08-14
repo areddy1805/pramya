@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useEvidence, usePatchEvidence, DEFAULT_USER_ID } from '../hooks/queries'
+import { useEvidence, usePatchEvidence, useResolvedProfile, DEFAULT_USER_ID } from '../hooks/queries'
 import { EmptyState, ErrorState, Pill, Select, Spinner, Surface } from '../components/ui'
 
 const STATUS_META: Record<string, { label: string; tone: 'neutral' | 'ok' | 'warn' | 'danger' | 'accent'; blurb: string }> = {
@@ -13,9 +13,10 @@ const STATUS_META: Record<string, { label: string; tone: 'neutral' | 'ok' | 'war
 const FILTERS = ['all', 'demonstrated', 'observed', 'claimed', 'inferred', 'unknown']
 
 export function EvidencePage() {
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
   const [status, setStatus] = useState('all')
-  const evidence = useEvidence(DEFAULT_USER_ID, status === 'all' ? undefined : status)
-  const patch = usePatchEvidence(DEFAULT_USER_ID)
+  const evidence = useEvidence(DEFAULT_USER_ID, activeId, status === 'all' ? undefined : status)
+  const patch = usePatchEvidence(DEFAULT_USER_ID, activeId)
 
   const items = evidence.data ?? []
 

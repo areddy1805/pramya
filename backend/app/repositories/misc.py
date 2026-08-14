@@ -27,6 +27,10 @@ class RoleRepository(BaseRepository[Role]):
         stmt = select(Role).where(Role.user_id == user_id).order_by(Role.id)
         return (await self.session.scalars(stmt)).all()
 
+    async def list_for_profile(self, profile_id: int) -> Sequence[Role]:
+        stmt = select(Role).where(Role.profile_id == profile_id).order_by(Role.id)
+        return (await self.session.scalars(stmt)).all()
+
     async def list_competencies(self, role_id: int) -> Sequence[Competency]:
         stmt = (
             select(Competency)
@@ -51,7 +55,7 @@ class CandidateCompetencyRepository(BaseRepository[CandidateCompetency]):
 class PreparationItemRepository(BaseRepository[PreparationItem]):
     model = PreparationItem
 
-    async def reopen_open(self, user_id: int) -> None:
+    async def reopen_open(self, user_id: int, *, profile_id: int | None = None) -> None:
         """Reopen dismissed items (or mark stale done items open) for a
         fresh regeneration pass — keeps the queue accurate per snapshot."""
         stmt = (
@@ -62,10 +66,12 @@ class PreparationItemRepository(BaseRepository[PreparationItem]):
             )
             .values(status=PracticeItemStatus.OPEN)
         )
+        if profile_id is not None:
+            stmt = stmt.where(PreparationItem.profile_id == profile_id)
         await self.session.execute(stmt)
 
     async def list_open_for_user(
-        self, user_id: int, *, limit: int = 50
+        self, user_id: int, *, profile_id: int | None = None, limit: int = 50
     ) -> Sequence[PreparationItem]:
         stmt = (
             select(PreparationItem)
@@ -76,6 +82,8 @@ class PreparationItemRepository(BaseRepository[PreparationItem]):
             .order_by(PreparationItem.priority.desc(), PreparationItem.id)
             .limit(limit)
         )
+        if profile_id is not None:
+            stmt = stmt.where(PreparationItem.profile_id == profile_id)
         return (await self.session.scalars(stmt)).all()
 
 
@@ -94,13 +102,17 @@ class StoryRepository(BaseRepository[Story]):
 class ReadinessSnapshotRepository(BaseRepository[ReadinessSnapshot]):
     model = ReadinessSnapshot
 
-    async def latest_for_user(self, user_id: int) -> ReadinessSnapshot | None:
+    async def latest_for_user(
+        self, user_id: int, *, profile_id: int | None = None
+    ) -> ReadinessSnapshot | None:
         stmt = (
             select(ReadinessSnapshot)
             .where(ReadinessSnapshot.user_id == user_id)
             .order_by(ReadinessSnapshot.id.desc())
             .limit(1)
         )
+        if profile_id is not None:
+            stmt = stmt.where(ReadinessSnapshot.profile_id == profile_id)
         return (await self.session.scalars(stmt)).first()
 
 

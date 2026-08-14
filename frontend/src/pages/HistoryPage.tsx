@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { DEFAULT_USER_ID, useInterviews } from '../hooks/queries'
+import { DEFAULT_USER_ID, useInterviews, useResolvedProfile } from '../hooks/queries'
 import { EmptyState, ErrorState, Pill, Skeleton, Surface } from '../components/ui'
 
 const KIND_LABELS: Record<string, string> = {
@@ -34,7 +34,8 @@ function formatDate(iso?: string | null): string {
 }
 
 export function HistoryPage() {
-  const interviews = useInterviews(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const interviews = useInterviews(DEFAULT_USER_ID, activeId)
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
