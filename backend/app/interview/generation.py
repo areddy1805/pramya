@@ -103,9 +103,7 @@ class QuestionGenerator:
         """prompt -> RouterChatModel (plain text, streams tokens)."""
         from langchain_core.prompts import ChatPromptTemplate
 
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", self._prompt), ("user", "{context}")]
-        )
+        prompt = ChatPromptTemplate.from_messages([("system", self._prompt), ("user", "{context}")])
         model = RouterChatModel(router=self.router, task=TaskClass.INTERVIEW_CONTENT_GENERATION)
         return prompt | model
 

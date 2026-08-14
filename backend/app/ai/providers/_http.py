@@ -116,7 +116,6 @@ def parse_chat_response(
     )
 
 
-
 async def stream_chat(
     client: httpx.AsyncClient,
     method: str,
@@ -135,9 +134,7 @@ async def stream_chat(
     provider includes it.
     """
     try:
-        async with client.stream(
-            method, url, headers=headers, json=body
-        ) as response:
+        async with client.stream(method, url, headers=headers, json=body) as response:
             _raise_for_provider_status(response)
             async for line in response.aiter_lines():
                 if not line or not line.startswith("data:"):

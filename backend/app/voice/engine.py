@@ -500,9 +500,7 @@ class VoiceEngine:
                 await self._set_state(VoiceState.LISTENING)
                 await self._start_silence_watchdog()
 
-    async def _speech_worker(
-        self, segments: asyncio.Queue[str | None], generation: int
-    ) -> None:
+    async def _speech_worker(self, segments: asyncio.Queue[str | None], generation: int) -> None:
         """Per-segment synthesis with producer/sender overlap.
 
         Receives complete speakable segments (or None = end of stream).
@@ -530,9 +528,7 @@ class VoiceEngine:
                 try:
                     # Dev/observability: log the EXACT TTS-bound text (proves
                     # only question text is spoken, never metadata).
-                    _logger.info(
-                        "tts segment: chars=%d text=%r", len(seg), seg[:160]
-                    )
+                    _logger.info("tts segment: chars=%d text=%r", len(seg), seg[:160])
                     async with self._speech_lock:
                         pcm, _sr = await self.tts.synthesize(seg)
                     for i in range(0, len(pcm), target_bytes):

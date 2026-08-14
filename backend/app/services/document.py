@@ -48,6 +48,7 @@ def sanitize_suffix(suffix: str) -> str:
         return ""
     return suffix
 
+
 _MAX_SIZE_MB = 5
 
 

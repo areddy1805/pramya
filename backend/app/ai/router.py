@@ -203,9 +203,7 @@ class InferenceRouter:
                     )
                     yield decision, full
                     return
-                async for chunk in cast(
-                    "AsyncIterator[ChatStreamChunk]", streamer(request)
-                ):
+                async for chunk in cast("AsyncIterator[ChatStreamChunk]", streamer(request)):
                     delta = chunk.delta if hasattr(chunk, "delta") else str(chunk)
                     full += delta
                     if decision is None:
@@ -217,9 +215,7 @@ class InferenceRouter:
                     else:
                         yield None, delta
                 if decision is None:
-                    decision = self._decision(
-                        task, task_policy, spec, model, request, 0.0, full
-                    )
+                    decision = self._decision(task, task_policy, spec, model, request, 0.0, full)
                     yield decision, ""
                 return
             except ProviderConnectionError:
