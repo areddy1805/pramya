@@ -10,8 +10,8 @@ That is the canonical entry point. From the repository root it:
 
 1. checks tooling (docker, uv, pnpm, node, curl),
 2. starts PostgreSQL via Docker and waits for it to be **healthy**,
-3. starts the Langfuse OSS stack (`docker-compose.langfuse.yml`), unless
-   skipped with `PRAMYA_DEV_LANGFUSE=0`,
+3. starts the Langfuse OSS stack (`docker-compose.langfuse.yml`) ONLY when
+   opted in with `PRAMYA_DEV_LANGFUSE=1 make dev` (off by default),
 4. applies database migrations (`alembic upgrade head`),
 5. starts the backend and waits for its health endpoint,
 6. starts the frontend and waits for it to serve,
@@ -30,7 +30,7 @@ When it prints **`Status READY`** the environment is usable.
 
 | Command | What it does |
 |---|---|
-| `make dev` | Start the full dev environment (docker db + Langfuse → migrations → backend → frontend). Langfuse can be skipped: `PRAMYA_DEV_LANGFUSE=0 make dev`. |
+| `make dev` | Start the full dev environment (docker db → migrations → backend → frontend). Langfuse is optional and off by default: `PRAMYA_DEV_LANGFUSE=1 make dev` to include it. |
 | `make dev-down` | Stop backend + frontend **and** stop the docker dev containers (db + Langfuse; containers preserved, restart with `make dev`). |
 | `make dev-status` | Readiness + process state of every dev service. |
 | `make dev-logs` | Tail the aggregated backend/frontend launcher logs. |
@@ -55,7 +55,7 @@ wrappers. `scripts/dev check` is the standalone verification command.
 | API docs | http://127.0.0.1:8001/docs | OpenAPI |
 | Frontend | http://localhost:3000 | Vite dev server; `/api` proxied to backend (incl. voice WebSocket) |
 | PostgreSQL | localhost:5432 | Docker `pgvector/pgvector:pg17`, volume `pgdata` |
-| Langfuse | http://127.0.0.1:3030 | started by default with `make dev`; skip with `PRAMYA_DEV_LANGFUSE=0` (self-hosted OSS stack: postgres/clickhouse/redis/minio + web/worker) |
+| Langfuse | http://127.0.0.1:3030 | optional, OFF by default: `PRAMYA_DEV_LANGFUSE=1 make dev` to start (self-hosted OSS stack: postgres/clickhouse/redis/minio + web/worker) |
 | oMLX (local AI) | http://127.0.0.1:8000 | External runtime for voice/embeddings/rerank; see `docs/MODEL_CATALOG.md` |
 
 Launcher logs: `.runtime/dev/backend.log`, `.runtime/dev/frontend.log`

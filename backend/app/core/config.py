@@ -135,9 +135,11 @@ class Settings(BaseSettings):
     knowledge_chunk_overlap: int = 200
     knowledge_embed_batch_size: int = 8
 
-    # Observability (Langfuse optional)
-    # Langfuse OSS (self-hosted, MIT-licensed) is the V1 observability platform.
-    # Langfuse Cloud and Enterprise-only features are NOT V1 dependencies.
+    # Observability (Langfuse OPTIONAL — off by default)
+    # LANGFUSE_ENABLED is the ONE authoritative switch. When false (default)
+    # no Langfuse client/worker/network exists: telemetry stays on structured
+    # logs only. Keys alone NEVER enable Langfuse; the flag is authoritative.
+    langfuse_enabled: bool = False
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str = "http://localhost:3000"

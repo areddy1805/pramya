@@ -20,14 +20,16 @@ from app.observability import (
 
 
 def _force_unconfigured(monkeypatch: object) -> None:
-    """Isolate from ambient .env: the degradation tests assert the NO-KEYS
-    path regardless of what the developer's .env currently sets."""
+    """Isolate from ambient .env: the degradation tests assert the DISABLED
+    path regardless of what the developer's .env currently sets. The flag
+    LANGFUSE_ENABLED=false is authoritative even when keys exist."""
     import app.observability as obs_module
     from app.core import config
 
     monkeypatch.setattr(obs_module, "get_settings", lambda: get_settings())
     config.get_settings.cache_clear()
     settings = get_settings()
+    settings.langfuse_enabled = False
     settings.langfuse_public_key = ""
     settings.langfuse_secret_key = ""
     settings.langfuse_host = "http://127.0.0.1:3030"

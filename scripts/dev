@@ -136,14 +136,14 @@ start() {
   wait_db
 
   local langfuse_on=0
-  if [ "${PRAMYA_DEV_LANGFUSE:-1}" != 0 ]; then
-    echo "  [2/6] Starting Langfuse OSS stack (skip with PRAMYA_DEV_LANGFUSE=0)…"
+  if [ "${PRAMYA_DEV_LANGFUSE:-0}" = 1 ]; then
+    echo "  [2/6] Starting Langfuse OSS stack (optional; PRAMYA_DEV_LANGFUSE=1)…"
     docker compose -f "$ROOT/docker-compose.langfuse.yml" --profile langfuse up -d \
       || fail "Langfuse stack failed to start. Inspect: docker compose -f docker-compose.langfuse.yml ps / logs"
     wait_http "$LANGFUSE_URL" 300 "Langfuse (first run pulls images; can take minutes)"
     langfuse_on=1
   else
-    echo "  [2/6] Langfuse skipped (PRAMYA_DEV_LANGFUSE=0)"
+    echo "  [2/6] Langfuse skipped (off by default; PRAMYA_DEV_LANGFUSE=1 to enable)"
   fi
 
   echo "  [3/6] Applying migrations (alembic upgrade head)…"
@@ -171,7 +171,7 @@ start() {
   grn "API Docs    $BACKEND_URL/docs"
   grn "Frontend    $FRONTEND_URL"
   grn "Postgres    localhost:5432 (docker: $(db_container | cut -c1-12))"
-  if [ "$langfuse_on" = 1 ]; then grn "Langfuse    $LANGFUSE_URL"; else ylw "Langfuse    $LANGFUSE_URL (skipped; PRAMYA_DEV_LANGFUSE=0)"; fi
+  if [ "$langfuse_on" = 1 ]; then grn "Langfuse    $LANGFUSE_URL (enabled)"; else ylw "Langfuse    skipped (off by default; PRAMYA_DEV_LANGFUSE=1 to enable)"; fi
   grn "────────────────────────────"
   grn "Status      READY"
   echo   "Logs        .runtime/dev/backend.log, .runtime/dev/frontend.log"

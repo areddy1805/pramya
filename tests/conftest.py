@@ -17,8 +17,9 @@ import app.observability as observability
 
 
 def _null_settings() -> object:
-    """Settings stub with Langfuse unconfigured -> NullObservability."""
+    """Settings stub with Langfuse disabled -> NullObservability."""
     return SimpleNamespace(
+        langfuse_enabled=False,
         langfuse_public_key=None,
         langfuse_secret_key=None,
         langfuse_host="http://localhost:3030",

@@ -148,11 +148,21 @@ class LangfuseObservability:
 
 
 def get_observability() -> Any:
-    """Return the process-wide observability singleton (degradation-safe)."""
+    """Return the process-wide observability singleton (degradation-safe).
+
+    LANGFUSE_ENABLED is the ONE authoritative switch: when false (default)
+    or keys are missing, telemetry uses NullObservability (structured logs
+    only) — no Langfuse client, no background workers, no network. Keys
+    alone never enable Langfuse.
+    """
     global _client_instance  # noqa: PLW0603
     if _client_instance is None:
         settings = get_settings()
-        if settings.langfuse_public_key and settings.langfuse_secret_key:
+        if (
+            settings.langfuse_enabled
+            and settings.langfuse_public_key
+            and settings.langfuse_secret_key
+        ):
             try:
                 _client_instance = LangfuseObservability(settings)
             except Exception:
