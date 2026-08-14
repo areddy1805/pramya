@@ -404,6 +404,7 @@ class VoiceEngine:
             # TARGET/HINTS metadata, never JSON of the structured question.
             extractor = QuestionStreamExtractor()
             t_qstart = time.monotonic()
+            self._first_audio_at = None  # per-question watermark (was stale across turns)
             llm_first_token_ms: float | None = None
             llm_done_ms: float | None = None
             question: Any = None

@@ -1,4 +1,4 @@
-// LIVE 5-TURN voice interview via Playwright (physical mic + speakers).
+// LIVE 10-TURN voice interview via Playwright (physical mic + speakers).
 // 5 complete candidate turns: interviewer TTS aloud -> playback gating ->
 // candidate speech through speakers -> real mic -> ASR -> evaluation ->
 // next question. Includes an interrupt mid-Q3 TTS. Asserts per-turn
@@ -84,14 +84,14 @@ async function main() {
   await page.goto('http://localhost:3000/interview', { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('text=Start Live Voice Interview', { timeout: 15000 })
   await page.click('text=Start Live Voice Interview')
-  console.log('LIVE 5-TURN INTERVIEW STARTED')
+  console.log('LIVE 10-TURN INTERVIEW STARTED')
 
   const diag = () => page.evaluate(() => window.__voiceDiag)
   let lastLen = 0
   let interrupted = false
   const answered = new Set()
 
-  for (let i = 0; i < 1200; i++) { // up to ~10 min
+  for (let i = 0; i < 2600; i++) { // up to ~10 min
     const d = await diag()
     if (d.events.length !== lastLen) {
       for (const e of d.events.slice(lastLen)) {
@@ -121,7 +121,7 @@ async function main() {
     // next listening window instead of wedging the loop.
     const finals = evs.filter((e) => e.t === 'final' && e.n > 5)
     const turnIdx = finals.length // 0-based next turn we are about to answer
-    if (inListening && ttsStarts >= turnIdx + 1 && !answered.has(turnIdx) && turnIdx <= 4) {
+    if (inListening && ttsStarts >= turnIdx + 1 && !answered.has(turnIdx) && turnIdx <= 9) {
       answered.add(turnIdx)
       console.log(`  >> TURN ${turnIdx + 1}: playing candidate answer through speakers`)
       const wav = ANSWERS[turnIdx % ANSWERS.length]
@@ -141,18 +141,18 @@ async function main() {
         await page.evaluate(() => { window.__voiceDiag.staleWindow = true; window.__voiceDiag.staleChunks = 0 })
       }
     }
-    if (evals >= 5) break
+    if (evals >= 10) break
     // R11: evals are DEFERRED to the listening window, so break on the 5th
     // durable answer_submitted (not on evals) to avoid burning the loop cap
     // on empty re-listens; the grace loop below waits for the deferred evals.
-    if (evs.filter((e) => e.t === 'answer_submitted').length >= 5) break
+    if (evs.filter((e) => e.t === 'answer_submitted').length >= 10) break
     await page.waitForTimeout(500)
   }
   // Deferred evals (R11 two-lane) can land up to ~10s after the 5th answer;
   // give the engine a bounded grace window before asserting on evals count.
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 90; i++) {
     const evsNow = (await diag()).events
-    if (evsNow.filter((e) => e.t === 'eval').length >= 5) break
+    if (evsNow.filter((e) => e.t === 'eval').length >= 10) break
     await page.waitForTimeout(1000)
   }
   await page.waitForTimeout(4000)
@@ -160,7 +160,7 @@ async function main() {
   const evs = d.events
   const finals = evs.filter((e) => e.t === 'final' && e.n > 5)
   const evals = evs.filter((e) => e.t === 'eval')
-  console.log('=== 5-TURN DIAG ===')
+  console.log('=== 10-TURN DIAG ===')
   console.log('wsOpened:', d.wsOpened, '| ttsStart:', d.ttsStart, 'ttsStop:', d.ttsStop)
   // Per-turn waterfall from stamped events: turn_end -> tts_start -> first chunk.
   const evs2 = evs
@@ -223,12 +223,12 @@ async function main() {
   })
   console.log('transcript interviewer lines:', dup.lines, '| duplicated:', dup.dupes.length)
   const pass =
-    d.wsOpened && finals.length >= 5 && evals.length >= 5 && d.ttsStart >= 5 &&
+    d.wsOpened && finals.length >= 10 && evals.length >= 10 && d.ttsStart >= 10 &&
     gatingOk && stale < 15 && interrupted && stopSilence && stopSources && dup.dupes.length === 0
   console.log('gatingOk:', gatingOk, '| interrupt executed:', interrupted)
   console.log('in-flight (stale-window) chunks after interrupt:', stale, '(client drops these; <15 tolerated)')
   await browser.close()
-  console.log(pass ? 'LIVE 5-TURN PASSED' : 'LIVE 5-TURN FAILED')
+  console.log(pass ? 'LIVE 10-TURN PASSED' : 'LIVE 10-TURN FAILED')
   process.exit(pass ? 0 : 1)
 }
-main().catch((e) => { console.error('5-TURN ERROR:', e.message); process.exit(1) })
+main().catch((e) => { console.error('10-TURN ERROR:', e.message); process.exit(1) })
