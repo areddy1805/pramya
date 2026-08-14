@@ -41,6 +41,7 @@ const VOICE_STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'd
   processing: { label: 'Thinking', tone: 'active', blurb: 'Evaluating your answer and deciding what to ask next.' },
   paused: { label: 'Paused', tone: 'warn', blurb: 'The interview is paused.' },
   interrupted: { label: 'Interrupted', tone: 'warn', blurb: 'Stopped mid-sentence. Your turn.' },
+  reconnecting: { label: 'Reconnecting…', tone: 'warn', blurb: 'Connection lost. Reconnecting to the interview — this can take a few seconds.' },
   cancelled: { label: 'Cancelled', tone: 'neutral', blurb: 'Session cancelled.' },
   completed: { label: 'Completed', tone: 'ok', blurb: 'Interview complete.' },
   error: { label: 'Voice error', tone: 'danger', blurb: 'A voice problem occurred.' },

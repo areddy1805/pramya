@@ -28,6 +28,7 @@ export type VoiceState =
   | 'speaking'
   | 'paused'
   | 'interrupted'
+  | 'reconnecting'
   | 'cancelled'
   | 'completed'
   | 'error'
@@ -70,6 +71,8 @@ export interface VoiceHandlers {
   onTTSStart?: (generation?: number) => void
   onTTSStop?: (generation?: number) => void
   onResume?: (q: VoiceQuestion | null) => void
+  onReconnecting?: () => void
+  onReconnected?: () => void
   onClosed?: () => void
 }
 
@@ -110,6 +113,10 @@ export class VoiceClient {
   private playbackQueue: AudioBuffer[] = []
   private closedByUser = false
   private heartbeat?: ReturnType<typeof setInterval>
+  private reconnectTimer?: ReturnType<typeof setTimeout>
+  private reconnectAttempts = 0
+  private readonly maxReconnectAttempts = 5
+  private readonly reconnectBaseDelayMs = 1000
   public state: VoiceState = 'idle'
   private currentGeneration = -1
   private pendingPlaybackGeneration = -1
@@ -182,9 +189,29 @@ export class VoiceClient {
     }
     source.connect(this.captureNode)
 
+    this.openSocket()
+  }
+
+  /**
+   * R14: open the WS to the SAME session URL. On a later unexpected close,
+   * bounded reconnect with backoff re-runs this — the server validates the
+   * session and returns authoritative state via the `resume` event, so the
+   * UI recovers without duplicating questions or restarting the interview.
+   * The audio pipeline (AudioContext/mic/worklet) is created once in start()
+   * inside the user gesture; reconnects only re-establish the socket.
+   */
+  private openSocket(): void {
     this.ws = new WebSocket(this.url)
     this.ws.binaryType = 'arraybuffer'
     this.ws.onmessage = (ev) => this.handleMessage(ev)
+    this.ws.onopen = () => {
+      // Re-arm heartbeat on every (re)connect.
+      this.armHeartbeat()
+      if (this.reconnectAttempts > 0) {
+        this.reconnectAttempts = 0
+        this.handlers.onReconnected?.()
+      }
+    }
     this.ws.onclose = () => {
       // Any close — server-completed session, network drop, or cancel — must
       // stop local playback immediately: buffered interviewer audio must not
@@ -192,15 +219,57 @@ export class VoiceClient {
       this.currentGeneration = -1
       this.pendingPlaybackGeneration = -1
       this.flushPlayback()
-      this.state = 'idle'
-      this.handlers.onClosed?.()
-      if (!this.closedByUser) {
-        this.handlers.onError?.('ws_closed', 'Voice connection lost. Reconnect to continue.')
+      this.clearHeartbeat()
+      if (this.closedByUser) {
+        this.state = 'idle'
+        this.handlers.onClosed?.()
+        return
+      }
+      if (this.state === 'completed' || this.state === 'cancelled') {
+        this.handlers.onClosed?.()
+        return
+      }
+      // R14: unexpected close -> bounded reconnect with exponential backoff.
+      // No duplicate session is created: reconnect targets the SAME URL, the
+      // server validates the session and returns authoritative state.
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        const attempt = this.reconnectAttempts + 1
+        this.reconnectAttempts = attempt
+        const delay = this.reconnectBaseDelayMs * 2 ** (attempt - 1)
+        this.state = 'reconnecting'
+        this.handlers.onState?.('reconnecting')
+        this.handlers.onReconnecting?.()
+        this.reconnectTimer = setTimeout(() => this.openSocket(), delay)
+      } else {
+        this.state = 'idle'
+        this.handlers.onError?.(
+          'reconnect_failed',
+          'Voice connection lost. Reconnect attempts exhausted — start the interview again.',
+        )
+        this.handlers.onClosed?.()
       }
     }
+  }
+
+  private armHeartbeat(): void {
+    this.clearHeartbeat()
     // H heartbeat: keepalive probe so the server can detect liveness and
     // the connection survives proxies. Server answers heartbeat_ack.
     this.heartbeat = setInterval(() => this.sendControl('heartbeat'), 15000)
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat)
+      this.heartbeat = undefined
+    }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = undefined
+    }
   }
 
   async stop(): Promise<void> {
@@ -233,10 +302,9 @@ export class VoiceClient {
   }
 
   private async teardown(): Promise<void> {
-    if (this.heartbeat) {
-      clearInterval(this.heartbeat)
-      this.heartbeat = undefined
-    }
+    this.closedByUser = true
+    this.clearHeartbeat()
+    this.clearReconnectTimer()
     this.captureNode?.disconnect()
     this.captureNode = null
     this.stream?.getTracks().forEach((t) => t.stop())
