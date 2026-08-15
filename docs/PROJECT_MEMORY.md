@@ -7,9 +7,10 @@
 
 ## Current State
 
-- Project status: **Phase 1 (Core Domain + Persistence) COMPLETE** (2026-08).
-- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative. Phase 2 (Knowledge Layer) is next.
-- Last verified commit: see `git log`; Phase 1 committed.
+- Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE** (2026-08-15).
+- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative; §35 tracker includes Interview Productization row.
+- Last verified commit: `59073fa` (frontend productization) — worktree clean.
+- Migration head: 0005 (question provenance + interview_feedback). `alembic check` must stay clean after any model change.
 - Local `.env` exists (copied from `.env.example`, gitignored).
 - DB: docker compose `db` (pgvector/pgvector:pg17) running locally; `alembic upgrade head` applied; `alembic check` clean.
 
