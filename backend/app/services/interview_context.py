@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.domain.enums import DocumentKind
+from app.domain.errors import ValidationFailedError
 from app.models.document import Document
 from app.repositories.document import DocumentChunkRepository, DocumentRepository
 from app.repositories.evidence import EvidenceRepository
@@ -102,7 +103,7 @@ class InterviewContextBuilder:
         profile = await self._profile(user_id, profile_id)
         resume = await self._resume(user_id, profile_id)
         jd = await self._jd(user_id, profile_id)
-        role = await self._role(role_id)
+        role = await self._role(user_id, profile_id, role_id)
         evidence = await self._evidence(user_id, profile_id)
         prior_feedback = await self._prior_feedback(user_id, profile_id)
         missing: list[str] = []
@@ -221,12 +222,26 @@ class InterviewContextBuilder:
         chunks = await self.chunks.list_for_document(document_id)
         return "\n".join(c.content for c in chunks).strip()
 
-    async def _role(self, role_id: int | None) -> dict[str, object] | None:
+    async def _role(
+        self, user_id: int, profile_id: int | None, role_id: int | None
+    ) -> dict[str, object] | None:
         if role_id is None:
             return None
         role = await self.roles.get(role_id)
         if role is None:
             return None
+        # Ownership invariant: a role may ground an interview only when it
+        # belongs to the same user AND the same profile (legacy rows with
+        # profile_id IS NULL remain valid). A foreign role would leak
+        # another profile's target role + competencies into this profile's
+        # questions and report — reject it explicitly, never silently omit.
+        if role.user_id != user_id or (
+            role.profile_id is not None and role.profile_id != profile_id
+        ):
+            raise ValidationFailedError(
+                "role does not belong to this profile",
+                details={"role_id": role_id, "profile_id": profile_id},
+            )
         comps = await self.roles.list_competencies(role.id)
         return {
             "id": role.id,

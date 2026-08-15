@@ -17,6 +17,8 @@ from app.ai.policy import TaskPolicyTable
 from app.ai.router import InferenceRouter
 from app.api.v1.profiles import get_profile_interview_context
 from app.domain.enums import (
+    CompetencyCategory,
+    CompetencyImportance,
     DocumentKind,
     DocumentStatus,
     EvidenceSourceKind,
@@ -27,8 +29,10 @@ from app.domain.errors import ValidationFailedError
 from app.interview.service import InterviewService, event_bus
 from app.models.document import Document, DocumentChunk
 from app.models.evidence import Evidence
+from app.models.role import Competency, Role
 from app.repositories.document import DocumentRepository
 from app.repositories.user import CandidateProfileRepository
+from app.services.analytics import ReadinessService
 from app.services.interview_context import InterviewContextBuilder
 from app.services.user import CandidateService
 
@@ -127,8 +131,22 @@ async def test_resume_is_strictly_profile_scoped(session_factory: object) -> Non
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        doc_a = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
-        await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.RESUME, filename="b-resume.md", text=RESUME_B)
+        doc_a = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pb,
+            kind=DocumentKind.RESUME,
+            filename="b-resume.md",
+            text=RESUME_B,
+        )
 
         builder = InterviewContextBuilder(db)
         ctx_a = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
@@ -155,12 +173,21 @@ async def test_resume_is_strictly_profile_scoped(session_factory: object) -> Non
 
 
 @pytest.mark.asyncio
-async def test_profile_without_resume_never_picks_other_profiles_resume(session_factory: object) -> None:
+async def test_profile_without_resume_never_picks_other_profiles_resume(
+    session_factory: object,
+) -> None:
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         # Profile B has NO resume — but profile A does (same user).
         builder = InterviewContextBuilder(db)
         ctx_b = await builder.build(user_id=user_id, profile_id=pb, role_id=None)
@@ -175,9 +202,25 @@ async def test_profile_without_jd_does_not_pick_other_profiles_jd(session_factor
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="a-jd.md", text=JD_A)
-        await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.RESUME, filename="b-resume.md", text=RESUME_B)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        await seed_doc(
+            db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="a-jd.md", text=JD_A
+        )
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pb,
+            kind=DocumentKind.RESUME,
+            filename="b-resume.md",
+            text=RESUME_B,
+        )
         # Profile B has a resume but no JD; profile A's JD must NOT leak in.
         builder = InterviewContextBuilder(db)
         ctx_b = await builder.build(user_id=user_id, profile_id=pb, role_id=None)
@@ -187,14 +230,23 @@ async def test_profile_without_jd_does_not_pick_other_profiles_jd(session_factor
 
 
 @pytest.mark.asyncio
-async def test_legacy_global_docs_are_explicit_profile_id_null_only(session_factory: object) -> None:
+async def test_legacy_global_docs_are_explicit_profile_id_null_only(
+    session_factory: object,
+) -> None:
     """Legacy/global documents (profile_id IS NULL) are usable, but never a
     document owned by another profile."""
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         global_doc = Document(
             user_id=user_id,
             profile_id=None,
@@ -207,7 +259,9 @@ async def test_legacy_global_docs_are_explicit_profile_id_null_only(session_fact
         )
         db.add(global_doc)
         await db.flush()
-        db.add(DocumentChunk(document_id=global_doc.id, chunk_index=0, content="Legacy global resume"))
+        db.add(
+            DocumentChunk(document_id=global_doc.id, chunk_index=0, content="Legacy global resume")
+        )
         await db.commit()
 
         builder = InterviewContextBuilder(db)
@@ -227,7 +281,9 @@ async def test_legacy_global_docs_are_explicit_profile_id_null_only(session_fact
 
 
 @pytest.mark.asyncio
-async def test_create_session_without_profile_id_raises_when_no_active_profile(session_factory: object) -> None:
+async def test_create_session_without_profile_id_raises_when_no_active_profile(
+    session_factory: object,
+) -> None:
     async with session_factory() as db:  # type: ignore[attr-defined]
         # No profiles at all -> nothing to resolve -> must fail loudly.
         user_id = await seed_user(db)
@@ -269,14 +325,23 @@ async def test_create_session_without_profile_id_raises_when_no_active_profile(s
 
 
 @pytest.mark.asyncio
-async def test_create_session_resolves_active_profile_not_first_seed(session_factory: object) -> None:
+async def test_create_session_resolves_active_profile_not_first_seed(
+    session_factory: object,
+) -> None:
     """The FIRST profile (a seed/demo profile) must never be silently chosen:
     the persisted active profile is authoritative."""
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         first = await seed_profile(db, user_id, "Seed Profile")
         second = await seed_profile(db, user_id, "Real Profile")
-        await seed_doc(db, user_id=user_id, profile_id=second, kind=DocumentKind.RESUME, filename="real-resume.md", text=RESUME_B)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=second,
+            kind=DocumentKind.RESUME,
+            filename="real-resume.md",
+            text=RESUME_B,
+        )
         svc = CandidateService(db)
         await svc.set_active_profile(user_id, second)
         await db.commit()
@@ -306,7 +371,14 @@ async def test_session_persists_exact_profile_id(session_factory: object) -> Non
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
         session = await svc.create_session(
@@ -331,8 +403,17 @@ async def test_context_endpoint_matches_session_snapshot(session_factory: object
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        doc_a = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
-        jd_a = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="a-jd.md", text=JD_A)
+        doc_a = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        jd_a = await seed_doc(
+            db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="a-jd.md", text=JD_A
+        )
 
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
@@ -375,7 +456,14 @@ async def test_begin_fails_fast_when_profile_has_no_resume(session_factory: obje
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Empty Profile")
         # another profile owns a resume — must not be used
-        await seed_doc(db, user_id=user_id, profile_id=(await seed_profile(db, user_id, "Other")), kind=DocumentKind.RESUME, filename="other.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=(await seed_profile(db, user_id, "Other")),
+            kind=DocumentKind.RESUME,
+            filename="other.md",
+            text=RESUME_A,
+        )
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
         session = await svc.create_session(
@@ -398,7 +486,14 @@ async def test_jd_interview_mode_requires_jd(session_factory: object) -> None:
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Resume-Only Profile")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
         session = await svc.create_session(
@@ -431,7 +526,14 @@ async def test_sse_question_event_includes_source_ref(session_factory: object) -
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
         session = await svc.create_session(
@@ -469,10 +571,35 @@ async def test_profile_a_and_b_fully_isolated(session_factory: object) -> None:
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
-        await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.RESUME, filename="b-resume.md", text=RESUME_B)
-        await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.JD, filename="b-jd.md", text=JD_B)
-        db.add(Evidence(user_id=user_id, profile_id=pb, source_kind=EvidenceSourceKind.RESUME, source_ref="document:1", claim="Technology: KafkaStreams", status=EvidenceStatus.CLAIMED))
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pb,
+            kind=DocumentKind.RESUME,
+            filename="b-resume.md",
+            text=RESUME_B,
+        )
+        await seed_doc(
+            db, user_id=user_id, profile_id=pb, kind=DocumentKind.JD, filename="b-jd.md", text=JD_B
+        )
+        db.add(
+            Evidence(
+                user_id=user_id,
+                profile_id=pb,
+                source_kind=EvidenceSourceKind.RESUME,
+                source_ref="document:1",
+                claim="Technology: KafkaStreams",
+                status=EvidenceStatus.CLAIMED,
+            )
+        )
         await db.commit()
 
         # Endpoint for B: only B's material.
@@ -499,7 +626,14 @@ async def test_context_builder_rejects_foreign_profile(session_factory: object) 
         user_a = await seed_user(db, email="owner-a@test.local")
         user_b = await seed_user(db, email="owner-b@test.local")
         pa = await seed_profile(db, user_a, "A's Profile")
-        await seed_doc(db, user_id=user_a, profile_id=pa, kind=DocumentKind.RESUME, filename="a-resume.md", text=RESUME_A)
+        await seed_doc(
+            db,
+            user_id=user_a,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
         builder = InterviewContextBuilder(db)
         # user B asking for A's profile: ownership-checked -> profile None.
         ctx = await builder.build(user_id=user_b, profile_id=pa, role_id=None)
@@ -519,8 +653,22 @@ async def test_preferred_resume_wins_over_latest(session_factory: object) -> Non
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        older = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="older.md", text=RESUME_A)
-        newer = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="newer.md", text=RESUME_B)
+        older = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="older.md",
+            text=RESUME_A,
+        )
+        newer = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="newer.md",
+            text=RESUME_B,
+        )
         svc = CandidateService(db)
         await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=older)
         await db.commit()
@@ -543,9 +691,22 @@ async def test_preferred_jd_selection_and_clear(session_factory: object) -> None
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r.md", text=RESUME_A)
-        jd1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd1.md", text=JD_A)
-        jd2 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd2.md", text=JD_B)
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="r.md",
+            text=RESUME_A,
+        )
+        jd1 = await seed_doc(
+            db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd1.md", text=JD_A
+        )
+        # Second (never) JD: exists so the explicit preference for jd1 beats
+        # the latest-by-id fallback.
+        await seed_doc(
+            db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd2.md", text=JD_B
+        )
         svc = CandidateService(db)
         # select the OLDER jd explicitly
         await svc.set_preferred_document(user_id, pa, kind=DocumentKind.JD, document_id=jd1)
@@ -569,27 +730,56 @@ async def test_preferred_document_cross_profile_rejected(session_factory: object
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
         pb = await seed_profile(db, user_id, "Profile B")
-        doc_b = await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.RESUME, filename="b.md", text=RESUME_B)
+        doc_b = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pb,
+            kind=DocumentKind.RESUME,
+            filename="b.md",
+            text=RESUME_B,
+        )
         svc = CandidateService(db)
         with pytest.raises(ValidationFailedError):
-            await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=doc_b)
+            await svc.set_preferred_document(
+                user_id, pa, kind=DocumentKind.RESUME, document_id=doc_b
+            )
         await db.rollback()
 
 
 @pytest.mark.asyncio
-async def test_historical_snapshot_immutable_after_preference_change(session_factory: object) -> None:
+async def test_historical_snapshot_immutable_after_preference_change(
+    session_factory: object,
+) -> None:
     """Changing the preferred resume later NEVER mutates an existing session's
     grounding snapshot."""
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        r1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r1.md", text=RESUME_A)
-        r2 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r2.md", text=RESUME_B)
+        r1 = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="r1.md",
+            text=RESUME_A,
+        )
+        r2 = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="r2.md",
+            text=RESUME_B,
+        )
         provider = QueueProvider([QUESTION_TEXT])
         svc = InterviewService(db, _router(provider))
         session = await svc.create_session(
-            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
-            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+            user_id=user_id,
+            kind=InterviewKind.GENERAL,
+            role_id=None,
+            duration_minutes=30,
+            focus_competency_ids=[],
+            profile_id=pa,
         )
         await svc.begin(session.id, user_id)
         snap = (session.config or {})["context"]["resume"]
@@ -603,8 +793,12 @@ async def test_historical_snapshot_immutable_after_preference_change(session_fac
 
         # a NEW session uses the new preference
         session2 = await svc.create_session(
-            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
-            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+            user_id=user_id,
+            kind=InterviewKind.GENERAL,
+            role_id=None,
+            duration_minutes=30,
+            focus_competency_ids=[],
+            profile_id=pa,
         )
         await svc.begin(session2.id, user_id)
         snap2 = (session2.config or {})["context"]["resume"]
@@ -613,20 +807,40 @@ async def test_historical_snapshot_immutable_after_preference_change(session_fac
 
 
 @pytest.mark.asyncio
-async def test_deleted_preferred_document_clears_pointer_and_keeps_history(session_factory: object) -> None:
+async def test_deleted_preferred_document_clears_pointer_and_keeps_history(
+    session_factory: object,
+) -> None:
     async with session_factory() as db:  # type: ignore[attr-defined]
         user_id = await seed_user(db)
         pa = await seed_profile(db, user_id, "Profile A")
-        r1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r1.md", text=RESUME_A)
-        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r2.md", text=RESUME_B)
+        r1 = await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="r1.md",
+            text=RESUME_A,
+        )
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="r2.md",
+            text=RESUME_B,
+        )
         svc = CandidateService(db)
         await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=r1)
         await db.commit()
         provider = QueueProvider([QUESTION_TEXT])
         isvc = InterviewService(db, _router(provider))
         session = await isvc.create_session(
-            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
-            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+            user_id=user_id,
+            kind=InterviewKind.GENERAL,
+            role_id=None,
+            duration_minutes=30,
+            focus_competency_ids=[],
+            profile_id=pa,
         )
         await isvc.begin(session.id, user_id)
         snap = (session.config or {})["context"]["resume"]
@@ -648,4 +862,130 @@ async def test_deleted_preferred_document_clears_pointer_and_keeps_history(sessi
         ctx = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
         resume = ctx["resume"]
         assert isinstance(resume, dict) and resume["document_id"] != r1
+        await db.rollback()
+
+
+async def seed_role(db: AsyncSession, *, user_id: int, profile_id: int, title: str) -> int:
+    """Minimal persisted role (profile-scoped) with one competency."""
+    role = Role(
+        user_id=user_id,
+        profile_id=profile_id,
+        title=title,
+        seniority="senior",
+        summary=f"{title} target role",
+    )
+    db.add(role)
+    await db.flush()
+    db.add(
+        Competency(
+            role_id=role.id,
+            name="System Design",
+            category=CompetencyCategory.ARCHITECTURE,
+            level=4,
+            importance=CompetencyImportance.REQUIRED,
+            importance_rank=1,
+            weight=1.0,
+        )
+    )
+    await db.flush()
+    return role.id
+
+
+# ---------------------------------------------------------------------------
+# Role grounding ownership: a foreign profile's role must be REJECTED
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_foreign_role_rejected_in_interview_context(
+    session_factory: object,
+) -> None:
+    """Profile A's interview must never ground on Profile B's role."""
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        pb = await seed_profile(db, user_id, "Profile B")
+        await seed_doc(
+            db,
+            user_id=user_id,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        role_b = await seed_role(db, user_id=user_id, profile_id=pb, title="Northwind Eng")
+
+        builder = InterviewContextBuilder(db)
+        with pytest.raises(ValidationFailedError):
+            await builder.build(user_id=user_id, profile_id=pa, role_id=role_b)
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_foreign_role_rejected_in_readiness(session_factory: object) -> None:
+    """Readiness must not score a role the profile does not own."""
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        pb = await seed_profile(db, user_id, "Profile B")
+        role_b = await seed_role(db, user_id=user_id, profile_id=pb, title="Northwind Eng")
+
+        svc = ReadinessService(db)
+        with pytest.raises(ValidationFailedError):
+            await svc.compute_and_save(user_id, role_b, profile_id=pa)
+        await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Interview session read requires ownership (GET /interviews/{id})
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_interview_requires_ownership(session_factory: object) -> None:
+    """HTTP layer: a foreign user_id must get 404, the owner gets 200."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.db import get_session
+    from app.main import create_app
+
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        owner = await seed_user(db)
+        stranger = await seed_user(db)
+        pa = await seed_profile(db, owner, "Profile A")
+        await seed_doc(
+            db,
+            user_id=owner,
+            profile_id=pa,
+            kind=DocumentKind.RESUME,
+            filename="a-resume.md",
+            text=RESUME_A,
+        )
+        svc, _ = await _svc(db, [QUESTION_TEXT])
+        session = await svc.create_session(
+            user_id=owner,
+            kind=InterviewKind.GENERAL,
+            role_id=None,
+            duration_minutes=30,
+            focus_competency_ids=[],
+            profile_id=pa,
+        )
+        session_id = session.id
+
+        async def _override() -> AsyncSession:
+            async with session_factory() as s:  # type: ignore[attr-defined]
+                yield s
+
+        app = create_app()
+        app.dependency_overrides[get_session] = _override
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r_stranger = await client.get(
+                f"/api/v1/interviews/{session_id}", params={"user_id": stranger}
+            )
+            assert r_stranger.status_code == 404
+            r_owner = await client.get(
+                f"/api/v1/interviews/{session_id}", params={"user_id": owner}
+            )
+            assert r_owner.status_code == 200
+        app.dependency_overrides.clear()
         await db.rollback()

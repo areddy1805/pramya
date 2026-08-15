@@ -191,7 +191,7 @@ async def count_interviews(
     user_id: int = Query(...),
     profile_id: int | None = Query(default=None),
     status: str | None = Query(default=None),
-) -> dict:
+) -> dict[str, int]:
     svc = _service(session)
     statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
     total = await svc.sessions.count_for_user(user_id, profile_id=profile_id, statuses=statuses)
@@ -204,6 +204,11 @@ async def get_interview(
 ) -> InterviewSessionOut:
     svc = _service(session)
     row = await svc.sessions.get_or_raise(interview_id, name="interview session")
+    # Ownership check: session metadata + config (grounding snapshot) must
+    # never be readable for a session the caller does not own (matches
+    # every other interview endpoint).
+    if row.user_id != user_id:
+        raise HTTPException(status_code=404, detail="interview session not found")
     return InterviewSessionOut.model_validate(row)
 
 

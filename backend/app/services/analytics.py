@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.enums import PracticeItemStatus
+from app.domain.errors import ValidationFailedError
 from app.models.evidence import Evidence
 from app.models.interview import Evaluation, Question
 from app.models.preparation import PreparationItem
@@ -91,6 +92,18 @@ class ReadinessService:
     ) -> tuple[list[CompetencyInput], list[EvidenceInput], list[EvaluationInput]]:
         competencies: list[CompetencyInput] = []
         if role_id is not None:
+            role = await self.roles.get(role_id)
+            # Ownership invariant: readiness may only score a role the
+            # caller's profile owns (legacy profile_id IS NULL roles stay
+            # valid). A foreign role would leak another profile's target
+            # role + competencies into this profile's readiness report.
+            if role is None or role.user_id != user_id or (
+                role.profile_id is not None and role.profile_id != profile_id
+            ):
+                raise ValidationFailedError(
+                    "role does not belong to this profile",
+                    details={"role_id": role_id, "profile_id": profile_id},
+                )
             rows = await self.roles.list_competencies(role_id)
             competencies = [
                 CompetencyInput(

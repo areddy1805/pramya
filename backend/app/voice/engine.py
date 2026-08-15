@@ -127,7 +127,9 @@ class VoiceEngine:
     # rows when store_audio is true and a storage dir is configured.
     audios: AudioSegmentRepository | None = None  # injectable (tests)
     audio_storage_dir: str | None = None
-    store_audio: bool = True
+    # Default OFF: persistence is opt-in via settings (voice_store_audio).
+    # Never store candidate audio unless explicitly enabled.
+    store_audio: bool = False
     retention_days: int = 30
     # Playback-completion gating (physical-mic speaker integrity): the engine
     # stays SPEAKING after tts_stop until the client confirms ACTUAL playback

@@ -129,7 +129,9 @@ def ev(overall: float = 7.0) -> str:
     )
 
 
-def reason(decision: str = "follow_up_deep", topic: str | None = None, gaps: list[str] | None = None) -> str:
+def reason(
+    decision: str = "follow_up_deep", topic: str | None = None, gaps: list[str] | None = None
+) -> str:
     return json.dumps(
         {
             "decision": decision,
@@ -316,9 +318,7 @@ async def seed_grounded_profile(
         filename="jd.md",
         text=JD_TEXT,
     )
-    await seed_evidence(
-        db, user_id, profile_id, [CLAIM_A, CLAIM_PROJECT, CLAIM_METRIC, CLAIM_NODE]
-    )
+    await seed_evidence(db, user_id, profile_id, [CLAIM_A, CLAIM_PROJECT, CLAIM_METRIC, CLAIM_NODE])
     role_id = await seed_role(
         db,
         user_id=user_id,
@@ -393,7 +393,8 @@ async def test_question_provenance_persisted_and_coverage_tracked(
         db_session,
         [
             q(
-                "Walk me through the Atlas analytics platform — what did you build and why Angular 16?",
+                "Walk me through the Atlas analytics platform — what did you build and why"
+                " Angular 16?",
                 competency="Full-Stack Engineering",
             )
         ],
@@ -451,8 +452,6 @@ async def test_focus_rotation_over_uncovered_competencies(db_session: AsyncSessi
     assert sorted(coverage["competencies"]) == sorted(
         ["System Design", "Full-Stack Engineering", "LLM Applications"]
     )
-    # Seeded randomness is deterministic for the same session id.
-    first_focus = _target(provider, 0)
     svc2, provider2 = await _svc(
         db_session,
         [
@@ -479,7 +478,7 @@ async def test_focus_rotation_over_uncovered_competencies(db_session: AsyncSessi
     from app.services.coverage import focus_competency, new_coverage
 
     comps = ["System Design", "Full-Stack Engineering", "LLM Applications"]
-    expected_pick = focus_competency(new_coverage(), comps, random.Random(session2.id))
+    expected_pick = focus_competency(new_coverage(), comps, random.Random(session2.id))  # noqa: S311 — seeded, deterministic test RNG
     assert _target(provider2, 0) == expected_pick
 
 
@@ -766,7 +765,7 @@ async def test_30_minute_simulation_covers_without_repetition(db_session: AsyncS
     for i, comp in enumerate(comps_cycle):
         contents.append(
             q(
-                f"Question {i+1} about {comp}.",
+                f"Question {i + 1} about {comp}.",
                 competency=comp,
                 category=cat_cycle[i],
             )

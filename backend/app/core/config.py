@@ -89,9 +89,11 @@ class Settings(BaseSettings):
     )
     omlx_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"  # deprecated: use voice_tts_model
     voice_retention_days: int = 30
-    # Opt-in: persist candidate audio as WAV under audio_storage_dir and write
-    # audio_segment rows (replay/retention). Off disables audio persistence.
-    voice_store_audio: bool = True
+    # Opt-in (default OFF): persist candidate audio as WAV under
+    # audio_storage_dir and write audio_segment rows (replay/retention).
+    # Candidate audio is sensitive data — never store by default
+    # (docs/PRIVACY.md, AGENTS.md audio persistence policy).
+    voice_store_audio: bool = False
     audio_storage_dir: str = ".runtime/audio"
     # Turn finalization: silence (s) after speech ends auto-ends the turn.
     # 1.5s (V1 value): 1.0s truncated answers at natural sentence pauses.

@@ -7,14 +7,24 @@
 
 ## Current State
 
-- Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE; Frontend UI freeze (ADR-029) COMPLETE** (2026-08-15).
+- Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE; Frontend UI freeze (ADR-029) COMPLETE; V1 Release Candidate Audit COMPLETE (2026-08-16)** — audit fixed 6 P1 findings, no P0.
 - **PRODUCT.md** (repo root) = durable product-context anchor for the UI redesign (identity, domain model, principles, surface inventory, non-goals, open questions).
 - **DESIGN.md** (repo root) = the permanent frontend design contract (Drawing Sheet canon, frozen, ADR-029) — code is source of truth; update the doc to match code, never the reverse.
 - Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative; §35 tracker includes Interview Productization + Frontend UI freeze rows.
-- Last verified commit: `be87af6` (density pass) — worktree clean.
-- Migration head: 0005 (question provenance + interview_feedback). `alembic check` must stay clean after any model change.
+- Last verified commit: release-audit commit (see git log) — worktree clean.
+- Migration head: **0007** (candidate_profile.status NOT NULL). `alembic check` clean.
 - Local `.env` exists (copied from `.env.example`, gitignored).
 - DB: docker compose `db` (pgvector/pgvector:pg17) running locally; `alembic upgrade head` applied; `alembic check` clean.
+
+## Release audit findings + fixes (2026-08-16)
+
+- **Static checks were red on main** (pre-existing): ruff 45 errors (E501 wraps + 2×F841 + 4×S311 in test files), mypy/pyright `-> dict` missing type args (`interviews.py count_interviews`). Fixed: ruff format + noqa S311 (seeded deterministic test RNG — documented), type annotation.
+- **Alembic model drift since 3b2d7cf**: model declared `candidate_profile.status` NOT NULL but migration 0003 created it nullable; model lacked `ix_candidate_profile_user_id` which 0003 created → `alembic check` red since then. Fixed: model `index=True` on `CandidateProfile.user_id` + migration 0007 enforcing NOT NULL (column already backfilled 'active').
+- **voice_store_audio default was True** — contradicted documented opt-in (PRIVACY.md, VOICE_ARCHITECTURE H.10, AGENTS.md §24) and `.env.example` never documented the flag. Fixed: default False (config + engine + `.env.example` entry). NEVER flip back without an explicit product decision.
+- **Role ownership gap (P1)**: `InterviewContextBuilder._role()` + `ReadinessService._load()` fetched roles by id with no user/profile check → a foreign profile's role (title + competencies) could ground another profile's interview questions/report or readiness. Fixed: raise `ValidationFailedError` when `role.user_id != user_id` or (role.profile_id set and != profile_id); legacy profile_id IS NULL roles stay valid. Regression tests: `test_foreign_role_rejected_in_interview_context`, `test_foreign_role_rejected_in_readiness`.
+- **GET /interviews/{id} ownership gap (P1)**: returned session metadata + config (grounding snapshot incl. resume text) for ANY id without checking user_id, unlike every other interview endpoint. Fixed: 404 on mismatch. Regression: `test_get_interview_requires_ownership` (HTTP layer via ASGITransport + dependency override).
+- Verified defaults: `voice_barge_in_enabled=False`, `tts_provider=pocket`, `langfuse_enabled=False`, `voice_store_audio=False`. Langfuse OFF = NullObservability (no client/worker/network); broken Langfuse degrades to logs, never blocks.
+- Post-fix suite: 233 unit+contract + 89 integration green; ruff/mypy/pyright clean; alembic check clean; 14-route Playwright probe vs live backend: 14/14 clean (HTTP 200, 0 console errors, 0 bad responses).
 
 ## Verified Environment Facts (2026-08)
 

@@ -59,7 +59,7 @@ def test_mark_asked_is_idempotent() -> None:
 
 
 def test_focus_rotates_over_uncovered_then_round_robins() -> None:
-    rng = random.Random(42)
+    rng = random.Random(42)  # noqa: S311 — seeded, deterministic test RNG
     cov = new_coverage()
 
     first = focus_competency(cov, COMPETENCIES, rng)
@@ -78,7 +78,7 @@ def test_focus_rotates_over_uncovered_then_round_robins() -> None:
     # All covered -> round-robin over the full list, deterministically.
     again = focus_competency(cov, COMPETENCIES, rng)
     assert again in COMPETENCIES
-    assert focus_competency(cov, COMPETENCIES, random.Random(42)) == again
+    assert focus_competency(cov, COMPETENCIES, random.Random(42)) == again  # noqa: S311 — seeded, deterministic test RNG
 
 
 def test_follow_up_topic_preferred_when_uncovered() -> None:
@@ -86,7 +86,7 @@ def test_follow_up_topic_preferred_when_uncovered() -> None:
     mark_asked(cov, competency="System Design")
     # Topic is uncovered -> preferred over the remaining uncovered pool.
     pick = focus_competency(
-        cov, COMPETENCIES, random.Random(7), follow_up_topic="LLM Applications"
+        cov, COMPETENCIES, random.Random(7), follow_up_topic="LLM Applications"  # noqa: S311 — seeded, deterministic test RNG
     )
     assert pick == "LLM Applications"
 
