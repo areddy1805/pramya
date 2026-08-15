@@ -52,7 +52,7 @@ export function EvidencePage() {
 
       {!evidence.isLoading && !items.length ? (
         <EmptyState
-          icon="🗂️"
+         
           title="No evidence yet"
           body="Upload a resume and run extraction in Profile & Role to seed the ledger with the candidate's claims. Practice interviews add observed and demonstrated signals."
         />

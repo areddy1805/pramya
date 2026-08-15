@@ -17,18 +17,15 @@ import { ProfileSwitcher } from './ProfileSwitcher'
 
 const primaryNav = [
   { to: '/dashboard', label: 'Overview' },
-  { to: '/profile', label: 'Profiles' },
-  { to: '/setup', label: 'Profile & Role' },
   { to: '/preparation', label: 'Preparation' },
   { to: '/interview', label: 'Practice' },
-  { to: '/progress', label: 'Progress' },
   { to: '/evidence', label: 'Evidence' },
-  { to: '/stories', label: 'Stories' },
-  { to: '/history', label: 'History' },
+  { to: '/progress', label: 'Progress' },
 ]
 
 const secondaryNav = [
-  { to: '/debriefs', label: 'Debriefs' },
+  { to: '/profile', label: 'Profile' },
+  { to: '/history', label: 'History' },
   { to: '/settings', label: 'Settings' },
   { to: '/models', label: 'Runtime' },
 ]
@@ -38,12 +35,17 @@ function NavLinkItem({ to, label }: { to: string; label: string }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
-          isActive ? 'bg-accent-soft text-accent' : 'text-fg-2 hover:bg-track hover:text-fg'
+        `relative whitespace-nowrap px-1.5 py-1 text-[13px] font-medium transition-colors ${
+          isActive ? 'text-fg' : 'text-fg-3 hover:text-fg-2'
         }`
       }
     >
-      {label}
+      {({ isActive }) => (
+        <>
+          {label}
+          {isActive ? <span aria-hidden className="absolute inset-x-1 -bottom-0.5 h-px bg-accent" /> : null}
+        </>
+      )}
     </NavLink>
   )
 }
@@ -51,26 +53,40 @@ function NavLinkItem({ to, label }: { to: string; label: string }) {
 export function AppShell() {
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[17px] font-semibold tracking-tight">Pramya</span>
-            <span className="hidden text-[11px] font-medium text-fg-3 sm:block">evidence-driven interview prep</span>
+      <header className="glass sticky top-0 z-30 border-b border-line">
+        <div className="mx-auto flex h-11 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-4">
+            <NavLink to="/dashboard" className="flex shrink-0 items-baseline gap-1.5">
+              <span className="text-[15px] font-semibold tracking-tight text-fg">Pramya</span>
+              <span aria-hidden className="hidden text-[10px] font-medium text-fg-3 sm:inline">prove you're ready</span>
+            </NavLink>
+            <span aria-hidden className="h-4 w-px bg-line" />
+            <nav aria-label="Primary" className="hidden items-center gap-2 md:flex">
+              {primaryNav.map((item) => (
+                <NavLinkItem key={item.to} {...item} />
+              ))}
+            </nav>
           </div>
-          <ProfileSwitcher />
-          <nav aria-label="Primary" className="flex flex-wrap items-center gap-1">
-            {primaryNav.map((item) => (
-              <NavLinkItem key={item.to} {...item} />
-            ))}
-            <span aria-hidden className="mx-1 h-4 w-px bg-track" />
-            {secondaryNav.map((item) => (
-              <NavLinkItem key={item.to} {...item} />
-            ))}
-          </nav>
+
+          <div className="flex min-w-0 items-center gap-3">
+            <nav aria-label="Secondary" className="hidden items-center gap-2 lg:flex">
+              {secondaryNav.map((item) => (
+                <NavLinkItem key={item.to} {...item} />
+              ))}
+            </nav>
+            <span aria-hidden className="hidden h-4 w-px bg-line lg:block" />
+            <ProfileSwitcher />
+          </div>
         </div>
+        {/* Mobile primary nav — horizontal scroll row */}
+        <nav aria-label="Primary (mobile)" className="flex items-center gap-1 overflow-x-auto border-t border-hairline px-3 py-1 md:hidden thin-scroll">
+          {[...primaryNav, ...secondaryNav].map((item) => (
+            <NavLinkItem key={item.to} {...item} />
+          ))}
+        </nav>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />

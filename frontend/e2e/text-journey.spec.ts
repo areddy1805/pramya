@@ -25,9 +25,8 @@ test('typed interview journey: start -> question -> answer -> evaluation -> repo
 }) => {
   await page.goto(`${BASE}/interview`)
 
-  // Mode selector defaults to voice; switch to typed.
-  const mode = page.locator('select').first()
-  await mode.selectOption('text')
+  // Format defaults to voice; switch to typed (segmented control).
+  await page.getByRole('button', { name: 'Typed', exact: true }).click()
   await expect(page.getByText('Start typed interview')).toBeVisible({ timeout: 15000 })
   await page.getByText('Start typed interview').click()
 
@@ -35,7 +34,7 @@ test('typed interview journey: start -> question -> answer -> evaluation -> repo
   // The heading + captions render immediately; the question text itself only
   // appears once the SSE 'question' event arrives after generation.
   await expect(page.getByText('Current question')).toBeVisible({ timeout: 120000 })
-  const questionText = page.locator('main p.text-xl').first()
+  const questionText = page.locator('.interview-question').first()
   await expect(questionText).toBeVisible({ timeout: 120000 })
   await expect(questionText).not.toContainText('Preparing')
 

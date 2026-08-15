@@ -89,7 +89,7 @@ export function SettingsPage() {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => theme.setMode(option.value)}
-                className={`rounded-xl border p-4 text-left transition-all duration-[var(--dur-fast)] ${
+                className={`rounded-[var(--r-xl)] border p-4 text-left transition-all duration-[var(--dur-fast)] ${
                   selected
                     ? 'border-accent-line bg-accent-soft shadow-[var(--shadow-1)]'
                     : 'border-line bg-surface hover:border-fg-3'
@@ -108,7 +108,7 @@ export function SettingsPage() {
         </div>
       </Surface>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
         <Surface className="p-6">
           <SectionHeading>Application</SectionHeading>
           <dl className="mt-2">

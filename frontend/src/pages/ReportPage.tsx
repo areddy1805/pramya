@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useReport, DEFAULT_USER_ID } from '../hooks/queries'
-import { Button, EmptyState, ErrorState, Skeleton, Surface } from '../components/ui'
+import { Button, EmptyState, ErrorState, Micro, Meter, Skeleton, Surface, Tag } from '../components/ui'
 
 const DIMENSION_LABELS: Record<string, string> = {
   overall: 'Overall',
@@ -19,10 +19,35 @@ const DIMENSION_LABELS: Record<string, string> = {
   completeness: 'Completeness',
 }
 
-function scoreTone(score: number): string {
-  if (score >= 7.5) return 'bg-ok/15 text-ok'
-  if (score >= 5) return 'bg-warn/15 text-warn'
-  return 'bg-danger/15 text-danger'
+// Order matters — the report reads top-down as a coaching review.
+const DIMENSION_ORDER = [
+  'correctness',
+  'technical_depth',
+  'reasoning',
+  'evidence',
+  'specificity',
+  'structure',
+  'clarity',
+  'relevance',
+  'communication',
+  'tradeoff_awareness',
+  'seniority_alignment',
+  'confidence',
+  'completeness',
+]
+
+function scoreTone(score: number): { text: string; meter: 'accent' | 'ok' | 'danger' } {
+  if (score >= 7.5) return { text: 'text-ok', meter: 'ok' }
+  if (score >= 5) return { text: 'text-warn', meter: 'accent' }
+  return { text: 'text-danger', meter: 'danger' }
+}
+
+function verdictFor(score: number): string {
+  if (score >= 8) return 'Strong performance — answers were specific, evidenced, and well structured.'
+  if (score >= 6.5) return 'Solid performance — clear strengths with a few areas to tighten.'
+  if (score >= 5) return 'Foundation in place — several gaps worth deliberate preparation.'
+  if (score >= 3) return 'Early stage — answers lacked depth or evidence; preparation should start with fundamentals.'
+  return 'Needs groundwork — revisit core material and practice explaining concrete examples.'
 }
 
 export function ReportPage() {
@@ -35,144 +60,196 @@ export function ReportPage() {
   const gaps = report.data?.gaps ?? null
   const topics = report.data?.topics ?? null
 
+  const overall = typeof scorecard?.overall === 'number' ? scorecard.overall : null
+  const overallTone = overall != null ? scoreTone(overall) : null
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <header className="flex items-center justify-between">
+    <div className="mx-auto max-w-3xl space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line pb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Interview report</h1>
-          <p className="mt-1 text-sm text-fg-2">Synthesis of what was demonstrated, where the gaps are, and what to practice next.</p>
+          <Micro>Interview report</Micro>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">What to improve</h1>
         </div>
         <Link to="/interview">
-          <Button variant="secondary">← Back</Button>
+          <Button variant="secondary" size="sm">← Practice</Button>
         </Link>
       </header>
 
       {report.isLoading ? (
         <div className="space-y-3">
-          <Skeleton className="h-8 w-1/3" />
-          <Skeleton className="h-64" />
+          <Skeleton className="h-10 w-2/3" />
+          <Skeleton className="h-48" />
         </div>
       ) : null}
 
       {report.isError ? (
-        <ErrorState title="Could not generate the report" body={report.error instanceof Error ? report.error.message : undefined} onRetry={() => report.refetch()} />
+        <ErrorState
+          title="Could not generate the report"
+          body={report.error instanceof Error ? report.error.message : undefined}
+          onRetry={() => report.refetch()}
+        />
       ) : null}
 
       {report.data ? (
         <>
-          {/* Deterministic scorecard (report v2) */}
+          {/* Overall assessment */}
           {scorecard ? (
-            <Surface className="p-6">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-3">Scorecard</h2>
-              <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                {Object.entries(scorecard)
-                  .filter(([k]) => !k.startsWith('top_'))
-                  .map(([k, v]) => {
-                    const score = typeof v === 'number' ? v : 0
-                    const label = DIMENSION_LABELS[k] ?? k
+            <section>
+              <div className="flex items-baseline gap-4">
+                {overall != null && overallTone ? (
+                  <>
+                    <span className={`tabular text-5xl font-semibold tracking-tight ${overallTone.text}`}>
+                      {overall.toFixed(1)}
+                    </span>
+                    <span className="text-sm text-fg-3">/ 10 overall</span>
+                  </>
+                ) : null}
+              </div>
+              {overall != null ? (
+                <p className="mt-3 max-w-xl text-sm leading-relaxed text-fg-2">{verdictFor(overall)}</p>
+              ) : null}
+
+              {(Array.isArray(scorecard.top_strengths) && scorecard.top_strengths.length > 0) ||
+              (Array.isArray(scorecard.top_weaknesses) && scorecard.top_weaknesses.length > 0) ? (
+                <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                  {Array.isArray(scorecard.top_strengths) && scorecard.top_strengths.length > 0 ? (
+                    <div>
+                      <Micro className="mb-2 text-ok">Strongest</Micro>
+                      <ul className="space-y-1.5">
+                        {scorecard.top_strengths.map((s, i) => (
+                          <li key={i} className="flex gap-2 text-sm leading-relaxed text-fg-2">
+                            <span aria-hidden className="mt-0.5 text-ok">+</span>
+                            {String(s)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {Array.isArray(scorecard.top_weaknesses) && scorecard.top_weaknesses.length > 0 ? (
+                    <div>
+                      <Micro className="mb-2 text-warn">Weakest</Micro>
+                      <ul className="space-y-1.5">
+                        {scorecard.top_weaknesses.map((s, i) => (
+                          <li key={i} className="flex gap-2 text-sm leading-relaxed text-fg-2">
+                            <span aria-hidden className="mt-0.5 text-warn">–</span>
+                            {String(s)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Dense dimension scorecard — a table, not a widget grid */}
+              <Surface className="mt-7 p-5" tone="inset">
+                <Micro className="mb-4">Dimensions</Micro>
+                <div className="grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
+                  {DIMENSION_ORDER.map((k) => {
+                    const v = scorecard[k]
+                    if (typeof v !== 'number') return null
+                    const tone = scoreTone(v)
                     return (
-                      <div key={k} className="rounded-lg border border-line bg-surface-2 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">{label}</p>
-                        <p className={`mt-1 text-xl font-semibold ${scoreTone(score)}`}>{score.toFixed(1)}</p>
+                      <div key={k} className="flex items-center gap-3">
+                        <span className="w-32 shrink-0 truncate text-[13px] text-fg-2">{DIMENSION_LABELS[k] ?? k}</span>
+                        <div className="min-w-0 flex-1"><Meter value={v} tone={tone.meter} /></div>
+                        <span className={`tabular w-8 text-right text-[13px] font-semibold ${tone.text}`}>{v.toFixed(1)}</span>
                       </div>
                     )
                   })}
-              </div>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                {Array.isArray(scorecard.top_strengths) && scorecard.top_strengths.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-ok">Top strengths</p>
-                    <ul className="mt-2 space-y-1">
-                      {scorecard.top_strengths.map((s, i) => (
-                        <li key={i} className="text-sm text-fg-2">• {String(s)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                {Array.isArray(scorecard.top_weaknesses) && scorecard.top_weaknesses.length > 0 ? (
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-warn">Top weaknesses</p>
-                    <ul className="mt-2 space-y-1">
-                      {scorecard.top_weaknesses.map((s, i) => (
-                        <li key={i} className="text-sm text-fg-2">• {String(s)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
+                </div>
+              </Surface>
+
               {gaps && gaps.length > 0 ? (
-                <div className="mt-5 rounded-lg border border-danger/25 bg-danger/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-danger">Detected gaps — practice these next</p>
-                  <ul className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-5">
+                  <Micro className="mb-2 text-danger">Priority gaps — prepare these next</Micro>
+                  <div className="flex flex-wrap gap-1.5">
                     {gaps.map((g, i) => (
-                      <li key={i} className="rounded-full border border-danger/25 bg-surface px-3 py-1 text-xs font-medium text-fg">{g}</li>
+                      <Tag key={i}>{String(g)}</Tag>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               ) : null}
               {topics && topics.length > 0 ? (
-                <p className="mt-4 text-xs text-fg-3">Covered topics: {topics.join(' · ')}</p>
+                <p className="mt-4 text-xs text-fg-3">Covered: {topics.join(' · ')}</p>
               ) : null}
-            </Surface>
+            </section>
           ) : null}
 
-          {/* Per-question feedback */}
+          {/* Question-by-question — the coaching record */}
           {questions && questions.length > 0 ? (
-            <Surface className="p-6">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-3">Per-question feedback</h2>
-              <div className="mt-4 space-y-5">
-                {questions.map((row) => (
-                  <div key={row.question_id ?? String(row.question)} className="rounded-xl border border-line bg-surface-2 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium leading-relaxed text-fg">{row.question}</p>
-                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${scoreTone(row.overall)}`}>
-                        {row.overall.toFixed(1)}
-                      </span>
-                    </div>
-                    {row.answer ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs font-medium text-fg-3 hover:text-fg-2">Your answer</summary>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-fg-2">{row.answer}</p>
-                      </details>
-                    ) : null}
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      {row.good.length > 0 ? (
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-ok">Good</p>
-                          <ul className="mt-1 space-y-0.5">
-                            {row.good.map((g, i) => <li key={i} className="text-xs text-fg-2">✓ {g}</li>)}
-                          </ul>
-                        </div>
-                      ) : null}
-                      {row.missing.length > 0 ? (
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-warn">Missing</p>
-                          <ul className="mt-1 space-y-0.5">
-                            {row.missing.map((m, i) => <li key={i} className="text-xs text-fg-2">✗ {m}</li>)}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                    {row.expected_follow_ups.length > 0 ? (
-                      <p className="mt-2 text-xs text-fg-3">Expected follow-ups: {row.expected_follow_ups.join(' · ')}</p>
-                    ) : null}
-                    <p className="mt-2 text-xs font-medium text-accent">Prep: {row.prep_recommendation}</p>
-                  </div>
-                ))}
+            <section>
+              <Micro className="mb-3">Question by question</Micro>
+              <div className="divide-y divide-line border-y border-line">
+                {questions.map((row, qi) => {
+                  const tone = scoreTone(row.overall)
+                  return (
+                    <article key={row.question_id ?? String(row.question)} className="py-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-[13px] font-semibold text-fg">
+                          <span className="mr-2 text-fg-3">Q{qi + 1}</span>
+                          {row.question}
+                        </p>
+                        <span className={`tabular shrink-0 text-[13px] font-semibold ${tone.text}`}>
+                          {row.overall.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-2.5 pl-7 text-sm">
+                        {row.answer ? (
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-fg-3">What you said</p>
+                            <p className="mt-0.5 leading-relaxed text-fg-2">{row.answer}</p>
+                          </div>
+                        ) : null}
+                        {row.good.length > 0 ? (
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-ok">What worked</p>
+                            <ul className="mt-0.5 space-y-0.5">
+                              {row.good.map((g, i) => (
+                                <li key={i} className="leading-relaxed text-fg-2">+ {g}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {row.missing.length > 0 ? (
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-warn">What was missing</p>
+                            <ul className="mt-0.5 space-y-0.5">
+                              {row.missing.map((m, i) => (
+                                <li key={i} className="leading-relaxed text-fg-2">– {m}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {row.expected_follow_ups.length > 0 ? (
+                          <p className="text-xs text-fg-3">
+                            A strong answer would have addressed: {row.expected_follow_ups.join(' · ')}
+                          </p>
+                        ) : null}
+                        <p className="text-[13px] font-medium text-accent">Prepare: {row.prep_recommendation}</p>
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
-            </Surface>
+            </section>
           ) : null}
 
-          {/* Narrative synthesis (kept) */}
-          <Surface className="p-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-3">Narrative synthesis</h2>
-            <div className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-fg">{report.data.report}</div>
-          </Surface>
+          {/* Narrative synthesis */}
+          {report.data.report ? (
+            <section>
+              <Micro className="mb-3">Coach's notes</Micro>
+              <div className="whitespace-pre-wrap text-[15px] leading-[1.75] text-fg">{report.data.report}</div>
+            </section>
+          ) : null}
         </>
       ) : null}
 
       {!report.isLoading && !report.isError && !report.data ? (
-        <EmptyState icon="📄" title="No report yet" body="Complete an interview with at least one evaluated answer, then come back here." />
+        <EmptyState
+          title="No report yet"
+          body="Complete an interview with at least one evaluated answer, then come back here."
+        />
       ) : null}
     </div>
   )

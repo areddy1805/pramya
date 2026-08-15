@@ -4,6 +4,7 @@
 // server state — no fake local-only success.
 
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   DEFAULT_USER_ID,
   useActiveProfile,
@@ -23,11 +24,12 @@ import {
 } from '../hooks/queries'
 import {
   Button,
+  DocumentRow,
   EmptyState,
   ErrorState,
   Field,
+  Micro,
   Pill,
-  SectionHeading,
   Select,
   Spinner,
   Surface,
@@ -62,6 +64,7 @@ export function ProfilePage() {
   const [seniority, setSeniority] = useState('')
   const [newProfileName, setNewProfileName] = useState('')
   const [jdText, setJdText] = useState('')
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [stage, setStage] = useState<string | null>(null)
@@ -72,11 +75,11 @@ export function ProfilePage() {
     null
   const currentJd =
     jds.find((d) => d.id === active?.preferred_jd_document_id) ?? jds[jds.length - 1] ?? null
-  const canSubmitEdit = activeId != null && Boolean(name.trim())
 
   async function onSwitch(profileId: number) {
     setError(null)
     setNotice(null)
+    setEditing(false)
     try {
       await setActive.mutateAsync(profileId)
       setName('')
@@ -101,7 +104,7 @@ export function ProfilePage() {
 
   async function onSaveProfile() {
     setError(null)
-    if (!canSubmitEdit) return
+    if (activeId == null) return
     try {
       await updateProfile.mutateAsync({
         name: name || undefined,
@@ -109,6 +112,7 @@ export function ProfilePage() {
         headline: headline || undefined,
         seniority_target: seniority || undefined,
       })
+      setEditing(false)
       setNotice('Profile saved.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
@@ -185,330 +189,364 @@ export function ProfilePage() {
     }
   }
 
-  // Render the edit form only after server data for the active profile is known.
   const loadedProfile = activeQuery.data?.profile ?? active
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Career profiles</h1>
-        <p className="mt-1 text-sm text-fg-2">
-          Each profile is an independent workspace — its own resume, target roles, JDs, and evidence. Switching profiles changes the workspace context; nothing leaks between them.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Micro>Workspace</Micro>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">Career profiles</h1>
+          <p className="mt-1 max-w-xl text-sm leading-relaxed text-fg-2">
+            Each profile is an independent workspace — its own resume, target roles, JDs, and evidence. Nothing leaks between them.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {activeId != null && profiles.length > 1 ? (
+            <Button variant="danger" size="sm" onClick={() => void onDeleteProfile()} disabled={deleteProfile.isPending}>
+              Delete profile
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={() => void onCreateProfile()} disabled={!newProfileName.trim() || createProfile.isPending}>
+            {createProfile.isPending ? 'Creating…' : 'New profile'}
+          </Button>
+        </div>
       </header>
 
       {error ? <ErrorState title="Request failed" body={error} /> : null}
       {notice ? (
-        <div className="rounded-xl border border-accent-line bg-accent-soft px-4 py-3 text-sm text-accent">
+        <div className="rounded-[var(--r-md)] border border-accent-line bg-accent-soft px-4 py-2.5 text-sm text-accent">
           {notice}
         </div>
       ) : null}
 
-      {/* Profile switcher + create */}
-      <Surface className="p-6">
-        <SectionHeading>Profiles</SectionHeading>
-        {isLoading ? (
-          <Spinner label="Loading profiles…" />
-        ) : profiles.length === 0 ? (
-          <EmptyState
-            title="No profiles yet"
-            body="Create your first career profile to start building your workspace."
-          />
-        ) : (
-          <div className="space-y-2">
-            {profiles.map((p) => (
-              <div
-                key={p.id}
-                className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
-                  p.id === activeId ? 'border-accent-line bg-accent-soft' : 'border-line bg-canvas'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-fg">{p.name}</p>
-                  <p className="truncate text-xs text-fg-3">
-                    {p.headline || p.positioning || p.slug || `Profile #${p.id}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {p.id === activeId ? (
-                    <Pill tone="accent">Active</Pill>
-                  ) : (
-                    <Button variant="secondary" size="sm" onClick={() => void onSwitch(p.id)}>
-                      Switch
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="mt-4 flex items-center gap-2">
-          <TextInput
-            className="max-w-xs"
-            placeholder="New profile name (e.g. AI Engineer)"
+      {/* Profile list — compact selector row */}
+      <Surface className="p-4" tone="inset">
+        <div className="flex flex-wrap items-center gap-2">
+          <Micro className="mr-2">Profiles</Micro>
+          {isLoading ? <Spinner label="Loading" subtle /> : null}
+          {profiles.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => void onSwitch(p.id)}
+              className={`rounded-[var(--r-md)] border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                p.id === activeId
+                  ? 'border-accent-line bg-accent-soft text-accent'
+                  : 'border-line bg-surface text-fg-2 hover:border-fg-3 hover:text-fg'
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
+          <span className="mx-2 h-4 w-px bg-line" aria-hidden />
+          <input
+            aria-label="New profile name"
+            className="w-44 rounded-[var(--r-md)] border border-line bg-surface px-2.5 py-1.5 text-[13px] text-fg placeholder:text-fg-disabled focus:border-accent focus:outline-none focus:shadow-[var(--focus-ring)]"
+            placeholder="New profile name…"
             value={newProfileName}
             onChange={(e) => setNewProfileName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void onCreateProfile()
+            }}
           />
-          <Button onClick={() => void onCreateProfile()} disabled={!newProfileName.trim() || createProfile.isPending}>
-            {createProfile.isPending ? 'Creating…' : 'Create profile'}
-          </Button>
-          {activeId != null && profiles.length > 1 ? (
-            <Button variant="danger" size="sm" onClick={() => void onDeleteProfile()} disabled={deleteProfile.isPending}>
-              Delete
-            </Button>
-          ) : null}
         </div>
       </Surface>
 
       {activeId == null || loadedProfile == null ? (
-        <Surface className="p-6">
-          <EmptyState title="Select a profile" body="Create or switch to a profile to see its workspace." />
-        </Surface>
+        <EmptyState title="Select a profile" body="Create or switch to a profile to see its workspace." />
       ) : (
         <>
-          {/* Profile identity */}
-          <Surface className="p-6">
-            <SectionHeading aside={<Pill tone={loadedProfile.status === 'active' ? 'ok' : 'neutral'}>{loadedProfile.status}</Pill>}>
-              {loadedProfile.name}
-            </SectionHeading>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Name">
-                <TextInput placeholder={loadedProfile.name} value={name} onChange={(e) => setName(e.target.value)} />
-              </Field>
-              <Field label="Seniority target">
-                <Select value={seniority} onChange={(e) => setSeniority(e.target.value)}>
-                  <option value="">—</option>
-                  <option value="junior">Junior</option>
-                  <option value="mid">Mid</option>
-                  <option value="senior">Senior</option>
-                  <option value="staff">Staff</option>
-                  <option value="principal">Principal</option>
-                </Select>
-              </Field>
-            </div>
-            <div className="mt-4 grid gap-4">
-              <Field label="Headline" hint="One line that captures where you are.">
-                <TextInput placeholder={loadedProfile.headline ?? 'Senior Backend Engineer'} value={headline} onChange={(e) => setHeadline(e.target.value)} />
-              </Field>
-              <Field label="Positioning" hint="How you position yourself for this target.">
-                <TextArea
-                  className="min-h-20"
-                  placeholder={loadedProfile.positioning ?? 'What makes you the right fit for this path?'}
-                  value={positioning}
-                  onChange={(e) => setPositioning(e.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="mt-4">
-              <Button onClick={() => void onSaveProfile()} disabled={!canSubmitEdit || updateProfile.isPending}>
-                {updateProfile.isPending ? 'Saving…' : 'Save profile'}
-              </Button>
-            </div>
-          </Surface>
-
-          {/* Resume */}
-          <Surface className="p-6">
-            <SectionHeading
-              aside={
-                currentResume ? (
-                  <Pill tone={currentResume.status === 'parsed' ? 'ok' : 'warn'}>{currentResume.status}</Pill>
-                ) : undefined
-              }
-            >
-              Resume
-            </SectionHeading>
-            <p className="mb-4 text-sm text-fg-2">
-              One current resume per profile — choose which version interviews are grounded in. Earlier versions are kept.
-            </p>
-            {resumes.length === 0 ? (
-              <EmptyState title="No resume yet" body="Upload a resume (PDF, DOCX, TXT, MD) — it is parsed, indexed, and extracted into this profile's evidence." />
-            ) : (
-              <div className="mb-4 space-y-2">
-                {resumes.map((d) => {
-                  const isCurrent = d.id === currentResume?.id
-                  return (
-                    <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-fg">
-                          {d.filename} {isCurrent ? <span className="text-xs text-accent">· current</span> : null}
-                        </p>
-                        <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {isCurrent ? (
-                          <Pill tone="ok">current</Pill>
-                        ) : (
-                          <>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={d.status !== 'parsed' || setPreferred.isPending}
-                              onClick={() => void setPreferred.mutateAsync({ kind: 'resume', documentId: d.id })}
-                            >
-                              Make current
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={deleteDoc.isPending}
-                              onClick={() => {
-                                if (window.confirm(`Delete resume "${d.filename}"? Existing interview records keep their snapshot.`)) {
-                                  void deleteDoc.mutateAsync(d.id)
-                                }
-                              }}
-                            >
-                              Delete
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
+          {/* Identity band — on canvas, not in a card */}
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-semibold tracking-tight text-fg">{loadedProfile.name}</h2>
+                <Pill tone={loadedProfile.status === 'active' ? 'ok' : 'neutral'}>{loadedProfile.status}</Pill>
               </div>
-            )}
-            <label className="inline-flex cursor-pointer">
-              <span className="rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-fg-3 hover:bg-surface-2">
-                {currentResume ? 'Replace resume' : 'Upload resume'}
-              </span>
-              <input
-                type="file"
-                accept=".pdf,.docx,.txt,.md"
-                className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) void onUploadResume(file)
-                }}
-              />
-            </label>
-            {stage && !stage.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
-          </Surface>
-
-          {/* Target roles */}
-          <Surface className="p-6">
-            <SectionHeading aside={roles.data && roles.data.length > 0 ? <Pill tone="ok">{roles.data.length} roles</Pill> : undefined}>
-              Target roles
-            </SectionHeading>
-            <p className="mb-4 text-sm text-fg-2">
-              Paste a job description or upload a JD. Pramya builds the competency model that drives readiness and preparation for this profile.
-            </p>
-            {roles.data && roles.data.length === 0 ? (
-              <EmptyState title="No target roles" body="Add a job description to define this profile's target." />
-            ) : (
-              <div className="mb-4 space-y-2">
-                {roles.data?.map((r) => (
-                  <div key={r.id} className="rounded-lg border border-line bg-canvas px-4 py-3">
-                    <p className="text-sm font-medium text-fg">{r.title} {r.seniority ? `· ${r.seniority}` : ''}</p>
-                    {r.summary ? <p className="mt-0.5 text-xs text-fg-2">{r.summary}</p> : null}
-                    {r.competencies && r.competencies.length > 0 ? (
-                      <p className="mt-1 text-xs text-fg-3">{r.competencies.length} competencies</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-            <TextArea
-              className="min-h-24"
-              placeholder="Paste a job description here…"
-              value={jdText}
-              onChange={(e) => setJdText(e.target.value)}
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              {currentJd ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={setPreferred.isPending}
-                  onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: null })}
-                >
-                  Use no JD (resume-only mode)
-                </Button>
-              ) : null}
-              <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
-                {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
-              </Button>
-              <label className="text-sm text-fg-2">
-                or{' '}
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt,.md"
-                  className="cursor-pointer text-xs text-fg-2 file:mr-2 file:rounded-lg file:border-0 file:bg-track file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) void onUploadJd(file)
-                  }}
-                />
-                upload a JD document
-              </label>
-              {stage?.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
-            </div>
-          </Surface>
-
-          {/* Documents / JDs */}
-          <Surface className="p-6">
-            <SectionHeading aside={jds.length > 0 ? <Pill>{jds.length} documents</Pill> : undefined}>
-              Documents & JDs
-            </SectionHeading>
-            {jds.length === 0 ? (
-              <EmptyState title="No JD documents" body="Uploaded JDs appear here, deduplicated by content." />
-            ) : (
-              <div className="space-y-2">
-                {jds.map((d) => {
-                  const isSelected = d.id === currentJd?.id
-                  return (
-                    <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-fg">
-                          {d.filename} {isSelected ? <span className="text-xs text-accent">· in use</span> : null}
-                        </p>
-                        <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {isSelected ? (
-                          <Pill tone="accent">in use</Pill>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={d.status !== 'parsed' || setPreferred.isPending}
-                            onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: d.id })}
-                          >
-                            Use for interviews
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={deleteDoc.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Delete JD "${d.filename}"? Existing interview records keep their snapshot.`)) {
-                              void deleteDoc.mutateAsync(d.id)
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Surface>
-
-          {/* Evidence summary */}
-          <Surface className="p-6">
-            <SectionHeading aside={evidence.data ? <Pill>{evidence.data.length} records</Pill> : undefined}>
-              Evidence
-            </SectionHeading>
-            {evidence.data && evidence.data.length === 0 ? (
-              <EmptyState title="No evidence yet" body="Extract claims from a resume or complete interviews to build this profile's evidence ledger." />
-            ) : (
-              <p className="text-sm text-fg-2">
-                {evidence.data?.length ?? 0} evidence records in this profile. View and correct them in the Evidence ledger.
+              {loadedProfile.positioning ? <p className="mt-0.5 text-sm text-fg-2">{loadedProfile.positioning}</p> : null}
+              <p className="mt-0.5 text-xs text-fg-3">
+                {loadedProfile.headline ? `${loadedProfile.headline} · ` : ''}
+                {loadedProfile.seniority_target ? `${loadedProfile.seniority_target} target` : 'no seniority target'}
               </p>
-            )}
-          </Surface>
+            </div>
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <>
+                  <Button size="sm" onClick={() => void onSaveProfile()} disabled={updateProfile.isPending}>
+                    {updateProfile.isPending ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+                </>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>Edit identity</Button>
+              )}
+            </div>
+          </div>
+
+          {editing ? (
+            <Surface className="p-5">
+              <Micro className="mb-4">Identity</Micro>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Name">
+                  <TextInput placeholder={loadedProfile.name} value={name} onChange={(e) => setName(e.target.value)} />
+                </Field>
+                <Field label="Seniority target">
+                  <Select value={seniority} onChange={(e) => setSeniority(e.target.value)}>
+                    <option value="">—</option>
+                    <option value="junior">Junior</option>
+                    <option value="mid">Mid</option>
+                    <option value="senior">Senior</option>
+                    <option value="staff">Staff</option>
+                    <option value="principal">Principal</option>
+                  </Select>
+                </Field>
+              </div>
+              <div className="mt-4 space-y-4">
+                <Field label="Headline" hint="One line that captures where you are.">
+                  <TextInput placeholder={loadedProfile.headline ?? 'Senior Backend Engineer'} value={headline} onChange={(e) => setHeadline(e.target.value)} />
+                </Field>
+                <Field label="Positioning" hint="How you position yourself for this target.">
+                  <TextArea
+                    className="min-h-20"
+                    placeholder={loadedProfile.positioning ?? 'What makes you the right fit for this path?'}
+                    value={positioning}
+                    onChange={(e) => setPositioning(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </Surface>
+          ) : null}
+
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-2">
+            {/* Core context */}
+            <div className="space-y-8">
+              {/* Resume workspace */}
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Micro>Resume</Micro>
+                  {currentResume ? (
+                    <Pill tone={currentResume.status === 'parsed' ? 'ok' : 'warn'}>{currentResume.status}</Pill>
+                  ) : null}
+                </div>
+                <p className="mb-3 text-[13px] leading-relaxed text-fg-3">
+                  Choose which version interviews are grounded in. Earlier versions are kept.
+                </p>
+                {resumes.length === 0 ? (
+                  <EmptyState title="No resume yet" body="Upload a resume (PDF, DOCX, TXT, MD) — it is parsed, indexed, and extracted into this profile's evidence." />
+                ) : (
+                  <div className="space-y-1">
+                    {resumes.map((d) => {
+                      const isCurrent = d.id === currentResume?.id
+                      return (
+                        <DocumentRow
+                          key={d.id}
+                          filename={d.filename}
+                          statusTone={d.status === 'parsed' ? 'ok' : d.status === 'failed' ? 'danger' : 'warn'}
+                          meta={`${d.size.toLocaleString()} bytes · ${d.status}${isCurrent ? ' · used in interviews' : ''}`}
+                          selected={isCurrent}
+                          selectedLabel="current"
+                          actions={
+                            isCurrent ? null : (
+                              <>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={d.status !== 'parsed' || setPreferred.isPending}
+                                  onClick={() => void setPreferred.mutateAsync({ kind: 'resume', documentId: d.id })}
+                                >
+                                  Make current
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={deleteDoc.isPending}
+                                  onClick={() => {
+                                    if (window.confirm(`Delete resume "${d.filename}"? Existing interview records keep their snapshot.`)) {
+                                      void deleteDoc.mutateAsync(d.id)
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </>
+                            )
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+                <label className="drop-zone mt-3 flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-[13px] font-medium text-fg-2">Upload resume</span>
+                  <span className="text-xs text-fg-3">PDF · DOCX · TXT · MD</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void onUploadResume(file)
+                    }}
+                  />
+                </label>
+                {stage && !stage.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
+              </section>
+
+              {/* Target roles */}
+              <section>
+                <Micro className="mb-2">Target roles</Micro>
+                <p className="mb-3 text-[13px] leading-relaxed text-fg-3">
+                  Paste a job description or upload a JD. Pramya builds the competency model that drives readiness and preparation.
+                </p>
+                {roles.data && roles.data.length === 0 ? (
+                  <EmptyState title="No target roles" body="Add a job description to define this profile's target." />
+                ) : (
+                  <div className="divide-y divide-line border-y border-line">
+                    {roles.data?.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-fg">{r.title} {r.seniority ? `· ${r.seniority}` : ''}</p>
+                          {r.summary ? <p className="mt-0.5 line-clamp-2 text-xs text-fg-3">{r.summary}</p> : null}
+                        </div>
+                        {r.competencies && r.competencies.length > 0 ? (
+                          <span className="shrink-0 text-xs text-fg-3">{r.competencies.length} competencies</span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-3 space-y-2">
+                  <TextArea
+                    className="min-h-20"
+                    placeholder="Paste a job description here…"
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
+                      {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
+                    </Button>
+                    <label className="flex items-center gap-2 text-[13px] text-fg-2">
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md"
+                        className="cursor-pointer text-xs text-fg-3 file:mr-2 file:rounded-[var(--r-sm)] file:border-0 file:bg-track file:px-2.5 file:py-1 file:text-xs file:font-medium file:cursor-pointer"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) void onUploadJd(file)
+                        }}
+                      />
+                      or upload a JD file
+                    </label>
+                    {stage?.includes('role') ? <Spinner label={stage} subtle /> : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* Supporting context */}
+            <div className="space-y-8">
+              {/* JD documents */}
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Micro>Job descriptions</Micro>
+                  {jds.length > 0 ? <span className="text-xs text-fg-3">{jds.length}</span> : null}
+                </div>
+                <p className="mb-3 text-[13px] leading-relaxed text-fg-3">
+                  JDs you interview against, deduplicated by content. One is selected for practice.
+                </p>
+                {jds.length === 0 ? (
+                  <EmptyState title="No JD documents" body="Uploaded JDs appear here, deduplicated by content." />
+                ) : (
+                  <div className="space-y-1">
+                    {jds.map((d) => {
+                      const isSelected = d.id === currentJd?.id
+                      return (
+                        <DocumentRow
+                          key={d.id}
+                          filename={d.filename}
+                          statusTone={d.status === 'parsed' ? 'ok' : d.status === 'failed' ? 'danger' : 'warn'}
+                          meta={`${d.size.toLocaleString()} bytes · ${d.status}`}
+                          selected={isSelected}
+                          selectedLabel="in use"
+                          actions={
+                            <>
+                              {!isSelected ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  disabled={d.status !== 'parsed' || setPreferred.isPending}
+                                  onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: d.id })}
+                                >
+                                  Use for interviews
+                                </Button>
+                              ) : null}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={deleteDoc.isPending}
+                                onClick={() => {
+                                  if (window.confirm(`Delete JD "${d.filename}"? Existing interview records keep their snapshot.`)) {
+                                    void deleteDoc.mutateAsync(d.id)
+                                  }
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+                {currentJd ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2"
+                    disabled={setPreferred.isPending}
+                    onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: null })}
+                  >
+                    Use no JD — resume-only mode
+                  </Button>
+                ) : null}
+                <label className="drop-zone mt-3 flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-[13px] font-medium text-fg-2">Upload JD</span>
+                  <span className="text-xs text-fg-3">PDF · DOCX · TXT · MD</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void onUploadJd(file)
+                    }}
+                  />
+                </label>
+                {stage && !stage.includes('role') ? <div className="mt-3"><Spinner label={stage} /></div> : null}
+              </section>
+
+              {/* Evidence */}
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Micro>Evidence</Micro>
+                  {evidence.data ? <span className="text-xs text-fg-3">{evidence.data.length} records</span> : null}
+                </div>
+                {evidence.data && evidence.data.length === 0 ? (
+                  <EmptyState title="No evidence yet" body="Extract claims from a resume or complete interviews to build this profile's evidence ledger." />
+                ) : (
+                  <p className="text-[13px] leading-relaxed text-fg-2">
+                    {evidence.data?.length ?? 0} evidence records — claims, observations, and demonstrated answers. View and correct them in the ledger.
+                  </p>
+                )}
+                <Link className="mt-2 inline-block text-[13px] font-medium text-accent hover:underline" to="/evidence">
+                  Open evidence ledger →
+                </Link>
+              </section>
+            </div>
+          </div>
         </>
       )}
     </div>

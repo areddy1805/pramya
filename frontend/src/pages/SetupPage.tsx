@@ -141,7 +141,7 @@ export function SetupPage() {
 
       {error ? <ErrorState title="Something went wrong" body={error} /> : null}
       {notice ? (
-        <div className="rounded-xl border border-accent-line bg-accent-soft px-4 py-3 text-sm text-accent">
+        <div className="rounded-[var(--r-xl)] border border-accent-line bg-accent-soft px-4 py-3 text-sm text-accent">
           {notice}
         </div>
       ) : null}

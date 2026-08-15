@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../lib/api'
 import { useCandidate, useDocuments, usePreparation, useProgress, useReadiness, useRoles, useResolvedProfile, DEFAULT_USER_ID } from '../hooks/queries'
-import { Button, Divider, EmptyState, ErrorState, Meter, Pill, SectionHeading, Skeleton, Stat, Surface } from '../components/ui'
+import { Button, Divider, EmptyState, ErrorState, Meter, Micro, SectionHeading, Skeleton, Stat, Surface } from '../components/ui'
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -44,10 +44,10 @@ export function DashboardPage() {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-fg-3">
+          <Micro>
             {targetRole ? `Target role · ${targetRole.seniority ?? ''} ${targetRole.title}` : 'No target role yet'}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+          </Micro>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight">
             {loading ? 'Loading your readiness…' : `You're ${readinessVal >= 7 ? 'well positioned' : readinessVal >= 4 ? 'making progress' : 'at the start'} for ${targetRole?.title ?? 'your target role'}.`}
           </h1>
           <p className="mt-1 text-sm text-fg-2">
@@ -61,7 +61,7 @@ export function DashboardPage() {
 
       {unstarted ? (
         <EmptyState
-          icon="🎯"
+         
           title="Start with your target"
           body="Pramya is evidence-driven: we build your readiness from your resume claims, a target role's competency model, and what you demonstrate in practice. Begin by adding your profile and role."
           action={
@@ -73,14 +73,13 @@ export function DashboardPage() {
       ) : (
         <>
           {/* Dominant surface: readiness with reason */}
-          <Surface tone="accent" className="p-6">
+          <Surface className="p-6">
             <div className="grid gap-6 md:grid-cols-[1fr_auto]">
               <div className="min-w-0">
                 <SectionHeading>Overall readiness</SectionHeading>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-semibold tracking-tight">{readinessVal.toFixed(1)}</span>
+                  <span className={`tabular text-4xl font-semibold tracking-tight ${readinessVal >= 7.5 ? 'text-ok' : readinessVal >= 5 ? 'text-fg' : 'text-warn'}`}>{readinessVal.toFixed(1)}</span>
                   <span className="text-sm text-fg-3">/ 10</span>
-                  {readiness.data ? <Pill tone={readinessVal >= 7 ? 'ok' : readinessVal >= 4 ? 'warn' : 'danger'}>{readinessVal >= 7 ? 'On track' : readinessVal >= 4 ? 'Building' : 'Early'}</Pill> : null}
                 </div>
                 <div className="mt-3 max-w-md">
                   <Meter value={readinessVal} />
@@ -99,7 +98,7 @@ export function DashboardPage() {
 
               {/* The one action that matters next */}
               <div className="flex w-full flex-col justify-center gap-3 md:w-64">
-                <p className="text-xs font-medium uppercase tracking-[0.08em] text-fg-3">Do this next</p>
+                <Micro>Do this next</Micro>
                 {topPrep ? (
                   <>
                     <div className="rounded-lg border border-line bg-surface p-4">
@@ -127,7 +126,7 @@ export function DashboardPage() {
             </div>
           </Surface>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
             <Surface className="p-5">
               <SectionHeading>Critical gaps</SectionHeading>
               {!gaps.length ? (
@@ -140,7 +139,7 @@ export function DashboardPage() {
                         <p className="text-sm font-medium text-fg">{gap.name}</p>
                         <p className="text-xs text-fg-3">demonstrated {gap.demonstrated_level}/5 · required {gap.required_level}/5</p>
                       </div>
-                      <Pill tone="danger">gap {gap.gap}</Pill>
+                      <span className="shrink-0 text-xs font-semibold text-danger">gap {gap.gap}</span>
                     </li>
                   ))}
                 </ul>
@@ -182,7 +181,7 @@ export function DashboardPage() {
       )}
 
       {loading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
           <Skeleton className="h-40" />
           <Skeleton className="h-40" />
         </div>

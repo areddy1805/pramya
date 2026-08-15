@@ -88,7 +88,7 @@ export function ModelStatusPage() {
           </Surface>
         </>
       ) : (
-        <EmptyState icon="🖥️" title="Runtime status unavailable" body="The backend could not report provider health." />
+        <EmptyState title="Runtime status unavailable" body="The backend could not report provider health." />
       )}
     </div>
   )

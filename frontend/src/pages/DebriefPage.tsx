@@ -187,7 +187,7 @@ export function DebriefPage() {
       ) : null}
       {debriefs.data && debriefs.data.length === 0 ? (
         <EmptyState
-          icon="📝"
+         
           title="No debriefs yet"
           body="After a real interview, record what happened here and analyze it."
         />

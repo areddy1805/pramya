@@ -64,7 +64,7 @@ export function HistoryPage() {
 
       {interviews.data && interviews.data.length === 0 ? (
         <EmptyState
-          icon="🗂"
+         
           title="No interviews yet"
           body="Start a practice interview from the Practice screen and it will appear here."
         />
