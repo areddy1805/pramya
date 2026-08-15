@@ -8,6 +8,7 @@
 ## Current State
 
 - Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE** (2026-08-15).
+- **PRODUCT.md** (repo root) = durable product-context anchor for the UI redesign (identity, domain model, principles, surface inventory, non-goals, open questions). DESIGN.md intentionally does not exist yet; no visual decisions made.
 - Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative; §35 tracker includes Interview Productization row.
 - Last verified commit: `59073fa` (frontend productization) — worktree clean.
 - Migration head: 0005 (question provenance + interview_feedback). `alembic check` must stay clean after any model change.
