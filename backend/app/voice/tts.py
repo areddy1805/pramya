@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import wave
 from collections.abc import AsyncIterator
+from typing import Protocol, runtime_checkable
 
 import httpx
 
@@ -30,8 +31,32 @@ _logger = get_logger("app.voice.tts")
 _WAV_HEADER_BYTES = 44  # oMLX streamed TTS uses the standard 44-byte header
 
 
+@runtime_checkable
+class TTSSynthesizer(Protocol):
+    """TTS provider seam consumed by the voice engine (duck-typed).
+
+    Implementations: :class:`TTSClient` (Qwen3 via oMLX) and
+    :class:`app.voice.pocket.PocketTTSProvider` (Kyutai pocket-tts). The
+    engine never branches on the concrete provider; providers advertise
+    native per-chunk streaming via ``supports_stream`` and the engine
+    relays streamed PCM as generated when available.
+    """
+
+    supports_stream: bool
+
+    async def synthesize(self, text: str) -> tuple[bytes, int]: ...
+
+    def synthesize_stream(
+        self, text: str, *, streaming_interval: float = 1.0
+    ) -> AsyncIterator[bytes]: ...
+
+    async def warmup(self) -> None: ...
+
+
 class TTSClient:
     """Synthesize speech via the local oMLX runtime (single provider voice)."""
+
+    supports_stream: bool = False  # production path is per-segment full-WAV
 
     def __init__(
         self,

@@ -49,7 +49,7 @@ from app.repositories.interview import AudioSegmentRepository, TranscriptSegment
 from app.voice.asr import ASRClient
 from app.voice.profile import InterviewerVoiceProfile
 from app.voice.segmenter import QuestionStreamExtractor, TextSegmenter
-from app.voice.tts import TTSClient
+from app.voice.tts import TTSSynthesizer
 
 _logger = get_logger("app.voice.engine")
 
@@ -112,7 +112,7 @@ class VoiceEngine:
 
     interview: InterviewService
     asr: ASRClient
-    tts: TTSClient
+    tts: TTSSynthesizer
     session_id: int
     user_id: int
     chunk_samples: int = 4800  # 200 ms @ 24 kHz playback chunks
@@ -530,17 +530,26 @@ class VoiceEngine:
                     # only question text is spoken, never metadata).
                     _logger.info("tts segment: chars=%d text=%r", len(seg), seg[:160])
                     async with self._speech_lock:
-                        pcm, _sr = await self.tts.synthesize(seg)
-                    for i in range(0, len(pcm), target_bytes):
-                        if self._generation != generation or not self._running:
-                            return
-                        frame = pcm[i : i + target_bytes]
-                        if len(frame) < target_bytes:
-                            # Pad the final partial frame with silence so the
-                            # sender always relays uniform frames (no tiny
-                            # fragments, no boundary jitter).
-                            frame = frame + b"\x00\x00" * (target_bytes - len(frame))
-                        await frame_q.put(frame)
+                        if getattr(self.tts, "supports_stream", False):
+                            # Streaming provider (Pocket): relay per-chunk PCM
+                            # as generated so the FIRST frame reaches the
+                            # browser before the segment exists in full.
+                            async for frame in self.tts.synthesize_stream(seg):
+                                if self._generation != generation or not self._running:
+                                    return
+                                await frame_q.put(frame)
+                        else:
+                            pcm, _sr = await self.tts.synthesize(seg)
+                            for i in range(0, len(pcm), target_bytes):
+                                if self._generation != generation or not self._running:
+                                    return
+                                frame = pcm[i : i + target_bytes]
+                                if len(frame) < target_bytes:
+                                    # Pad the final partial frame with silence so the
+                                    # sender always relays uniform frames (no tiny
+                                    # fragments, no boundary jitter).
+                                    frame = frame + b"\x00\x00" * (target_bytes - len(frame))
+                                await frame_q.put(frame)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:  # noqa: BLE001

@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     voice_live_asr_model: str = "parakeet-tdt-0.6b-v3-int8"  # live ASR (primary)
     voice_offline_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # offline/archival ASR
     voice_tts_model: str = "Qwen3-TTS-12Hz-0.6B-Base-MLX-4bit"
+    # TTS provider selection (configuration-driven; the voice engine is
+    # provider-agnostic): "pocket" = Kyutai pocket-tts (CPU in-process,
+    # English single voice; default per ADR-027 benchmark), "qwen3" = oMLX
+    # /v1/audio/speech (kept as fallback/benchmark provider).
+    tts_provider: str = "pocket"  # TTS_PROVIDER=pocket|qwen3
+    # Pocket TTS: fixed built-in voice + optional int8 quantization.
+    pocket_tts_voice: str = "alba"
+    pocket_tts_quantize: bool = False
     # Legacy aliases (construction compat; prefer voice_* fields).
     omlx_asr_model: str = "Qwen3-ASR-1.7B-4bit"  # deprecated: use voice_offline_asr_model
     omlx_asr_optional_model: str = (  # deprecated: use voice_live_asr_model

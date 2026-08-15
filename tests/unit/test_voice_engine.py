@@ -65,6 +65,7 @@ class StubASR:
 class StubTTS:
     pcm: bytes = b"\x00\x00" * 96000  # 2 s @ 24 kHz
     sr: int = 24000
+    supports_stream: bool = False
     synthesizes: list[str] = field(default_factory=list)
     gate: asyncio.Event | None = None  # if set, synthesize blocks until released
     chunk_delay: float = 0.0  # per-chunk sleep (deterministic mid-stream interrupts)
@@ -340,6 +341,55 @@ async def test_engine_streams_question_then_listens_after_playback_complete() ->
     questions = [e for e in ws.json_out if e.get("type") == "question"]
     assert questions[0]["text"] == "Tell me about a hard problem you solved."
     assert "tts_start" in {e.get("type") for e in ws.json_out}
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_streaming_provider_relays_chunks_via_synthesize_stream() -> None:
+    """Provider-agnostic streaming hook: when the TTS exposes
+    ``supports_stream``, the engine relays per-chunk PCM as generated
+    (first audio before the segment exists in full) and never calls
+    ``synthesize`` for the segment."""
+
+    @dataclass
+    class StubStreamingTTS(StubTTS):
+        supports_stream: bool = True  # field re-declaration overrides base default
+        stream_calls: list[str] = field(default_factory=list)
+        synth_calls: list[str] = field(default_factory=list)
+
+        async def synthesize_stream(self, text: str, *, streaming_interval: float = 1.0):
+            self.stream_calls.append(text)
+            # 1920-byte frames (80 ms @ 24 kHz), as Pocket yields.
+            for i in range(0, len(self.pcm), 1920):
+                yield self.pcm[i : i + 1920]
+                await asyncio.sleep(0)
+
+        async def synthesize(self, text: str) -> tuple[bytes, int]:
+            self.synth_calls.append(text)
+            return self.pcm, self.sr
+
+    ws = StubWS()
+    tts = StubStreamingTTS()
+    interview = StubInterview()
+    engine = VoiceEngine(
+        interview=interview,  # type: ignore[arg-type]
+        asr=StubASR(),  # type: ignore[arg-type]
+        tts=tts,  # type: ignore[arg-type]
+        session_id=7,
+        user_id=1,
+        ws=ws,
+        silence_seconds=0.05,
+        speech_rms=10.0,
+        playback_timeout_seconds=0.5,
+        transcripts=StubTranscripts(),  # type: ignore[arg-type]
+    )
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "question", ms=5000)
+    assert await _wait_event(ws, "tts_stop", ms=5000)
+    assert tts.stream_calls, "streaming provider must be used when supports_stream"
+    assert tts.synth_calls == [], "full-utterance synthesize must not be used"
+    assert ws.bytes_out, "streamed frames must reach the client"
+    assert max(len(f) for f in ws.bytes_out) <= 1920, "raw streamed chunk sizes preserved"
     await _cancel_task(task)
 
 
