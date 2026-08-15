@@ -80,9 +80,11 @@ class RetrievalService:
         *,
         kind: DocumentKind | None = None,
         top_k: int | None = None,
+        profile_id: int | None = None,
     ) -> RetrievalResult:
-        """Search user-scoped chunks and rerank. Never raises on provider
-        failure — degrades (FTS-only / no-rerank) and reports the flag."""
+        """Search profile-scoped chunks and rerank. Never raises on provider
+        failure — degrades (FTS-only / no-rerank) and reports the flag.
+        ``profile_id=None`` keeps the legacy user-scoped behavior."""
         k = top_k or self.top_k
         if not query.strip():
             return RetrievalResult(
@@ -97,7 +99,7 @@ class RetrievalService:
         from app.observability import trace_span
 
         async with trace_span("retrieval", task="hybrid_retrieval", query_len=len(query)):
-            return await self._search(user_id, query, kind=kind, k=k)
+            return await self._search(user_id, query, kind=kind, k=k, profile_id=profile_id)
 
     async def _search(
         self,
@@ -106,6 +108,7 @@ class RetrievalService:
         *,
         kind: DocumentKind | None,
         k: int,
+        profile_id: int | None = None,
     ) -> RetrievalResult:
         """Deterministic hybrid search body (vector + FTS + RRF + rerank)."""
         vector_hits: list[RetrievedChunk] = []
@@ -118,7 +121,9 @@ class RetrievalService:
             embed_resp = await self.router.embed([query])
             query_vec = embed_resp.embeddings[0]
             vector_hits = list(
-                await self._vector_search(user_id, query_vec, kind=kind, limit=self.fetch_per_side)
+                await self._vector_search(
+                    user_id, query_vec, kind=kind, limit=self.fetch_per_side, profile_id=profile_id
+                )
             )
             vector_used = True
         except (ProviderConnectionError, AIError):
@@ -126,7 +131,9 @@ class RetrievalService:
 
         # -- fts leg ---------------------------------------------------------
         fts_hits = list(
-            await self._fts_search(user_id, query, kind=kind, limit=self.fetch_per_side)
+            await self._fts_search(
+                user_id, query, kind=kind, limit=self.fetch_per_side, profile_id=profile_id
+            )
         )
         fts_used = bool(fts_hits)
 
@@ -173,6 +180,7 @@ class RetrievalService:
         *,
         kind: DocumentKind | None,
         limit: int,
+        profile_id: int | None = None,
     ) -> list[RetrievedChunk]:
         vec = cast(query_vec, Vector(1024))
         stmt = (
@@ -186,6 +194,8 @@ class RetrievalService:
             .order_by(DocumentChunk.embedding.cosine_distance(vec))
             .limit(limit)
         )
+        if profile_id is not None:
+            stmt = stmt.where(Document.profile_id == profile_id)
         if kind is not None:
             stmt = stmt.where(Document.kind == kind)
         rows = (await self.session.execute(stmt)).all()
@@ -200,6 +210,7 @@ class RetrievalService:
         *,
         kind: DocumentKind | None,
         limit: int,
+        profile_id: int | None = None,
     ) -> list[RetrievedChunk]:
         tsq = func.plainto_tsquery("english", query)
         rank = func.ts_rank(DocumentChunk.fts, tsq).label("rank")
@@ -213,6 +224,8 @@ class RetrievalService:
             .order_by(rank.desc())
             .limit(limit)
         )
+        if profile_id is not None:
+            stmt = stmt.where(Document.profile_id == profile_id)
         if kind is not None:
             stmt = stmt.where(Document.kind == kind)
         rows = (await self.session.execute(stmt)).all()

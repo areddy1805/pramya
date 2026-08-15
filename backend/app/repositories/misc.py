@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from app.domain.enums import PracticeItemStatus
 from app.models.debrief import EvaluationVersion, InterviewDebrief
 from app.models.idempotency import IdempotencyRecord
+from app.models.interview_feedback import InterviewFeedback
 from app.models.preparation import PracticeSession, PreparationItem
 from app.models.readiness import ReadinessSnapshot
 from app.models.role import CandidateCompetency, Competency, Role
@@ -114,6 +115,24 @@ class ReadinessSnapshotRepository(BaseRepository[ReadinessSnapshot]):
         if profile_id is not None:
             stmt = stmt.where(ReadinessSnapshot.profile_id == profile_id)
         return (await self.session.scalars(stmt)).first()
+
+
+class InterviewFeedbackRepository(BaseRepository[InterviewFeedback]):
+    model = InterviewFeedback
+
+    async def latest_for_profile(
+        self, user_id: int, *, profile_id: int | None = None, limit: int = 3
+    ) -> Sequence[InterviewFeedback]:
+        """Newest prep-memory rows for a profile (profile-scoped)."""
+        stmt = (
+            select(InterviewFeedback)
+            .where(InterviewFeedback.user_id == user_id)
+            .order_by(InterviewFeedback.id.desc())
+            .limit(limit)
+        )
+        if profile_id is not None:
+            stmt = stmt.where(InterviewFeedback.profile_id == profile_id)
+        return list((await self.session.scalars(stmt)).all())
 
 
 class InterviewDebriefRepository(BaseRepository[InterviewDebrief]):

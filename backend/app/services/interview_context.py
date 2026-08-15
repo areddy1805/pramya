@@ -1,0 +1,240 @@
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false
+"""Interview context builder (productization step 2).
+
+Builds an immutable grounding snapshot for one interview session from the
+profile-scoped workspace: candidate profile, resume text + evidence claims,
+JD text, role + competency graph, profile-scoped evidence, and prior
+preparation memory (interview_feedback rows for the profile).
+
+The snapshot is stored in ``session.config["context"]`` at begin()/first
+question and injected into the question-generation prompt so the
+interviewer grounds every question in the candidate's REAL material only.
+This is the anti-hallucination + profile-isolation backbone: nothing from
+another profile, nothing invented.
+
+All output is plain JSON-serializable dicts (config JSONB column).
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.logging import get_logger
+from app.domain.enums import DocumentKind
+from app.repositories.document import DocumentChunkRepository, DocumentRepository
+from app.repositories.evidence import EvidenceRepository
+from app.repositories.misc import InterviewFeedbackRepository, RoleRepository
+from app.repositories.user import CandidateProfileRepository
+
+RESUME_MAX_CHARS = 8000
+JD_MAX_CHARS = 4000
+EVIDENCE_LIMIT = 40
+PRIOR_FEEDBACK_LIMIT = 3
+
+# Evidence-claim prefixes produced by the extraction pipeline — parsed back
+# into structured resume signals deterministically (no extra LLM call).
+_CLAIM_PREFIXES = (
+    "technology:",
+    "project:",
+    "achievement:",
+    "role:",
+    "certification:",
+    "strength:",
+    "gap:",
+)
+
+# Claim prefix -> resume-signals key.
+_KIND_TO_SIGNAL = {
+    "technology": "technologies",
+    "project": "projects",
+    "achievement": "achievements",
+    "strength": "strengths",
+    "gap": "gaps",
+}
+
+
+def _parse_claim(claim: str) -> tuple[str | None, str]:
+    """Split a ledger claim into (kind, value) where kind is the prefix."""
+    lowered = claim.lower()
+    for prefix in _CLAIM_PREFIXES:
+        if lowered.startswith(prefix):
+            return prefix.rstrip(":"), claim[len(prefix) :].strip()
+    return None, claim.strip()
+
+
+class InterviewContextBuilder:
+    """Assembles the per-session grounding snapshot."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self.session = session
+        self._logger = logger or get_logger("app.interview.context")
+        self.profiles = CandidateProfileRepository(session)
+        self.documents = DocumentRepository(session)
+        self.chunks = DocumentChunkRepository(session)
+        self.roles = RoleRepository(session)
+        self.evidence = EvidenceRepository(session)
+        self.feedback = InterviewFeedbackRepository(session)
+
+    async def build(
+        self,
+        *,
+        user_id: int,
+        profile_id: int | None,
+        role_id: int | None,
+    ) -> dict[str, object]:
+        """Build (or reuse cached) context snapshot for one session."""
+        snapshot: dict[str, object] = {
+            "built_at": datetime.now(UTC).isoformat(),
+            "user_id": user_id,
+            "profile_id": profile_id,
+        }
+        snapshot["profile"] = await self._profile(user_id, profile_id)
+        snapshot["resume"] = await self._resume(user_id, profile_id)
+        snapshot["jd"] = await self._jd(user_id, profile_id)
+        snapshot["role"] = await self._role(role_id)
+        snapshot["evidence"] = await self._evidence(user_id, profile_id)
+        snapshot["prior_feedback"] = await self._prior_feedback(user_id, profile_id)
+        return snapshot
+
+    # -- sections ------------------------------------------------------------
+
+    async def _profile(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        if profile_id is None:
+            profile = await self.profiles.get_by_user(user_id)
+        else:
+            profile = await self.profiles.get_for_user(user_id, profile_id)
+        if profile is None:
+            return None
+        return {
+            "id": profile.id,
+            "name": profile.name,
+            "headline": profile.headline,
+            "positioning": profile.positioning,
+            "seniority_target": profile.seniority_target,
+        }
+
+    async def _resume(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        docs = list(
+            await self.documents.list_for_user(
+                user_id, kind=DocumentKind.RESUME, profile_id=profile_id
+            )
+        )
+        if not docs and profile_id is not None:
+            # Legacy fallback: user-scoped resume rows (pre-profile uploads).
+            docs = list(await self.documents.list_for_user(user_id, kind=DocumentKind.RESUME))
+        if not docs:
+            return None
+        latest = max(docs, key=lambda d: d.id)
+        text = await self._document_text(latest.id)
+        if not text:
+            return None
+        return {
+            "document_id": latest.id,
+            "filename": latest.filename,
+            "text": text[:RESUME_MAX_CHARS],
+        }
+
+    async def _jd(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        docs = list(
+            await self.documents.list_for_user(user_id, kind=DocumentKind.JD, profile_id=profile_id)
+        )
+        if not docs and profile_id is not None:
+            docs = list(await self.documents.list_for_user(user_id, kind=DocumentKind.JD))
+        if not docs:
+            return None
+        latest = max(docs, key=lambda d: d.id)
+        text = await self._document_text(latest.id)
+        if not text:
+            return None
+        return {"document_id": latest.id, "filename": latest.filename, "text": text[:JD_MAX_CHARS]}
+
+    async def _document_text(self, document_id: int) -> str:
+        chunks = await self.chunks.list_for_document(document_id)
+        return "\n".join(c.content for c in chunks).strip()
+
+    async def _role(self, role_id: int | None) -> dict[str, object] | None:
+        if role_id is None:
+            return None
+        role = await self.roles.get(role_id)
+        if role is None:
+            return None
+        comps = await self.roles.list_competencies(role.id)
+        return {
+            "id": role.id,
+            "title": role.title,
+            "seniority": role.seniority,
+            "summary": role.summary,
+            "competencies": [
+                {
+                    "name": c.name,
+                    "category": str(c.category),
+                    "level": c.level,
+                    "importance": str(c.importance),
+                }
+                for c in comps
+            ],
+        }
+
+    async def _evidence(self, user_id: int, profile_id: int | None) -> list[dict[str, object]]:
+        rows = await self.evidence.list_for_user(
+            user_id, profile_id=profile_id, limit=EVIDENCE_LIMIT
+        )
+        return [
+            {
+                "claim": e.claim,
+                "source_kind": str(e.source_kind),
+                "source_ref": e.source_ref,
+                "status": str(e.status),
+            }
+            for e in rows
+        ]
+
+    async def _prior_feedback(
+        self, user_id: int, profile_id: int | None
+    ) -> list[dict[str, object]]:
+        rows = await self.feedback.latest_for_profile(
+            user_id, profile_id=profile_id, limit=PRIOR_FEEDBACK_LIMIT
+        )
+        return [
+            {
+                "weaknesses": list(f.weaknesses or []),
+                "gaps": list(f.gaps or []),
+                "topics": list(f.topics or []),
+                "avg_overall": f.avg_overall,
+            }
+            for f in rows
+        ]
+
+
+def resume_signals(evidence: list[dict[str, object]]) -> dict[str, list[str]]:
+    """Deterministic resume signals from profile-scoped evidence claims.
+
+    Returns {technologies, projects, achievements, strengths, gaps} parsed
+    from the extraction pipeline's claim prefixes.
+    """
+    signals: dict[str, list[str]] = {
+        "technologies": [],
+        "projects": [],
+        "achievements": [],
+        "strengths": [],
+        "gaps": [],
+    }
+    for item in evidence:
+        kind, value = _parse_claim(str(item.get("claim", "")))
+        if not kind or not value:
+            continue
+        key = _KIND_TO_SIGNAL.get(kind)
+        if key is not None and value not in signals[key]:
+            signals[key].append(value)
+    return signals
+
+
+__all__ = ["InterviewContextBuilder", "resume_signals"]

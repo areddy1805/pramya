@@ -46,6 +46,7 @@ class InterviewCreate(BaseModel):
     duration_minutes: int = Field(default=30, ge=5, le=120)
     focus_competency_ids: list[int] = Field(default_factory=lambda: [])
     mode: str = "text"
+    style: str = "structured"
 
 
 class QuestionOut(BaseModel):
@@ -55,6 +56,9 @@ class QuestionOut(BaseModel):
     type: str
     hint_levels: list[str] = Field(default_factory=lambda: [])
     rationale: str | None = None
+    category: str | None = None
+    source: str | None = None
+    source_ref: str | None = None
 
 
 class AnswerIn(BaseModel):
@@ -78,6 +82,10 @@ class HintOut(BaseModel):
 
 class ReportOut(BaseModel):
     report: str
+    scorecard: dict[str, object] | None = None
+    questions: list[dict[str, object]] | None = None
+    gaps: list[str] | None = None
+    topics: list[str] | None = None
 
 
 class TranscriptTurnOut(BaseModel):
@@ -155,6 +163,7 @@ async def create_interview(body: InterviewCreate, session: SessionDep) -> Interv
         focus_competency_ids=body.focus_competency_ids,
         mode=body.mode,
         profile_id=body.profile_id,
+        style=body.style,
     )
     return InterviewSessionOut.model_validate(row)
 
@@ -201,6 +210,9 @@ async def next_question(
         type=str(q.type),
         hint_levels=q.hint_levels or [],
         rationale=q.rationale,
+        category=q.category,
+        source=q.source,
+        source_ref=q.source_ref,
     )
 
 
@@ -282,7 +294,14 @@ async def interview_report(
 ) -> ReportOut:
     svc = _service(session)
     report = await svc.generate_report(interview_id, user_id)
-    return ReportOut(report=report)
+    data = await svc.report_data(interview_id, user_id)
+    return ReportOut(
+        report=report,
+        scorecard=data.scorecard,
+        questions=data.questions,
+        gaps=data.gaps,
+        topics=data.topics,
+    )
 
 
 @router.get("/interviews/{interview_id}/transcript", response_model=TranscriptOut)

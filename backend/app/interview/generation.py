@@ -24,17 +24,33 @@ from app.ai.policy import TaskClass
 from app.ai.router import InferenceRouter
 from app.core.logging import get_logger
 from app.domain.errors import ValidationFailedError
-from app.domain.schemas import AnswerEvaluation, HintOutput, InterviewQuestion
+from app.domain.schemas import (
+    AnswerEvaluation,
+    HintOutput,
+    InterviewerReasoning,
+    InterviewQuestion,
+)
 from app.services.prompts import load_prompt
 
 _Q_STREAM_PROMPT = "question_generation/adaptive_question_stream.txt"
 _EVAL_PROMPT = "answer_evaluation/answer_eval.txt"
 _HINT_PROMPT = "question_generation/hint.txt"
+_REASON_PROMPT = "interview_planning/interviewer_reasoning.txt"
 
 # Metadata keys that follow the QUESTION: section in the streamed format.
 # The TTS presentation boundary strips everything after the first of
 # these (the interviewer must never speak workflow metadata).
-QUESTION_META_PREFIXES = ("TYPE:", "DIFFICULTY:", "RATIONALE:", "RATIONAL:", "TARGET:", "HINTS:")
+QUESTION_META_PREFIXES = (
+    "TYPE:",
+    "DIFFICULTY:",
+    "RATIONALE:",
+    "RATIONAL:",
+    "TARGET:",
+    "HINTS:",
+    "CATEGORY:",
+    "SOURCE:",
+    "SOURCE_REF:",
+)
 
 
 def parse_question_output(text: str, default_competency: str = "general") -> InterviewQuestion:
@@ -85,6 +101,9 @@ def parse_question_output(text: str, default_competency: str = "general") -> Int
         hint_levels=hints or [],
         rationale=kv.get("RATIONALE") or kv.get("RATIONAL"),
         target_competency=kv.get("TARGET") or default_competency,
+        category=kv.get("CATEGORY"),
+        source=kv.get("SOURCE"),
+        source_ref=kv.get("SOURCE_REF"),
     )
 
 
@@ -116,23 +135,28 @@ class QuestionGenerator:
         evidence_summary: str,
         history: str,
         hints_used: int,
+        context: dict[str, object] | None = None,
     ) -> AsyncIterator[str]:
         """Yield raw model token chunks for the next question.
 
         Tokens are streamed from the router (DeepSeek SSE) through the
         LangChain runnable; the graph node accumulates them and LangGraph
         ``stream_mode="messages"`` surfaces them to the voice engine.
+
+        ``context`` carries the productization grounding snapshot (profile /
+        resume / JD / role / evidence / taxonomy / coverage / novelty /
+        style / follow-up directive / time budget). Legacy keyword args are
+        folded in for backward compatibility (evals).
         """
-        context = {
-            "target_competency": competency,
-            "difficulty": difficulty,
-            "seniority": seniority,
-            "evidence_summary": evidence_summary,
-            "session_history": history,
-            "hints_used_so_far": hints_used,
-        }
+        ctx: dict[str, object] = dict(context or {})
+        ctx.setdefault("target_competency", competency)
+        ctx.setdefault("difficulty", difficulty)
+        ctx.setdefault("seniority", seniority)
+        ctx.setdefault("evidence_summary", evidence_summary)
+        ctx.setdefault("session_history", history)
+        ctx.setdefault("hints_used_so_far", hints_used)
         chain = self._chain()
-        async for chunk in chain.astream({"context": json.dumps(context, default=str)}):
+        async for chunk in chain.astream({"context": json.dumps(ctx, default=str)}):
             content = getattr(chunk, "content", chunk)
             if isinstance(content, str) and content:
                 yield content
@@ -146,6 +170,7 @@ class QuestionGenerator:
         evidence_summary: str,
         history: str,
         hints_used: int,
+        context: dict[str, object] | None = None,
     ) -> InterviewQuestion:
         """Non-streaming convenience: accumulate the stream and parse."""
         from app.observability import trace_span
@@ -165,6 +190,7 @@ class QuestionGenerator:
                 evidence_summary=evidence_summary,
                 history=history,
                 hints_used=hints_used,
+                context=context,
             ):
                 text += token
         return parse_question_output(text, default_competency=competency)
@@ -211,6 +237,50 @@ class Evaluator:
                 self.router, TaskClass.DEEP_EVALUATION, messages, AnswerEvaluation
             )
         return evaluation
+
+
+class Interviewer:
+    """Post-answer interviewer reasoning (productization step 4).
+
+    Runs in the ANSWER lane (background for voice): decides the follow-up
+    routing for the next question. Never blocks the next-question stream.
+    """
+
+    def __init__(self, router: InferenceRouter, *, logger: logging.Logger | None = None) -> None:
+        self.router = router
+        self._logger = logger or get_logger("app.interview.reason")
+        self._prompt = load_prompt(
+            _REASON_PROMPT,
+            fallback="Decide the next action after this interview answer.",
+        )
+
+    async def reason(
+        self,
+        *,
+        question_text: str,
+        answer_text: str,
+        evaluation: dict[str, object],
+        context_digest: str,
+    ) -> InterviewerReasoning:
+        from app.observability import trace_span
+
+        messages = [
+            ChatMessage(role="system", content=self._prompt),
+            ChatMessage(
+                role="user",
+                content=(
+                    f"QUESTION:\n{question_text}\n\n"
+                    f"CANDIDATE ANSWER:\n{answer_text}\n\n"
+                    f"EVALUATION:\n{json.dumps(evaluation, default=str)[:4000]}\n\n"
+                    f"CONTEXT:\n{context_digest}"
+                ),
+            ),
+        ]
+        async with trace_span("interviewer_reasoning", task="complex_reasoning"):
+            reasoning, _ = await generate_structured(
+                self.router, TaskClass.COMPLEX_REASONING, messages, InterviewerReasoning
+            )
+        return reasoning
 
 
 class Hints:

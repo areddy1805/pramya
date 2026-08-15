@@ -66,6 +66,15 @@ EVAL = json.dumps(
         "evaluator_version": "pramya-eval-1.0",
     }
 )
+REASONING = json.dumps(
+    {
+        "decision": "follow_up_deep",
+        "reason": "Answer contains a concrete tradeoff worth excavating",
+        "topic": "System Design",
+        "gaps_detected": [],
+        "coverage_tags": ["architecture"],
+    }
+)
 HINT = json.dumps({"hint": "Think about consistency across nodes."})
 REPORT = json.dumps({"report": "Strong tradeoff awareness; work on quantifying impact."})
 
@@ -123,7 +132,7 @@ async def test_question_flow_routes_and_generates() -> None:
 
 
 async def test_answer_flow_evaluates_extracts_and_decides() -> None:
-    provider = QueueProvider([EVAL])
+    provider = QueueProvider([EVAL, REASONING])
     wf = build_interview_workflow(_router(provider))
 
     state = await wf.ainvoke(
@@ -138,8 +147,9 @@ async def test_answer_flow_evaluates_extracts_and_decides() -> None:
     assert state["evaluation_overall"] == 7.0
     assert state["extracted_evidence"]  # evidence extraction node ran
     assert state["next_action"] in ("follow_up", "next_question", "repeat", "finish")
-    assert provider.calls == 1  # exactly one LLM call (evaluation)
-
+    # Two LLM calls: evaluation + interviewer reasoning (follow-up routing).
+    assert provider.calls == 2
+    assert (state.get("interviewer_reasoning") or {}).get("decision") == "follow_up_deep"
 
 async def test_hint_flow_returns_hint() -> None:
     provider = QueueProvider([HINT])

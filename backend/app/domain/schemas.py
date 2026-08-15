@@ -172,6 +172,34 @@ class InterviewQuestion(BaseModel):
     rationale: str | None = None
     hint_levels: list[str] = Field(default_factory=lambda: [])
     target_competency: str | None = None
+    # Provenance (productization): taxonomy category + grounding source and
+    # the specific entity the question targets.
+    category: str | None = None
+    source: str | None = None
+    source_ref: str | None = None
+
+
+class InterviewerReasoning(BaseModel):
+    """Interviewer's post-answer reasoning (productization step 4).
+
+    Decides what the next question should do with this answer: dig deeper
+    into the same thread (deep/light follow-up), challenge the claim,
+    clarify ambiguity, change topic, or move on. Also surfaces detected
+    gaps and coverage tags for the deterministic tracker.
+    """
+
+    decision: Literal[
+        "follow_up_deep",
+        "follow_up_light",
+        "move_on",
+        "challenge",
+        "clarify",
+        "change_topic",
+    ] = "move_on"
+    reason: str = ""
+    topic: str | None = None
+    gaps_detected: list[str] = Field(default_factory=lambda: [])
+    coverage_tags: list[str] = Field(default_factory=lambda: [])
 
 
 class HintOutput(BaseModel):

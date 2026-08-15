@@ -14,6 +14,7 @@ from app.models.interview import (
     Question,
     TranscriptSegment,
 )
+from app.models.interview_feedback import InterviewFeedback
 from app.models.preparation import PracticeSession, PreparationItem
 from app.models.readiness import ReadinessSnapshot
 from app.models.role import CandidateCompetency, Competency, Role
@@ -34,6 +35,7 @@ __all__ = [
     "Evidence",
     "IdempotencyRecord",
     "InterviewDebrief",
+    "InterviewFeedback",
     "InterviewSession",
     "InterviewTurn",
     "PracticeSession",

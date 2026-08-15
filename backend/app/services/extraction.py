@@ -174,7 +174,7 @@ class ResumeExtractionRunner:
         """Extract from document id; returns (extraction, evidence_count)."""
         doc_svc = DocumentService(self.session, storage_dir=self.storage_dir)
         document = await doc_svc.get_document(user_id, document_id)
-        if document.kind.value != "resume":
+        if str(document.kind) != "resume":
             raise ValidationFailedError(
                 "extraction requires a resume document",
                 details={"document_id": document_id, "kind": str(document.kind)},

@@ -75,6 +75,16 @@ EVAL_JSON = json.dumps(
 
 HINT_JSON = json.dumps({"hint": "Think about how you'd measure consistency across nodes."})
 
+REASONING_JSON = json.dumps(
+    {
+        "decision": "follow_up_deep",
+        "reason": "Answer contains a concrete tradeoff worth excavating",
+        "topic": "System Design",
+        "gaps_detected": [],
+        "coverage_tags": ["architecture"],
+    }
+)
+
 REPORT_JSON = json.dumps({"report": "Strong tradeoff awareness; work on quantifying impact."})
 
 
@@ -113,7 +123,9 @@ async def _svc(env: dict[str, Any], contents: list[str]) -> tuple[InterviewServi
 async def test_full_text_interview_lifecycle(interview_env: dict[str, Any]) -> None:
     db = interview_env["db"]
     user_id = interview_env["user_id"]
-    svc, provider = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON, REPORT_JSON])
+    svc, provider = await _svc(
+        interview_env, [QUESTION_TEXT, EVAL_JSON, REASONING_JSON, REPORT_JSON]
+    )
 
     session = await svc.create_session(
         user_id=user_id,
@@ -155,7 +167,7 @@ async def test_full_text_interview_lifecycle(interview_env: dict[str, Any]) -> N
 
 
 async def test_duplicate_answer_returns_same_row(interview_env: dict[str, Any]) -> None:
-    svc, _ = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON])
+    svc, _ = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON, REASONING_JSON])
     user_id = interview_env["user_id"]
     session = await svc.create_session(
         user_id=user_id,
@@ -253,7 +265,7 @@ async def test_transcript_records_questions_answers_and_evaluations(
     """Phase K: the durable interview record exposes Q/A/evaluation in order."""
     db = interview_env["db"]
     user_id = interview_env["user_id"]
-    svc, _provider = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON])
+    svc, _provider = await _svc(interview_env, [QUESTION_TEXT, EVAL_JSON, REASONING_JSON])
 
     session = await svc.create_session(
         user_id=user_id,
