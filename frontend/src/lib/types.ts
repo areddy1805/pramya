@@ -134,6 +134,9 @@ export interface Question {
   type: string
   hint_levels: string[]
   rationale: string | null
+  category?: string | null
+  source?: string | null
+  source_ref?: string | null
 }
 
 export interface Answer {
@@ -148,8 +151,25 @@ export interface Hint {
   hint: string
 }
 
+export interface ReportQuestionFeedback {
+  question_id: number | null
+  question: string
+  category: string | null
+  source: string | null
+  answer: string
+  overall: number
+  good: string[]
+  missing: string[]
+  expected_follow_ups: string[]
+  prep_recommendation: string
+}
+
 export interface Report {
   report: string
+  scorecard: Record<string, number | string[]> | null
+  questions: ReportQuestionFeedback[] | null
+  gaps: string[] | null
+  topics: string[] | null
 }
 
 export interface Readiness {

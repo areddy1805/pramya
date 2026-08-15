@@ -337,6 +337,7 @@ export function useCreateInterview() {
       duration_minutes: number
       focus_competency_ids: number[]
       mode: string
+      style?: string
     }) => api.post<InterviewSession>('/api/v1/interviews', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['interviews'] }),
   })

@@ -23,6 +23,19 @@ const KINDS = [
   { value: 'coding_reasoning', label: 'Coding reasoning (verbal)' },
 ]
 
+// Interviewer personas — mirror backend INTERVIEW_STYLES (coverage.py).
+const STYLES = [
+  { value: 'structured', label: 'Structured', hint: 'Methodical, one clear question at a time' },
+  { value: 'curious', label: 'Curious', hint: 'Exploratory, eager to hear your reasoning' },
+  { value: 'time_pressured', label: 'Time-pressured', hint: 'Rapid cadence — think on your feet' },
+  { value: 'technical_expert', label: 'Technical expert', hint: 'Precise, implementation-level, jargon fine' },
+  { value: 'conversational', label: 'Conversational', hint: 'Warm, natural, like a colleague' },
+  { value: 'skeptical', label: 'Skeptical', hint: 'Stress-tests claims; asks for evidence and numbers' },
+  { value: 'screening', label: 'Screening', hint: 'Efficient, comparable, must-have signals' },
+]
+
+const DURATION_PRESETS = [15, 30, 45, 60]
+
 const STATE_META: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'active' }> = {
   created: { label: 'Created', tone: 'neutral' },
   planning: { label: 'Planning', tone: 'active' },
@@ -58,6 +71,7 @@ export function InterviewPage() {
   const [sessionId, setSessionId] = useState<number | null>(null)
   const [kind, setKind] = useState('general')
   const [duration, setDuration] = useState(30)
+  const [style, setStyle] = useState('structured')
   const [mode, setMode] = useState<'text' | 'voice'>('voice')
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [evaluation, setEvaluation] = useState<number | null>(null)
@@ -132,6 +146,7 @@ export function InterviewPage() {
         duration_minutes: duration,
         focus_competency_ids: [],
         mode: 'text',
+        style,
       })
       setSessionId(s.id)
       await actions.begin.mutateAsync({ interviewId: s.id, userId: DEFAULT_USER_ID })
@@ -156,6 +171,7 @@ export function InterviewPage() {
         duration_minutes: duration,
         focus_competency_ids: [],
         mode: 'voice',
+        style,
       })
       setSessionId(s.id)
       const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -282,15 +298,33 @@ export function InterviewPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Duration" hint="The interviewer adapts pacing to fit.">
-                <input
-                  type="number"
-                  min={5}
-                  max={120}
-                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                  value={duration}
-                  onChange={(e) => setDuration(Number(e.target.value))}
-                />
+              <Field label="Interviewer style">
+                <Select value={style} onChange={(e) => setStyle(e.target.value)}>
+                  {STYLES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </Select>
+                <p className="mt-1.5 text-xs leading-relaxed text-fg-3">
+                  {STYLES.find((s) => s.value === style)?.hint} — the interviewer persona shapes every question.
+                </p>
+              </Field>
+              <Field label="Duration" hint="The interviewer adapts pacing and coverage to fit.">
+                <div className="flex items-center gap-2">
+                  {DURATION_PRESETS.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDuration(d)}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        duration === d
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-line bg-surface text-fg-2 hover:border-accent/40'
+                      }`}
+                    >
+                      {d} min
+                    </button>
+                  ))}
+                </div>
               </Field>
               {mode === 'voice' ? (
                 <Button size="lg" className="w-full" onClick={() => void startVoiceInterview()} disabled={create.isPending}>
@@ -468,6 +502,7 @@ export function InterviewPage() {
             <SectionHeading>Session</SectionHeading>
             <dl className="text-sm">
               <div className="flex justify-between py-1.5"><dt className="text-fg-2">Mode</dt><dd className="font-medium capitalize">{String(session.data?.config?.mode ?? 'text')}</dd></div>
+              <div className="flex justify-between py-1.5"><dt className="text-fg-2">Style</dt><dd className="font-medium capitalize">{String(session.data?.config?.style ?? style)}</dd></div>
               <div className="flex justify-between py-1.5"><dt className="text-fg-2">Duration</dt><dd className="font-medium">{String(session.data?.config?.duration_minutes ?? duration)} min</dd></div>
               <div className="flex justify-between py-1.5"><dt className="text-fg-2">Status</dt><dd className="font-medium capitalize">{status}</dd></div>
             </dl>
