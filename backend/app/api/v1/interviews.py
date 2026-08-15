@@ -173,10 +173,29 @@ async def list_interviews(
     session: SessionDep,
     user_id: int = Query(...),
     profile_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = Query(default=None),
 ) -> list[InterviewSessionOut]:
     svc = _service(session)
-    rows = await svc.sessions.list_for_user(user_id, profile_id=profile_id)
+    statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
+    rows = await svc.sessions.list_for_user(
+        user_id, limit=limit, offset=offset, profile_id=profile_id, statuses=statuses
+    )
     return [InterviewSessionOut.model_validate(r) for r in rows]
+
+
+@router.get("/interviews/count")
+async def count_interviews(
+    session: SessionDep,
+    user_id: int = Query(...),
+    profile_id: int | None = Query(default=None),
+    status: str | None = Query(default=None),
+) -> dict:
+    svc = _service(session)
+    statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
+    total = await svc.sessions.count_for_user(user_id, profile_id=profile_id, statuses=statuses)
+    return {"total": total}
 
 
 @router.get("/interviews/{interview_id}", response_model=InterviewSessionOut)

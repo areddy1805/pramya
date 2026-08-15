@@ -1,0 +1,172 @@
+{
+  "title": "Choose the visual world",
+  "question": "The roll assigned the drawing-sheet world. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "The Drawing Sheet",
+      "kicker": "THE ROLL",
+      "lineage": "engineering drafting & the blueprint sheet",
+      "thesis": "Every screen is a drawing sheet: readiness is a dimensioned instrument reading, never an opinion.",
+      "palette": ["#e8e4d8", "#14202e", "#2f5d8a", "#c0502e", "#8a8f98"],
+      "materials": ["blueprint mylar", "india-ink linework", "stencil numerals", "redline pencil"],
+      "viewport": "One drawing sheet: title block carrying the stencil verdict, the role model dimensioned in orthographic view, redline callouts on critical gaps, parts list down the left edge.",
+      "risk": "A print language can read as a static PDF; the measure tool and live redlines must make the sheet feel like an instrument.",
+      "raised": [
+        { "from": "challenger-mesophotic", "raise": "Session progress rides one ruled vertical scale; every observation is pinned to its phase." },
+        { "from": "challenger-gravity", "raise": "The legend never moves: a stable title block stays readable while everything else orients to it." },
+        { "from": "challenger-botanical", "raise": "Progress draws every competency at fixed scale on one baseline — registered, overlayable, never re-scaled." },
+        { "from": "challenger-precisionist", "raise": "One raking light: the active region takes the light; everything else falls into its own shadow." },
+        { "from": "challenger-sevenseg", "raise": "Ghost cells: unachieved evidence is drawn as deliberately as achieved — absence is a visible ghost, never a void." },
+        { "from": "challenger-ascii", "raise": "One strict grid rules every sheet; captions and labels live on the same ruling, and the grid adapts while letterforms stay true." }
+      ],
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "title block · verdict stencil", "x": 0, "y": 0, "w": 12, "h": 1, "accent": true },
+          { "label": "parts list (prep queue)", "x": 0, "y": 1, "w": 3, "h": 8 },
+          { "label": "readiness drawing · dimensioned", "x": 3, "y": 1, "w": 6, "h": 8, "accent": true },
+          { "label": "redline callouts (gaps)", "x": 9, "y": 1, "w": 3, "h": 8 },
+          { "label": "revision strip", "x": 0, "y": 9, "w": 12, "h": 1 }
+        ]
+      }
+    },
+    {
+      "id": "model-pick",
+      "label": "The Flight Deck",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "aircraft instrumentation & the primary flight display",
+      "thesis": "The dashboard is a primary flight display: readiness is the central instrument, competencies run as an altitude tape, every session opens with a checklist.",
+      "palette": ["#0b0e12", "#e8e2d0", "#79c98a", "#e8a33d", "#d95d4e"],
+      "materials": ["machined panel", "backlit glass", "tabular instrument numerals", "annunciator lamps"],
+      "viewport": "Primary flight display: central readiness readout, right-hand competency tape with the target role line, alert flags on critical gaps, pre-flight checklist card low.",
+      "risk": "The incumbent's close cousin — dark panel plus one accent; checklist choreography and lamp grammar must make it Pramya, not a themed dashboard.",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "system strip", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "primary flight display", "x": 0, "y": 1, "w": 8, "h": 8, "accent": true },
+          { "label": "competency tape", "x": 8, "y": 1, "w": 2, "h": 8 },
+          { "label": "checklist card", "x": 10, "y": 1, "w": 2, "h": 5 },
+          { "label": "alert flags", "x": 10, "y": 6, "w": 2, "h": 3 }
+        ]
+      }
+    },
+    {
+      "id": "challenger-precisionist",
+      "label": "The Painted Plate",
+      "verdict": "competitive",
+      "lineage": "Precisionist industrial painting (Sheeler, Demuth)",
+      "thesis": "The product as a painted industrial plate: flat planes, one raking light, and the readiness verdict as one stenciled numeral.",
+      "palette": ["#e8e4da", "#37424b", "#a0562e", "#11161c"],
+      "materials": ["flat enamel planes", "hard-edge shadow", "stencil lettering", "grain-elevator geometry"],
+      "viewport": "The verdict as a large stenciled numeral over stacked competency plates; the active plate takes the light, the rest fall into hard shadow.",
+      "case": "Fuses cleanly: competency groups as overlapping planes, light as focus; loses narrowly on audience — industry art sits one step from the engineer's own drawings.",
+      "risk": "Grain-elevator abstraction can read cold or artful; the stencil verdict must stay unmistakably a measurement.",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "revision strip", "x": 0, "y": 0, "w": 12, "h": 1 },
+          { "label": "verdict stencil", "x": 4, "y": 1, "w": 4, "h": 3, "accent": true },
+          { "label": "competency plates", "x": 0, "y": 4, "w": 8, "h": 6 },
+          { "label": "light rail (active)", "x": 8, "y": 4, "w": 4, "h": 6, "accent": true }
+        ]
+      },
+      "hero": "https://impeccable.style/worlds/cards/design-canon-precisionist-industrial-plate.webp",
+      "board": "https://impeccable.style/worlds/cards/design-canon-precisionist-industrial-plate-hero.webp"
+    },
+    {
+      "id": "challenger-sevenseg",
+      "label": "The Segment Mask",
+      "verdict": "competitive",
+      "lineage": "the seven-segment display family",
+      "thesis": "Fixed-slot instrument readouts where unlit segments are drawn as ghosts: absence is as deliberate as light.",
+      "palette": ["#0f1214", "#ff5a3c", "#e8a33d", "#79c98a"],
+      "materials": ["LED segments", "ghost cells", "matte housings", "instant swaps"],
+      "viewport": "The readiness verdict as a fixed readout; every unachieved segment glows faintly; an unset profile blinks like an unset clock.",
+      "case": "Fuses strongly on Pramya's absence-of-evidence principle; the eight-cell mask constrains 14 surfaces too hard to own the whole world.",
+      "risk": "Reads as retro novelty unless the grid stays absolute.",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          { "label": "readout panel", "x": 0, "y": 0, "w": 12, "h": 2, "accent": true },
+          { "label": "rigid cell grid", "x": 0, "y": 2, "w": 12, "h": 8 }
+        ]
+      },
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock-hero.webp"
+    },
+    {
+      "id": "challenger-mesophotic",
+      "label": "The Deep Dive",
+      "verdict": "declined",
+      "lineage": "mesophotic ocean exploration",
+      "thesis": "Preparation as descent: a vertical depth axis ruling every line, evidence pinned to its exact depth and phase.",
+      "palette": ["#02141f", "#1a4a5e", "#bfe3e8"],
+      "materials": ["abyssal ink", "dive-computer digits", "marine snow"],
+      "viewport": "A ruled vertical axis descends through preparation phases; each observation sits at its depth.",
+      "case": "Fuses poorly: engineers do not identify with cave diving, and depth/thermocline maps weakly onto competency evidence.",
+      "kept": "One ruled vertical axis; observations pinned to phase.",
+      "hero": "https://impeccable.style/worlds/cards/rivers-tides-ocean-depths-mesophotic-deep-dive.webp"
+    },
+    {
+      "id": "challenger-gravity",
+      "label": "The Rain Garden",
+      "verdict": "declined",
+      "lineage": "surreal gravity gardens",
+      "thesis": "A garden where colored rain falls according to cloud rules and nothing stays still.",
+      "palette": ["#dce4dc", "#2b3a34", "#4a6fd4", "#b8443a"],
+      "materials": ["soft rounded sans", "directional rain", "dusk greens"],
+      "viewport": "Colored rain bends around objects; the legend alone stays level.",
+      "case": "Fuses poorly: a surreal rain world cannot carry deterministic measurement or serious stakes.",
+      "kept": "A stable legend; state shown as motion.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-gravity-rain-garden.webp"
+    },
+    {
+      "id": "challenger-botanical",
+      "label": "The Botanical Folio",
+      "verdict": "declined",
+      "lineage": "botanical folio plates",
+      "thesis": "Five fixed-scale plates on one baseline, each stage drawn at the same exact scale and ground.",
+      "palette": ["#f2ead8", "#5a6b4a", "#8a2f2f"],
+      "materials": ["cream plate", "engraved italics", "hairline sepia rules"],
+      "viewport": "Readiness across sessions as registered plates on one shared baseline.",
+      "case": "Fuses weakly: the species-plate metaphor does not carry readiness, though fixed-scale comparison is a genuine raise.",
+      "kept": "Fixed-scale registered comparison across time.",
+      "hero": "https://impeccable.style/worlds/cards/editorial-sequence-montage-botanical-folio-season.webp"
+    },
+    {
+      "id": "challenger-ascii",
+      "label": "The Phosphor Render",
+      "verdict": "declined",
+      "lineage": "ASCII terminal rendering",
+      "thesis": "One strict monospace grid as the entire composition; glyph density stands in for light and value.",
+      "palette": ["#041004", "#33ff66", "#e8ffd0"],
+      "materials": ["phosphor glow", "monospace grid", "glyph-density ramps"],
+      "viewport": "The verdict rendered as glyph density on a fixed character grid.",
+      "case": "Fuses poorly: glyph-density-as-value obscures exact measurement and lands in the banned developer-tool register.",
+      "kept": "One strict grid; captions on the same ruling.",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-ascii-live-scene-render.webp"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": {
+    "value": "code"
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "What every interview-prep SaaS ships: clean grid, white cards, one accent — executed impeccably.",
+    "palette": ["#f8fafc", "#ffffff", "#2563eb", "#0f172a"],
+    "materials": ["clean grid", "rounded cards", "single accent"],
+    "viewport": "Sidebar, card wall, blue primary button — the expected arrangement at full craft.",
+    "risk": "Indistinguishable from the competition by design."
+  },
+  "steer": true
+}

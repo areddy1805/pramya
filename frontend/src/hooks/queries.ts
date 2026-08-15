@@ -337,11 +337,30 @@ export function useAnalyzeRole() {
 
 // --- interviews --------------------------------------------------------------
 
-export function useInterviews(userId: number, profileId: number | null = null) {
+export function useInterviews(
+  userId: number,
+  profileId: number | null = null,
+  options?: { limit?: number; offset?: number; statuses?: string[] },
+) {
+  const { limit, offset, statuses } = options ?? {}
   return useQuery({
-    queryKey: ['interviews', userId, profileId],
+    queryKey: ['interviews', userId, profileId, offset ?? 0, limit ?? 50, statuses ?? 'all'],
     queryFn: () =>
-      api.get<InterviewSession[]>(`/api/v1/interviews${qs({ user_id: userId, profile_id: profileId })}`),
+      api.get<InterviewSession[]>(
+        `/api/v1/interviews${qs({ user_id: userId, profile_id: profileId, limit, offset, status: statuses?.join(',') })}`,
+      ),
+    enabled: profileId !== null && profileId > 0,
+  })
+}
+
+export function useInterviewsCount(userId: number, profileId: number | null = null, statuses?: string[]) {
+  return useQuery({
+    queryKey: ['interviews-count', userId, profileId, statuses ?? 'all'],
+    queryFn: () =>
+      api.get<{ total: number }>(
+        `/api/v1/interviews/count${qs({ user_id: userId, profile_id: profileId, status: statuses?.join(',') })}`,
+      ),
+    enabled: profileId !== null && profileId > 0,
   })
 }
 
