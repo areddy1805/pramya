@@ -108,7 +108,10 @@ class Settings(BaseSettings):
     # threshold during TTS cancels the interviewer. The explicit 'interrupt'
     # control remains the guaranteed barge-in path; voice detection is the
     # hands-free convenience layer (AEC-gated; validated on speaker hw).
-    voice_barge_in_enabled: bool = True
+    # OFF BY DEFAULT — never enable on open speakers: the interviewer's own
+    # TTS through speakers leaks into the mic and self-triggers, truncating
+    # questions mid-word (reproduced live, session 130).
+    voice_barge_in_enabled: bool = False
     voice_barge_in_rms: float = 900.0
     voice_barge_in_ms: float = 250.0
     # Interviewer voice identity (V1.1): ONE deterministic professional voice

@@ -164,6 +164,16 @@ class _FakeSettings:
         self.omlx_timeout_seconds = 120.0
 
 
+def test_config_voice_barge_in_default_off() -> None:
+    """Documented policy: voice-triggered barge-in is opt-in and OFF by
+    default (explicit Interrupt button is the guaranteed path). The live
+    self-truncation defect was caused by this default being True."""
+    from app.core.config import Settings
+
+    field = Settings.model_fields["voice_barge_in_enabled"]
+    assert field.default is False
+
+
 def test_build_tts_selects_pocket_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.v1 import voice as voice_mod
 

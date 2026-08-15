@@ -769,6 +769,35 @@ async def test_barge_in_interrupt_discards_playback_residue() -> None:
 
 
 @pytest.mark.asyncio
+async def test_barge_in_default_off_does_not_interrupt_sustained_speech() -> None:
+    """Regression (live defect): voice-triggered barge-in MUST be OFF by
+    default. With it disabled, sustained loud mic energy during SPEAKING
+    (the interviewer's own TTS leaking through speakers) is discarded and
+    the question completes — it must never self-truncate mid-word."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    # engine defaults (barge_in_enabled=False, rms 900, ms 250) left intact
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Sustained loud mic frames while the interviewer is speaking (the
+    # gated stub holds the engine in THINKING pre-audio; same discard path).
+    for _ in range(20):
+        ws.push_bytes(b"\x7f\x7f" * 1600)
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.05)
+    # No interrupt: sustained speech is discarded, never self-triggers.
+    assert not await _wait_state_event(ws, "interrupted", ms=300)
+    assert engine._interruptions == 0
+    # The question completes: gate releases -> audio flows -> tts_stop.
+    tts.gate.set()
+    assert await _wait_event(ws, "tts_stop", ms=3000)
+    assert "speaking" in _states(ws), "audio must still have flowed to SPEAKING"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
 async def test_voice_barge_in_optin_detects_sustained_speech_during_tts() -> None:
     """Opt-in voice-triggered barge-in: sustained mic energy during SPEAKING
     cancels TTS and opens listening (explicit, threshold-gated detection)."""
