@@ -877,15 +877,17 @@ Frontend UI freeze (ADR-029) COMPLETE 2026-08-15: Drawing Sheet canon across all
 V1 Release Candidate Audit COMPLETE 2026-08-16: 6 P1 fixes (static-check drift: ruff/mypy/pyright; alembic model drift → migration 0007 + model index; voice_store_audio default True→False; role ownership guard in interview context + readiness; GET /interviews/{id} ownership). No P0. Post-fix: 233 unit+contract + 89 integration green, ruff/mypy/pyright clean, alembic check clean, 14-route browser probe clean. See PROJECT_MEMORY release-audit section.
 ```
 
-- Current phase: Phase 2 (Knowledge Layer) — tasks 2.0, 2.1 COMPLETE (2026-08)
-- Current task: 2.2 ingestion (next after 2.1)
-- Blocked by: user confirmation to continue Phase 2
-- Next task: 2.2 LlamaIndex IngestionPipeline (chunking + embedding + pgvector)
-- Last verified commit: Phase 2.1 document parsing (see git log)
-- Tests: 103 passing — 59 unit (Phase 0/1 + AI layer + parsing pdf/docx/md/txt + guards), 5 contract (OpenAPI surface, error envelope, provider capability contracts), 14 integration (unchanged 13 + upload FAILED-state/retry)
-- Evals: none yet
-- Known failures: none
-- Phase 2.1 acceptance verified: pdf/docx/md/txt parse to normalized ParsedDocument; upload flow runs PENDING→PARSING→PARSED/FAILED; guards (size, mime, page count, timeout, DOCX uncompressed cap, empty extraction); parsed text in-memory handoff to 2.2 (never persisted); DOCUMENT_MAX_PAGES / DOCUMENT_PARSE_TIMEOUT_SECONDS configurable; no new API endpoint; mypy + pyright + ruff green.
+> **Current state (2026-08-16):** all V1 phases through Phase 12 are
+> COMPLETE, including ADR-026 (profile workspace), ADR-027 (Pocket TTS),
+> ADR-028 (interview productization), ADR-029 (frontend freeze), and the
+> V1.0.0 release audit (no P0; 6 P1 fixed). The v1.0.0 boundary is a
+> single-user, local-first deployment. The historical block below
+> (Phase 2.1 acceptance) is preserved as a record of that phase only — it
+> no longer describes the current implementation phase.
+
+---
+
+### Historical record — Phase 2.1 acceptance (superseded by the tracker above)
 
 ---
 

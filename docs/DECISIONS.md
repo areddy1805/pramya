@@ -36,7 +36,7 @@
 | ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
 | ADR-025 | TTS provider: Qwen3-TTS (oMLX) for V1.1; Pocket TTS BENCHMARKED/CANDIDATE only | Superseded by ADR-027 (provider default) | docs/architecture/ADR-025-tts-provider-qwen3-v11.md |
 | ADR-027 | TTS provider: Kyutai Pocket TTS becomes the default (CPU, ~30 ms first PCM, 8-9× RTF); Qwen3 kept as `TTS_PROVIDER=qwen3` fallback | Accepted | docs/architecture/ADR-027-pocket-tts-default.md |
-| ADR-027 | Persistent multi-profile career workspace (profile-scoped documents/roles/evidence/analytics, idempotent dedup, active profile UX preference) | Accepted | docs/architecture/ADR-026-career-profile-workspace.md |
+| ADR-026 | Persistent multi-profile career workspace (profile-scoped documents/roles/evidence/analytics, idempotent dedup, active profile UX preference) | Accepted | docs/architecture/ADR-026-career-profile-workspace.md |
 | ADR-028 | Interview productization: grounded context, follow-up engine, coverage, prep memory | Accepted | docs/architecture/ADR-028-interview-productization.md |
 | ADR-029 | Frontend visual canon: The Drawing Sheet, frozen (More ▾ secondary navigation + density refinement) | Accepted | docs/architecture/ADR-029-frontend-visual-canon.md |
 

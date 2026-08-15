@@ -1,8 +1,10 @@
 # Pramya V1 — Release Acceptance Matrix
 
-> Status as of 2026-08-12, branch `work/runtime-integration`. Each criterion
-> from the Release Standard (plan §66 / §38) is mapped to evidence: code,
-> tests, and runtime verification. Nothing here is asserted without evidence.
+> Status as of 2026-08-16, branch `main` (v1.0.0 release audit). Each
+> criterion from the Release Standard is mapped to evidence: code, tests,
+> and runtime verification. Nothing here is asserted without evidence.
+> Historical rows (pre-ADR-029) are preserved; the verdict below reflects
+> the current repository.
 
 Legend: ✅ verified · ⚠️ partial / known variance · ❌ not met · ⏸ deferred
 
@@ -14,7 +16,7 @@ Legend: ✅ verified · ⚠️ partial / known variance · ❌ not met · ⏸ de
 | 2 | Voice journey (question TTS → candidate speech → ASR → evaluation → adaptive follow-up) | ✅ | Real-model E2E passed 2026-08-12 (sessions 39/40/41): 20 ASR partials, 9 TTS syntheses, interrupt concedes zero stale chunks; engine unit coverage 14 tests |
 | 3 | Interruption correctness: no stale TTS after interrupt/cancel | ✅ | H.7 generation-gated TTS server+client; interrupt-mid-TTS unit tests; real-model E2E interrupt assertion |
 | 4 | Deterministic, evidence-backed readiness | ✅ | `app/services/readiness.py` pure functions; 9 golden unit tests; evidence provenance ladder (claimed/observed/demonstrated/inferred/unknown); live `/readiness/latest` returns real per-competency math |
-| 5 | Second interview adapts to first-interview weaknesses | ⚠️ | Adaptive generation passes `session_history` + evidence summary into the prompt (verified in logs/E2E: follow-up referenced the prior answer). Full cross-session weakness-driven adaptation not yet E2E-asserted |
+| 5 | Second interview adapts to first-interview weaknesses | ✅ | ADR-028 preparation memory: `interview_feedback` written at session stop, injected into the next session's grounding snapshot (context-integrity tests assert prior-feedback scoping); follow-up referenced the prior answer in real interviews |
 | 6 | Framework boundaries removable / honest | ✅ | Deterministic engines (chunking, retrieval, readiness, interview state machine) replace planned frameworks per ADR-021/022/023; LangChain layer routes through the InferenceRouter; framework posture documented in README |
 | 7 | Fresh-clone quickstart works | ✅ | Phase M: fresh-DB `alembic upgrade head` (23 tables), backend boots with example-only env, `make test/lint/typecheck` from repo root, seed idempotent |
 | 8 | No secrets committed | ✅ | `.env` gitignored; secret-pattern scan of tracked files clean; `pip-audit` no known vulnerabilities |
@@ -38,26 +40,39 @@ Legend: ✅ verified · ⚠️ partial / known variance · ❌ not met · ⏸ de
 
 ## Known gaps / honest status
 
-- **MCP server** — not implemented (stub). ADR-006 accepted.
-- **Langfuse** — config fields + self-hosted compose profile exist; SDK
-  integration not wired (observability = structured JSON logs + routing
-  telemetry). Docs state this plainly.
+- **MCP server** — deferred from V1 (ADR-006 accepted, stub only). Explicitly
+  descoped; not advertised as a capability.
+- **Langfuse** — degradation-safe SDK facade implemented and wired
+  (`LANGFUSE_ENABLED=false` default: no client/worker/network; opt-in with
+  keys + self-hosted stack). Full OTel instrumentation deferred.
 - **Eval suite** — COMPLETE WITH KNOWN WARNINGS: golden-data harness under
-  `tests/evals` (95 checks, 0 FAIL, 3 WARNING in the recorded run); borderline
-  DeepSeek judge variance is classified WARNING, never gamed to PASS.
+  `tests/evals` (recorded run 95 checks, 0 FAIL, 3 WARNING); borderline
+  DeepSeek judge variance is classified WARNING, never gamed to PASS. Not
+  re-run in the 2026-08-16 audit (would consume live LLM inference).
 - **Auth** — API bearer tokens implemented (opt-in via `API_TOKENS`); no
-  per-user accounts/sessions (single-user local model, plan §19).
-- **Real voice E2E on this machine** — previously passed; not re-run this
-  session per Mac memory policy (would need one controlled run to re-verify).
+  per-user accounts/sessions (single-user local model, plan §19). Local/dev
+  ownership model is the v1.0 boundary.
+- **Real voice E2E on this machine** — previously passed (2026-08-13
+  physical-mic + 2026-08-12 sessions 39/40/41); not re-run in the release
+  audit per the no-real-E2E rule.
 - **Release packaging** (Docker image polish, CI release job, PyPI/Homebrew
   distribution) — deferred.
 
-## Release verdict
+## Release verdict (2026-08-16)
 
-**V1 FUNCTIONALLY COMPLETE BUT NOT RELEASE READY** — all core product loops
-are integrated and runtime-tested (text E2E green this session, voice E2E
-passed, 182 unit+contract + 36 integration tests green, clean static checks),
-but the Release Standard additionally requires MCP + Langfuse presence for
-the planned interop/observability surface (FR-24, observability section) and
-release packaging — those remain not implemented, so the V1 label is
-withheld until they land or are explicitly descoped.
+**V1.0.0 RELEASE CANDIDATE — READY FOR PERSONAL/LOCAL USE.**
+
+The v1.0 release audit (2026-08-16) fixed 6 P1 findings (static-check drift,
+Alembic model drift → migration 0007, audio-persistence privacy default,
+role ownership in interview grounding + readiness, session-read ownership)
+with regression tests; **0 P0 findings remain**. Post-fix evidence:
+
+- 233 unit + contract + 89 integration tests green; ruff/mypy/pyright/tsc
+  clean; `alembic check` clean (migrations 0001–0007).
+- Controlled browser probe: 14/14 routes HTTP 200, 0 console errors.
+- Real-E2E evidence recorded (text journey; physical-mic voice) — not re-run.
+- MCP and release packaging remain explicitly deferred; jobs/applications
+  are outside v1.0 scope. These are scope boundaries, not release defects.
+
+**Boundary:** single-user, local-first deployment (no per-user auth). Not a
+public multi-user deployment.

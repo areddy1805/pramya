@@ -95,8 +95,8 @@ Launcher logs: `.runtime/dev/backend.log`, `.runtime/dev/frontend.log`
 - The containerized stack (`make up`) is for deployment-shaped validation;
   the launcher only starts the `db` service from it.
 - Langfuse runs from a **separate compose file**
-  (`docker-compose.langfuse.yml`) and is started by `make dev` by default;
-  on memory-constrained machines use `PRAMYA_DEV_LANGFUSE=0 make dev`.
+  (`docker-compose.langfuse.yml`) and is started **only when opted in** with
+  `PRAMYA_DEV_LANGFUSE=1 make dev` (off by default).
 
 See `README.md` for product/architecture overview, `docs/MASTER_IMPLEMENTATION_PLAN.md`
 for roadmap state, and `docs/ai/VOICE_ARCHITECTURE.md` for the voice system.

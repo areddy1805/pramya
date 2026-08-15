@@ -112,13 +112,14 @@ def _engine(
 
 
 def _build_tts(settings: object, voice: object) -> TTSSynthesizer:
-    """TTS provider factory: TTS_PROVIDER=qwen3 (default) | pocket.
+    """TTS provider factory: TTS_PROVIDER=pocket (default) | qwen3.
 
     Configuration-driven; the engine consumes the duck-typed
     ``synthesize``/``synthesize_stream``/``warmup`` seam and never branches
-    on the concrete provider.
+    on the concrete provider. Pocket is the default (ADR-027, measured
+    benchmark); qwen3 is the retained fallback/benchmark provider.
     """
-    provider = getattr(settings, "tts_provider", "qwen3")
+    provider = getattr(settings, "tts_provider", "pocket")
     if provider == "pocket":
         from app.voice.pocket import PocketTTSProvider
 
