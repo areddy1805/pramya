@@ -10,12 +10,14 @@ import {
   useAnalyzeRole,
   useCreateProfile,
   useDeleteProfile,
+  useDeleteDocument,
   useDocuments,
   useEvidence,
   useIndexDocument,
   useResolvedProfile,
   useRoles,
   useSetActiveProfile,
+  useSetPreferredDocument,
   useUpdateProfile,
   useUploadDocument,
 } from '../hooks/queries'
@@ -47,6 +49,8 @@ export function ProfilePage() {
   const jds = useMemo(() => documents.data?.filter((d) => d.kind === 'jd') ?? [], [documents.data])
   const upload = useUploadDocument()
   const index = useIndexDocument()
+  const setPreferred = useSetPreferredDocument(userId, activeId ?? 0)
+  const deleteDoc = useDeleteDocument(userId, activeId ?? 0)
   const roles = useRoles(userId, activeId)
   const analyzeRole = useAnalyzeRole()
   const evidence = useEvidence(userId, activeId)
@@ -62,7 +66,12 @@ export function ProfilePage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [stage, setStage] = useState<string | null>(null)
 
-  const currentResume = resumes[resumes.length - 1] ?? null
+  const currentResume =
+    resumes.find((d) => d.id === active?.preferred_resume_document_id) ??
+    resumes[resumes.length - 1] ??
+    null
+  const currentJd =
+    jds.find((d) => d.id === active?.preferred_jd_document_id) ?? jds[jds.length - 1] ?? null
   const canSubmitEdit = activeId != null && Boolean(name.trim())
 
   async function onSwitch(profileId: number) {
@@ -300,28 +309,62 @@ export function ProfilePage() {
           {/* Resume */}
           <Surface className="p-6">
             <SectionHeading
-              aside={currentResume ? <Pill tone={currentResume.status === 'parsed' ? 'ok' : 'warn'}>{currentResume.status}</Pill> : undefined}
+              aside={
+                currentResume ? (
+                  <Pill tone={currentResume.status === 'parsed' ? 'ok' : 'warn'}>{currentResume.status}</Pill>
+                ) : undefined
+              }
             >
               Resume
             </SectionHeading>
             <p className="mb-4 text-sm text-fg-2">
-              One current resume per profile. Upload a new file to replace it; earlier versions are kept.
+              One current resume per profile — choose which version interviews are grounded in. Earlier versions are kept.
             </p>
             {resumes.length === 0 ? (
               <EmptyState title="No resume yet" body="Upload a resume (PDF, DOCX, TXT, MD) — it is parsed, indexed, and extracted into this profile's evidence." />
             ) : (
               <div className="mb-4 space-y-2">
-                {resumes.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-lg border border-line bg-canvas px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-fg">
-                        {d.filename} {d.id === currentResume?.id ? <span className="text-xs text-accent">· current</span> : null}
-                      </p>
-                      <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
+                {resumes.map((d) => {
+                  const isCurrent = d.id === currentResume?.id
+                  return (
+                    <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-fg">
+                          {d.filename} {isCurrent ? <span className="text-xs text-accent">· current</span> : null}
+                        </p>
+                        <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {isCurrent ? (
+                          <Pill tone="ok">current</Pill>
+                        ) : (
+                          <>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={d.status !== 'parsed' || setPreferred.isPending}
+                              onClick={() => void setPreferred.mutateAsync({ kind: 'resume', documentId: d.id })}
+                            >
+                              Make current
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={deleteDoc.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Delete resume "${d.filename}"? Existing interview records keep their snapshot.`)) {
+                                  void deleteDoc.mutateAsync(d.id)
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {d.id === currentResume?.id ? <Pill tone="ok">current</Pill> : <Pill>version</Pill>}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             <label className="inline-flex cursor-pointer">
@@ -371,6 +414,16 @@ export function ProfilePage() {
               onChange={(e) => setJdText(e.target.value)}
             />
             <div className="mt-3 flex flex-wrap items-center gap-3">
+              {currentJd ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={setPreferred.isPending}
+                  onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: null })}
+                >
+                  Use no JD (resume-only mode)
+                </Button>
+              ) : null}
               <Button onClick={() => void onAnalyzeJd()} disabled={!jdText.trim() || analyzeRole.isPending}>
                 {analyzeRole.isPending ? 'Analyzing…' : 'Analyze JD'}
               </Button>
@@ -400,15 +453,45 @@ export function ProfilePage() {
               <EmptyState title="No JD documents" body="Uploaded JDs appear here, deduplicated by content." />
             ) : (
               <div className="space-y-2">
-                {jds.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-lg border border-line bg-canvas px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-fg">{d.filename}</p>
-                      <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
+                {jds.map((d) => {
+                  const isSelected = d.id === currentJd?.id
+                  return (
+                    <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-canvas px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-fg">
+                          {d.filename} {isSelected ? <span className="text-xs text-accent">· in use</span> : null}
+                        </p>
+                        <p className="text-xs text-fg-3">{d.size.toLocaleString()} bytes · {d.status}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {isSelected ? (
+                          <Pill tone="accent">in use</Pill>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={d.status !== 'parsed' || setPreferred.isPending}
+                            onClick={() => void setPreferred.mutateAsync({ kind: 'jd', documentId: d.id })}
+                          >
+                            Use for interviews
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={deleteDoc.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Delete JD "${d.filename}"? Existing interview records keep their snapshot.`)) {
+                              void deleteDoc.mutateAsync(d.id)
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
-                    <Pill>{d.status}</Pill>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </Surface>

@@ -115,6 +115,23 @@ export function useSetActiveProfile(userId: number) {
   })
 }
 
+/** Persist the preferred/current resume or JD for a profile (document selection). */
+export function useSetPreferredDocument(userId: number, profileId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ kind, documentId }: { kind: 'resume' | 'jd'; documentId: number | null }) =>
+      api.put<CareerProfile>(
+        `/api/v1/candidates/${userId}/profiles/${profileId}/preferred-${kind}`,
+        { document_id: documentId },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles', userId] })
+      qc.invalidateQueries({ queryKey: ['interview-context'] })
+      qc.invalidateQueries({ queryKey: ['documents'] })
+    },
+  })
+}
+
 /**
  * Effective active profile id for a user: server truth first, then the
  * user's first profile, then null (no profiles yet). Keeps the zustand

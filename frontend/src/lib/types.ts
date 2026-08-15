@@ -28,6 +28,8 @@ export interface CareerProfile {
   seniority_target: string | null
   headline: string | null
   timezone: string | null
+  preferred_resume_document_id: number | null
+  preferred_jd_document_id: number | null
   created_at: string
   updated_at: string | null
 }

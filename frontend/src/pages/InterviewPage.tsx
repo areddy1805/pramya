@@ -2,12 +2,14 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   useCreateInterview,
+  useDocuments,
   useInterview,
   useInterviewAction,
   useInterviewContext,
   useInterviews,
   useResolvedProfile,
   useRoles,
+  useSetPreferredDocument,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
 import { useSSE } from '../hooks/useSSE'
@@ -31,7 +33,27 @@ function statusOf(doc: InterviewContext['resume']): { label: string; tone: 'ok' 
   return { label: doc.status, tone: 'warn' }
 }
 
-function InterviewContextPanel({ ctx, loading }: { ctx: InterviewContext | null; loading: boolean }) {
+function provenanceLabel(source: string | null | undefined, sourceRef: string | null | undefined): string | null {
+  if (!source) return null
+  if (source === 'followup') return `Follow-up: previous answer · ${sourceRef ?? 'this topic'}`
+  if (source === 'weakness') return `Based on: prior feedback · ${sourceRef ?? ''}`
+  const label = source.charAt(0).toUpperCase() + source.slice(1)
+  return `Based on: ${label} · ${sourceRef ?? ''}`
+}
+
+function InterviewContextPanel({
+  ctx,
+  loading,
+  resumes = [],
+  jds = [],
+  onSelect,
+}: {
+  ctx: InterviewContext | null
+  loading: boolean
+  resumes?: Array<{ id: number; filename: string; status: string }>
+  jds?: Array<{ id: number; filename: string; status: string }>
+  onSelect?: (kind: 'resume' | 'jd', documentId: number | null) => void
+}) {
   return (
     <div className="mb-5 rounded-xl border border-line bg-surface/60 p-4 text-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -82,6 +104,38 @@ function InterviewContextPanel({ ctx, loading }: { ctx: InterviewContext | null;
             ) : (
               <p className="text-xs text-fg-3">No analyzed roles yet</p>
             )}
+          </div>
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Interview documents</p>
+            <div className="mt-1.5 grid gap-2">
+              <Select
+                aria-label="Resume for this interview"
+                value={String(ctx.resume?.document_id ?? '')}
+                onChange={(e) => onSelect?.('resume', e.target.value ? Number(e.target.value) : null)}
+                disabled={resumes.length === 0}
+              >
+                {resumes.length === 0 ? (
+                  <option value="">No resumes on this profile</option>
+                ) : null}
+                {resumes.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.filename} ({d.status})
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label="Job description for this interview"
+                value={String(ctx.jd?.document_id ?? '')}
+                onChange={(e) => onSelect?.('jd', e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">No JD — resume-only interview</option>
+                {jds.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.filename} ({d.status})
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Grounded from</p>
@@ -160,7 +214,7 @@ export function InterviewPage() {
   const [lastHint, setLastHint] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptLine[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string; rationale: string | null } | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<{ id: number; text: string; difficulty: string; type: string; rationale: string | null; source?: string | null; sourceRef?: string | null } | null>(null)
   const keyCounter = useRef(0)
   const voiceRef = useRef<VoiceClient | null>(null)
   const modeRef = useRef<'text' | 'voice'>(mode)
@@ -170,6 +224,8 @@ export function InterviewPage() {
   const create = useCreateInterview()
   const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
   const ctx = useInterviewContext(DEFAULT_USER_ID, activeId)
+  const docs = useDocuments(DEFAULT_USER_ID, activeId)
+  const setPreferred = useSetPreferredDocument(DEFAULT_USER_ID, activeId ?? 0)
   const sessions = useInterviews(DEFAULT_USER_ID, activeId)
   const roles = useRoles(DEFAULT_USER_ID, activeId)
   const session = useInterview(sessionId ?? 0, DEFAULT_USER_ID)
@@ -192,6 +248,8 @@ export function InterviewPage() {
           difficulty: String(event.data.difficulty ?? ''),
           type: String(event.data.type ?? ''),
           rationale: typeof event.data.rationale === 'string' ? event.data.rationale : null,
+          source: typeof event.data.source === 'string' ? event.data.source : null,
+          sourceRef: typeof event.data.source_ref === 'string' ? event.data.source_ref : null,
         })
         setLastHint(null)
         setAnswer('')
@@ -261,7 +319,7 @@ export function InterviewPage() {
       const client = new VoiceClient(url, {
         onState: (st) => setVoiceState(st),
         onQuestion: (q) => {
-          setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null })
+          setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null, source: q.source ?? null, sourceRef: q.source_ref ?? null })
           setLastHint(null)
           setTranscript((t) => [...t, { role: 'interviewer', text: q.text }])
         },
@@ -269,7 +327,7 @@ export function InterviewPage() {
           // Phase H: reconnect resync — restore the active question from
           // the server's authoritative state without duplicating it.
           if (q && q.text) {
-            setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null })
+            setCurrentQuestion({ id: q.id, text: q.text, difficulty: q.difficulty, type: '', rationale: null, source: q.source ?? null, sourceRef: q.source_ref ?? null })
           }
         },
         onPartial: (text) =>
@@ -367,7 +425,15 @@ export function InterviewPage() {
         <div className="grid gap-6 lg:grid-cols-5">
           <Surface className="p-6 lg:col-span-2">
             <SectionHeading>New interview</SectionHeading>
-            <InterviewContextPanel ctx={ctx.data ?? null} loading={ctx.isLoading} />
+            <InterviewContextPanel
+              ctx={ctx.data ?? null}
+              loading={ctx.isLoading}
+              resumes={(docs.data ?? []).filter((d) => d.kind === 'resume').map((d) => ({ id: d.id, filename: d.filename, status: d.status }))}
+              jds={(docs.data ?? []).filter((d) => d.kind === 'jd').map((d) => ({ id: d.id, filename: d.filename, status: d.status }))}
+              onSelect={(kind, documentId) => {
+                if (activeId != null) void setPreferred.mutateAsync({ kind, documentId })
+              }}
+            />
             <div className="space-y-4">
               <Field label="Mode">
                 <Select value={mode} onChange={(e) => setMode(e.target.value as 'text' | 'voice')}>
@@ -463,6 +529,11 @@ export function InterviewPage() {
                     <Pill tone="accent">{currentQuestion.difficulty}</Pill>
                     <Pill>{currentQuestion.type}</Pill>
                   </div>
+                  {provenanceLabel(currentQuestion.source, currentQuestion.sourceRef) ? (
+                    <p className="mt-2 text-xs text-fg-3">
+                      {provenanceLabel(currentQuestion.source, currentQuestion.sourceRef)}
+                    </p>
+                  ) : null}
                   {evaluation != null ? (
                     <div className="mt-4 rounded-lg border border-line bg-accent-soft p-3.5">
                       <p className="text-xs font-semibold uppercase tracking-wide text-accent">Answer evaluated</p>

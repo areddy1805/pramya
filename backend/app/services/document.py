@@ -239,7 +239,7 @@ class DocumentService:
             user_id=user_id,
             profile_id=profile_id,
             document_id=document_id,
-            kind=doc.kind.value,
+            kind=str(doc.kind),
         )
 
     async def read_stored_bytes(

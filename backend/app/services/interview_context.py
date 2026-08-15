@@ -18,12 +18,14 @@ All output is plain JSON-serializable dicts (config JSONB column).
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.domain.enums import DocumentKind
+from app.models.document import Document
 from app.repositories.document import DocumentChunkRepository, DocumentRepository
 from app.repositories.evidence import EvidenceRepository
 from app.repositories.misc import InterviewFeedbackRepository, RoleRepository
@@ -155,15 +157,15 @@ class InterviewContextBuilder:
             )
         if not docs:
             return None
-        latest = max(docs, key=lambda d: d.id)
-        text = await self._document_text(latest.id)
+        selected = await self._preferred_or_latest(user_id, profile_id, docs, "resume")
+        text = await self._document_text(selected.id)
         if not text:
             return None
         return {
-            "document_id": latest.id,
-            "filename": latest.filename,
-            "status": str(latest.status),
-            "ready": str(latest.status) == "parsed",
+            "document_id": selected.id,
+            "filename": selected.filename,
+            "status": str(selected.status),
+            "ready": str(selected.status) == "parsed",
             "text": text[:RESUME_MAX_CHARS],
         }
 
@@ -179,17 +181,41 @@ class InterviewContextBuilder:
             )
         if not docs:
             return None
-        latest = max(docs, key=lambda d: d.id)
-        text = await self._document_text(latest.id)
+        selected = await self._preferred_or_latest(user_id, profile_id, docs, "jd")
+        text = await self._document_text(selected.id)
         if not text:
             return None
         return {
-            "document_id": latest.id,
-            "filename": latest.filename,
-            "status": str(latest.status),
-            "ready": str(latest.status) == "parsed",
+            "document_id": selected.id,
+            "filename": selected.filename,
+            "status": str(selected.status),
+            "ready": str(selected.status) == "parsed",
             "text": text[:JD_MAX_CHARS],
         }
+
+    async def _preferred_or_latest(
+        self,
+        user_id: int,
+        profile_id: int | None,
+        docs: Sequence[Document],
+        kind: str,
+    ) -> Document:
+        """Explicit persisted preference wins; otherwise the latest by id.
+        A stale preference (document removed) falls back to latest — the
+        pointer is SET NULL on delete, this guards any race."""
+        if profile_id is not None:
+            profile = await self.profiles.get_for_user(user_id, profile_id)
+            if profile is not None:
+                preferred_id = (
+                    profile.preferred_resume_document_id
+                    if kind == "resume"
+                    else profile.preferred_jd_document_id
+                )
+                if preferred_id is not None:
+                    for d in docs:
+                        if d.id == preferred_id:
+                            return d
+        return max(docs, key=lambda d: d.id)
 
     async def _document_text(self, document_id: int) -> str:
         chunks = await self.chunks.list_for_document(document_id)

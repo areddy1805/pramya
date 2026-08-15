@@ -27,6 +27,8 @@ from app.domain.errors import ValidationFailedError
 from app.interview.service import InterviewService, event_bus
 from app.models.document import Document, DocumentChunk
 from app.models.evidence import Evidence
+from app.repositories.document import DocumentRepository
+from app.repositories.user import CandidateProfileRepository
 from app.services.interview_context import InterviewContextBuilder
 from app.services.user import CandidateService
 
@@ -503,4 +505,147 @@ async def test_context_builder_rejects_foreign_profile(session_factory: object) 
         ctx = await builder.build(user_id=user_b, profile_id=pa, role_id=None)
         assert ctx["profile"] is None
         assert "profile" in ctx["missing"]
+        await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Preferred/current document selection (workspace document management)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preferred_resume_wins_over_latest(session_factory: object) -> None:
+    """Explicit persisted preference beats latest-uploaded."""
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        older = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="older.md", text=RESUME_A)
+        newer = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="newer.md", text=RESUME_B)
+        svc = CandidateService(db)
+        await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=older)
+        await db.commit()
+
+        builder = InterviewContextBuilder(db)
+        ctx = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
+        resume = ctx["resume"]
+        assert isinstance(resume, dict)
+        assert resume["document_id"] == older
+        assert resume["document_id"] != newer  # latest-uploaded is NOT chosen
+
+        # Context endpoint parity: same preferred document.
+        endpoint = await get_profile_interview_context(user_id, pa, db)
+        assert endpoint.resume is not None and endpoint.resume["document_id"] == older
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_preferred_jd_selection_and_clear(session_factory: object) -> None:
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r.md", text=RESUME_A)
+        jd1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd1.md", text=JD_A)
+        jd2 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.JD, filename="jd2.md", text=JD_B)
+        svc = CandidateService(db)
+        # select the OLDER jd explicitly
+        await svc.set_preferred_document(user_id, pa, kind=DocumentKind.JD, document_id=jd1)
+        await db.commit()
+        builder = InterviewContextBuilder(db)
+        ctx = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
+        jd = ctx["jd"]
+        assert isinstance(jd, dict) and jd["document_id"] == jd1
+
+        # clear -> resume-only mode (JD optional)
+        await svc.set_preferred_document(user_id, pa, kind=DocumentKind.JD, document_id=None)
+        await db.commit()
+        ctx2 = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
+        assert ctx2["jd"] is not None  # falls back to latest parsed JD
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_preferred_document_cross_profile_rejected(session_factory: object) -> None:
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        pb = await seed_profile(db, user_id, "Profile B")
+        doc_b = await seed_doc(db, user_id=user_id, profile_id=pb, kind=DocumentKind.RESUME, filename="b.md", text=RESUME_B)
+        svc = CandidateService(db)
+        with pytest.raises(ValidationFailedError):
+            await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=doc_b)
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_historical_snapshot_immutable_after_preference_change(session_factory: object) -> None:
+    """Changing the preferred resume later NEVER mutates an existing session's
+    grounding snapshot."""
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        r1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r1.md", text=RESUME_A)
+        r2 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r2.md", text=RESUME_B)
+        provider = QueueProvider([QUESTION_TEXT])
+        svc = InterviewService(db, _router(provider))
+        session = await svc.create_session(
+            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
+            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+        )
+        await svc.begin(session.id, user_id)
+        snap = (session.config or {})["context"]["resume"]
+        assert snap["document_id"] == r2  # latest at start time (no preference)
+
+        # user later switches preference to r1 -> old session unchanged
+        svc_prof = CandidateService(db)
+        await svc_prof.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=r1)
+        await db.commit()
+        assert (session.config or {})["context"]["resume"]["document_id"] == r2
+
+        # a NEW session uses the new preference
+        session2 = await svc.create_session(
+            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
+            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+        )
+        await svc.begin(session2.id, user_id)
+        snap2 = (session2.config or {})["context"]["resume"]
+        assert snap2["document_id"] == r1
+        await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_deleted_preferred_document_clears_pointer_and_keeps_history(session_factory: object) -> None:
+    async with session_factory() as db:  # type: ignore[attr-defined]
+        user_id = await seed_user(db)
+        pa = await seed_profile(db, user_id, "Profile A")
+        r1 = await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r1.md", text=RESUME_A)
+        await seed_doc(db, user_id=user_id, profile_id=pa, kind=DocumentKind.RESUME, filename="r2.md", text=RESUME_B)
+        svc = CandidateService(db)
+        await svc.set_preferred_document(user_id, pa, kind=DocumentKind.RESUME, document_id=r1)
+        await db.commit()
+        provider = QueueProvider([QUESTION_TEXT])
+        isvc = InterviewService(db, _router(provider))
+        session = await isvc.create_session(
+            user_id=user_id, kind=InterviewKind.GENERAL, role_id=None,
+            duration_minutes=30, focus_competency_ids=[], profile_id=pa,
+        )
+        await isvc.begin(session.id, user_id)
+        snap = (session.config or {})["context"]["resume"]
+        assert snap["document_id"] == r1
+
+        # delete the preferred document -> pointer cleared by FK SET NULL
+        doc = await DocumentRepository(db).get(r1)
+        assert doc is not None
+        from app.services.document import DocumentService
+
+        await DocumentService(db).delete_document(user_id, r1, profile_id=pa)
+        await db.commit()
+        profile = await CandidateProfileRepository(db).get(pa)
+        assert profile is not None and profile.preferred_resume_document_id is None
+        # old session snapshot retained (explainability)
+        assert (session.config or {})["context"]["resume"]["document_id"] == r1
+        # builder falls back to the remaining parsed resume
+        builder = InterviewContextBuilder(db)
+        ctx = await builder.build(user_id=user_id, profile_id=pa, role_id=None)
+        resume = ctx["resume"]
+        assert isinstance(resume, dict) and resume["document_id"] != r1
         await db.rollback()

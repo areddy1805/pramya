@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.domain.enums import DocumentKind
 from app.repositories.misc import RoleRepository
 from app.services.interview_context import InterviewContextBuilder
 from app.services.user import CandidateService
@@ -37,6 +38,8 @@ class ProfileOut(BaseModel):
     seniority_target: str | None = None
     headline: str | None = None
     timezone: str | None = None
+    preferred_resume_document_id: int | None = None
+    preferred_jd_document_id: int | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -68,6 +71,13 @@ class ActiveProfileOut(BaseModel):
 
 class ActiveProfileSet(BaseModel):
     profile_id: int
+
+
+class PreferredDocumentSet(BaseModel):
+    """Select a profile-owned document as the preferred/current one.
+    ``document_id=None`` clears the preference."""
+
+    document_id: int | None = None
 
 
 def _out(profile: object) -> ProfileOut:
@@ -181,6 +191,32 @@ async def get_profile_interview_context(
         evidence_count=len(evidence),
         missing=missing,
     )
+
+
+@router.put(
+    "/candidates/{user_id}/profiles/{profile_id}/preferred-resume", response_model=ProfileOut
+)
+async def set_preferred_resume(
+    user_id: int, profile_id: int, body: PreferredDocumentSet, session: SessionDep
+) -> ProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.set_preferred_document(
+        user_id, profile_id, kind=DocumentKind.RESUME, document_id=body.document_id
+    )
+    await session.commit()
+    return _out(profile)
+
+
+@router.put("/candidates/{user_id}/profiles/{profile_id}/preferred-jd", response_model=ProfileOut)
+async def set_preferred_jd(
+    user_id: int, profile_id: int, body: PreferredDocumentSet, session: SessionDep
+) -> ProfileOut:
+    svc = CandidateService(session)
+    profile = await svc.set_preferred_document(
+        user_id, profile_id, kind=DocumentKind.JD, document_id=body.document_id
+    )
+    await session.commit()
+    return _out(profile)
 
 
 @router.get("/candidates/{user_id}/active-profile", response_model=ActiveProfileOut)

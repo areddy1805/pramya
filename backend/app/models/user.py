@@ -52,6 +52,17 @@ class CandidateProfile(Base, TimestampMixin):
     headline: Mapped[str | None] = mapped_column(String(300), nullable=True)
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # Explicit preferred/current documents (persisted user choice). NULL =
+    # unset (builder falls back to the latest parsed document). ON DELETE
+    # SET NULL keeps the pointer valid when a document is removed while
+    # historical interview snapshots stay intact.
+    preferred_resume_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document.id", ondelete="SET NULL"), nullable=True
+    )
+    preferred_jd_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document.id", ondelete="SET NULL"), nullable=True
+    )
+
     user: Mapped[User] = relationship(
         back_populates="profiles", foreign_keys="CandidateProfile.user_id"
     )

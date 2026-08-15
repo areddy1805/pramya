@@ -446,6 +446,9 @@ class VoiceEngine:
                         "question_id": question.id,
                         "text": question.text,
                         "difficulty": str(question.difficulty),
+                        "category": getattr(question, "category", None),
+                        "source": getattr(question, "source", None),
+                        "source_ref": getattr(question, "source_ref", None),
                     }
                 )
 

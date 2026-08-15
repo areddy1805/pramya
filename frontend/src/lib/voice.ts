@@ -40,6 +40,8 @@ export interface VoiceEvent {
   question?: string
   question_id?: number
   difficulty?: string
+  source?: string | null
+  source_ref?: string | null
   overall?: number | null
   generation?: number
   answer_id?: number
@@ -51,6 +53,8 @@ export interface VoiceQuestion {
   id: number
   text: string
   difficulty: string
+  source?: string | null
+  source_ref?: string | null
 }
 
 export interface VoiceTranscriptLine {
@@ -410,6 +414,8 @@ export class VoiceClient {
           id: payload.question_id ?? 0,
           text: payload.text ?? '',
           difficulty: payload.difficulty ?? 'medium',
+          source: payload.source ?? null,
+          source_ref: payload.source_ref ?? null,
         })
         break
       case 'resume':

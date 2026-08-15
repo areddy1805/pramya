@@ -14,9 +14,11 @@ import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.enums import DocumentKind
 from app.domain.errors import NotFoundError, ValidationFailedError
 from app.models.user import CandidateProfile, User
 from app.observability import record_event
+from app.repositories.document import DocumentRepository
 from app.repositories.user import CandidateProfileRepository, UserRepository
 
 _DEFAULT_PROFILE_NAME = "Career Profile"
@@ -34,6 +36,52 @@ class CandidateService:
         self.session = session
         self.users = UserRepository(session)
         self.profiles = CandidateProfileRepository(session)
+        self.documents = DocumentRepository(session)
+
+    async def set_preferred_document(
+        self,
+        user_id: int,
+        profile_id: int,
+        *,
+        kind: DocumentKind,
+        document_id: int | None,
+    ) -> CandidateProfile:
+        """Persist the explicit preferred/current document for a profile.
+
+        The document must belong to THIS profile (ownership + scope check).
+        ``document_id=None`` clears the preference (builder falls back to
+        the latest parsed document). Historical interview snapshots are
+        never affected — they carry their own immutable context copy.
+        """
+        profile = await self.require_profile(user_id, profile_id)
+        if document_id is not None:
+            doc = await self.documents.get(document_id)
+            if (
+                doc is None
+                or doc.user_id != user_id
+                or doc.profile_id != profile_id
+                or doc.kind != kind.value
+            ):
+                raise ValidationFailedError(
+                    f"{kind.value} document not found for this profile",
+                    details={
+                        "profile_id": profile_id,
+                        "document_id": document_id,
+                        "kind": kind.value,
+                    },
+                )
+        setattr(profile, f"preferred_{kind.value}_document_id", document_id)
+        await self.session.flush()
+        # onupdate fires for updated_at at flush; refresh inside the greenlet
+        # so serialization never triggers lazy IO (MissingGreenlet).
+        await self.session.refresh(profile)
+        record_event(
+            f"preferred_{kind.value}_set",
+            user_id=user_id,
+            profile_id=profile_id,
+            document_id=document_id,
+        )
+        return profile
 
     async def create_user(
         self, *, email: str | None = None, display_name: str | None = None
