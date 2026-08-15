@@ -471,7 +471,16 @@ async def test_focus_rotation_over_uncovered_competencies(db_session: AsyncSessi
     )
     await svc2.begin(session2.id, user_id)
     await svc2.next_question(session2.id, user_id)
-    assert _target(provider2, 0) == first_focus  # same session id -> same pick
+    # Focus selection is deterministic per session id: recompute the seeded
+    # pick for THIS actual session id and compare (ids are never equal across
+    # sessions, so the historical same-id assertion was order-dependent).
+    import random
+
+    from app.services.coverage import focus_competency, new_coverage
+
+    comps = ["System Design", "Full-Stack Engineering", "LLM Applications"]
+    expected_pick = focus_competency(new_coverage(), comps, random.Random(session2.id))
+    assert _target(provider2, 0) == expected_pick
 
 
 async def test_follow_up_directive_flows_into_next_question(db_session: AsyncSession) -> None:

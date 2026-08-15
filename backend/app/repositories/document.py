@@ -15,10 +15,19 @@ class DocumentRepository(BaseRepository[Document]):
     model = Document
 
     async def list_for_user(
-        self, user_id: int, *, kind: DocumentKind | None = None, profile_id: int | None = None
+        self,
+        user_id: int,
+        *,
+        kind: DocumentKind | None = None,
+        profile_id: int | None = None,
+        legacy_only: bool = False,
     ) -> Sequence[Document]:
         stmt = select(Document).where(Document.user_id == user_id)
-        if profile_id is not None:
+        if legacy_only:
+            # Explicit global/legacy rows only (profile_id IS NULL) — never
+            # other profiles' documents.
+            stmt = stmt.where(Document.profile_id.is_(None))
+        elif profile_id is not None:
             stmt = stmt.where(Document.profile_id == profile_id)
         if kind is not None:
             stmt = stmt.where(Document.kind == kind)

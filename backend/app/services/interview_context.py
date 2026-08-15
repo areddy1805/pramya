@@ -90,27 +90,44 @@ class InterviewContextBuilder:
         profile_id: int | None,
         role_id: int | None,
     ) -> dict[str, object]:
-        """Build (or reuse cached) context snapshot for one session."""
-        snapshot: dict[str, object] = {
+        """Build (or reuse cached) context snapshot for one session.
+
+        ``missing`` lists which grounding pieces the selected profile lacks
+        (profile is required; resume is required for normal interviews;
+        jd/evidence/role are optional). Never infers a profile and never
+        pulls documents from another profile.
+        """
+        profile = await self._profile(user_id, profile_id)
+        resume = await self._resume(user_id, profile_id)
+        jd = await self._jd(user_id, profile_id)
+        role = await self._role(role_id)
+        evidence = await self._evidence(user_id, profile_id)
+        prior_feedback = await self._prior_feedback(user_id, profile_id)
+        missing: list[str] = []
+        if profile is None:
+            missing.append("profile")
+        if resume is None:
+            missing.append("resume")
+        return {
             "built_at": datetime.now(UTC).isoformat(),
             "user_id": user_id,
             "profile_id": profile_id,
+            "profile": profile,
+            "resume": resume,
+            "jd": jd,
+            "role": role,
+            "evidence": evidence,
+            "prior_feedback": prior_feedback,
+            "missing": missing,
         }
-        snapshot["profile"] = await self._profile(user_id, profile_id)
-        snapshot["resume"] = await self._resume(user_id, profile_id)
-        snapshot["jd"] = await self._jd(user_id, profile_id)
-        snapshot["role"] = await self._role(role_id)
-        snapshot["evidence"] = await self._evidence(user_id, profile_id)
-        snapshot["prior_feedback"] = await self._prior_feedback(user_id, profile_id)
-        return snapshot
 
     # -- sections ------------------------------------------------------------
 
     async def _profile(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        # Explicit profile only — no silent first-profile fallback.
         if profile_id is None:
-            profile = await self.profiles.get_by_user(user_id)
-        else:
-            profile = await self.profiles.get_for_user(user_id, profile_id)
+            return None
+        profile = await self.profiles.get_for_user(user_id, profile_id)
         if profile is None:
             return None
         return {
@@ -122,14 +139,20 @@ class InterviewContextBuilder:
         }
 
     async def _resume(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        # STRICTLY profile-scoped: never falls back to other profiles' docs.
+        # Explicit legacy/global rows (profile_id IS NULL) are the only
+        # non-profile rows considered, and only when a profile_id is set.
         docs = list(
             await self.documents.list_for_user(
                 user_id, kind=DocumentKind.RESUME, profile_id=profile_id
             )
         )
         if not docs and profile_id is not None:
-            # Legacy fallback: user-scoped resume rows (pre-profile uploads).
-            docs = list(await self.documents.list_for_user(user_id, kind=DocumentKind.RESUME))
+            docs = list(
+                await self.documents.list_for_user(
+                    user_id, kind=DocumentKind.RESUME, legacy_only=True
+                )
+            )
         if not docs:
             return None
         latest = max(docs, key=lambda d: d.id)
@@ -139,22 +162,34 @@ class InterviewContextBuilder:
         return {
             "document_id": latest.id,
             "filename": latest.filename,
+            "status": str(latest.status),
+            "ready": str(latest.status) == "parsed",
             "text": text[:RESUME_MAX_CHARS],
         }
 
     async def _jd(self, user_id: int, profile_id: int | None) -> dict[str, object] | None:
+        # STRICTLY profile-scoped; legacy rows (profile_id IS NULL) allowed
+        # as explicit global docs, never arbitrary user-scoped documents.
         docs = list(
             await self.documents.list_for_user(user_id, kind=DocumentKind.JD, profile_id=profile_id)
         )
         if not docs and profile_id is not None:
-            docs = list(await self.documents.list_for_user(user_id, kind=DocumentKind.JD))
+            docs = list(
+                await self.documents.list_for_user(user_id, kind=DocumentKind.JD, legacy_only=True)
+            )
         if not docs:
             return None
         latest = max(docs, key=lambda d: d.id)
         text = await self._document_text(latest.id)
         if not text:
             return None
-        return {"document_id": latest.id, "filename": latest.filename, "text": text[:JD_MAX_CHARS]}
+        return {
+            "document_id": latest.id,
+            "filename": latest.filename,
+            "status": str(latest.status),
+            "ready": str(latest.status) == "parsed",
+            "text": text[:JD_MAX_CHARS],
+        }
 
     async def _document_text(self, document_id: int) -> str:
         chunks = await self.chunks.list_for_document(document_id)

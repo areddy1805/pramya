@@ -15,6 +15,7 @@ import type {
   Evidence,
   ExtractionResult,
   Health,
+  InterviewContext,
   InterviewSession,
   ModelsStatus,
   PreparationItem,
@@ -86,6 +87,17 @@ export function useActiveProfile(userId: number) {
   return useQuery({
     queryKey: ['active-profile', userId],
     queryFn: () => api.get<ActiveProfile>(`/api/v1/candidates/${userId}/active-profile`),
+    retry: false,
+  })
+}
+
+/** Resolved interview context for the selected profile — server-authoritative. */
+export function useInterviewContext(userId: number, profileId: number | null) {
+  return useQuery({
+    queryKey: ['interview-context', userId, profileId],
+    queryFn: () =>
+      api.get<InterviewContext>(`/api/v1/candidates/${userId}/profiles/${profileId}/context`),
+    enabled: profileId !== null && profileId > 0,
     retry: false,
   })
 }

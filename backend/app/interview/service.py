@@ -24,7 +24,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +66,7 @@ from app.repositories.interview import (
     QuestionRepository,
 )
 from app.repositories.misc import InterviewFeedbackRepository, RoleRepository
+from app.repositories.user import CandidateProfileRepository, UserRepository
 from app.services.coverage import (
     INTERVIEW_STYLES,
     compute_gaps,
@@ -239,6 +240,8 @@ class InterviewService:
         self._plan_prompt = load_prompt(_PLAN_PROMPT, fallback="Plan the interview session.")
         self.context_builder = InterviewContextBuilder(session, logger=logger)
         self.feedback = InterviewFeedbackRepository(session)
+        self.users = UserRepository(session)
+        self.profiles = CandidateProfileRepository(session)
         # Phase C: the interview lifecycle executes through a LangGraph
         # workflow (application layer); this service stays the domain/
         # invariant layer (state transitions, persistence, SSE events).
@@ -263,6 +266,16 @@ class InterviewService:
                 "unknown interview style",
                 details={"style": style, "allowed": list(INTERVIEW_STYLES)},
             )
+        if profile_id is None:
+            # Resolve the user's persisted active profile (product contract:
+            # active profile is a UX preference, never silently the first
+            # profile and never seed/demo data). No active profile -> fail.
+            profile_id = await self._resolve_active_profile(user_id)
+            if profile_id is None:
+                raise ValidationFailedError(
+                    "Interview profile is required.",
+                    details={"reason": "no profile_id provided and the user has no active profile"},
+                )
         session_row = InterviewSession(
             user_id=user_id,
             candidate_profile_id=profile_id,
@@ -517,14 +530,27 @@ class InterviewService:
                     seen.append(value)
         return seen
 
+    async def _resolve_active_profile(self, user_id: int) -> int | None:
+        """Ownership-checked persisted active profile, or None."""
+        user = await self.users.get(user_id)
+        if user is None or user.active_profile_id is None:
+            return None
+        profile = await self.profiles.get_for_user(user_id, user.active_profile_id)
+        return profile.id if profile is not None else None
+
     async def _ensure_context(self, row: InterviewSession) -> None:
-        """Build + persist the immutable grounding snapshot on first use."""
+        """Build + persist the immutable grounding snapshot on first use.
+
+        Fail-fast: a normal interview must never start with silently
+        incomplete grounding (no other profile's documents, no seed data).
+        """
         if not row.config or not row.config.get("context"):
             snapshot = await self.context_builder.build(
                 user_id=row.user_id,
                 profile_id=row.candidate_profile_id,
                 role_id=row.role_id,
             )
+            self._require_complete_grounding(row, snapshot)
             cfg = _session_config(row)
             cfg["context"] = snapshot
             cfg.setdefault("coverage", new_coverage())
@@ -532,6 +558,38 @@ class InterviewService:
             cfg.setdefault("directives", {})
             row.config = cfg
             await self.session.flush()
+
+    @staticmethod
+    def _require_complete_grounding(row: InterviewSession, snapshot: dict[str, object]) -> None:
+        """Explicit configuration error when grounding cannot be resolved."""
+        missing = cast("list[str]", snapshot.get("missing") or [])
+        if "profile" in missing:
+            raise ValidationFailedError(
+                "Interview context unavailable: no candidate profile resolved.",
+                details={"profile_id": row.candidate_profile_id},
+            )
+        if "resume" in missing:
+            profile = snapshot.get("profile")
+            name = str(profile.get("name", "?")) if isinstance(profile, dict) else "?"
+            raise ValidationFailedError(
+                "Interview context incomplete: this profile has no processed resume.",
+                details={
+                    "profile_id": row.candidate_profile_id,
+                    "profile_name": name,
+                    "missing": ["resume"],
+                    "action": "Upload + process a resume for this profile before an interview.",
+                },
+            )
+        # JD is required for JD-driven modes; resume-only interviews stay valid.
+        if row.kind == InterviewKind.JOB_DESCRIPTION and snapshot.get("jd") is None:
+            raise ValidationFailedError(
+                "Interview context incomplete: JD interview mode requires a job description.",
+                details={
+                    "profile_id": row.candidate_profile_id,
+                    "missing": ["jd"],
+                    "action": "Upload a JD for this profile before a JD interview.",
+                },
+            )
 
     async def _persist_question(
         self, question: InterviewQuestion, session_id: int, default_competency: str
@@ -574,6 +632,7 @@ class InterviewService:
                     "rationale": question.rationale,
                     "category": question.category,
                     "source": question.source,
+                    "source_ref": question.source_ref,
                 },
             ),
         )

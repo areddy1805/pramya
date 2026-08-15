@@ -9,13 +9,15 @@ an authorization boundary.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
+from app.repositories.misc import RoleRepository
+from app.services.interview_context import InterviewContextBuilder
 from app.services.user import CandidateService
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
@@ -128,6 +130,57 @@ async def delete_profile(user_id: int, profile_id: int, session: SessionDep) -> 
     svc = CandidateService(session)
     await svc.delete_profile(user_id, profile_id)
     await session.commit()
+
+
+class InterviewContextOut(BaseModel):
+    """Server-authoritative resolved interview context (same builder + snapshot
+    the interview engine uses — never a frontend re-interpretation)."""
+
+    profile_id: int
+    profile: dict[str, object] | None = None
+    resume: dict[str, object] | None = None
+    jd: dict[str, object] | None = None
+    target_roles: list[dict[str, object]] = []
+    grounding: dict[str, bool]
+    evidence_count: int = 0
+    missing: list[str] = []
+
+
+@router.get(
+    "/candidates/{user_id}/profiles/{profile_id}/context",
+    response_model=InterviewContextOut,
+)
+async def get_profile_interview_context(
+    user_id: int, profile_id: int, session: SessionDep
+) -> InterviewContextOut:
+    svc = CandidateService(session)
+    await svc.require_profile(user_id, profile_id)
+    builder = InterviewContextBuilder(session)
+    snapshot = await builder.build(user_id=user_id, profile_id=profile_id, role_id=None)
+    roles = await RoleRepository(session).list_for_profile(profile_id)
+    profile = cast("dict[str, object] | None", snapshot.get("profile"))
+    resume = cast("dict[str, object] | None", snapshot.get("resume"))
+    jd = cast("dict[str, object] | None", snapshot.get("jd"))
+    evidence = cast("list[dict[str, object]]", snapshot.get("evidence") or [])
+    missing = cast("list[str]", snapshot.get("missing") or [])
+    return InterviewContextOut(
+        profile_id=profile_id,
+        profile=profile,
+        resume=resume,
+        jd=jd,
+        target_roles=cast(
+            "list[dict[str, object]]",
+            [{"id": r.id, "title": r.title} for r in roles],
+        ),
+        grounding={
+            "profile": profile is not None,
+            "resume": isinstance(resume, dict) and bool(resume.get("ready")),
+            "jd": isinstance(jd, dict) and bool(jd.get("ready")),
+            "evidence": bool(evidence),
+        },
+        evidence_count=len(evidence),
+        missing=missing,
+    )
 
 
 @router.get("/candidates/{user_id}/active-profile", response_model=ActiveProfileOut)

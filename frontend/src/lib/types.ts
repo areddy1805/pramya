@@ -127,6 +127,34 @@ export interface InterviewSession {
   config: Record<string, unknown> | null
 }
 
+/** Server-authoritative resolved interview context (same builder as the engine). */
+export interface InterviewContext {
+  profile_id: number
+  profile: {
+    id: number
+    name: string
+    headline?: string | null
+    positioning?: string | null
+    seniority_target?: string | null
+  } | null
+  resume: {
+    document_id: number
+    filename: string
+    status: string
+    ready: boolean
+  } | null
+  jd: {
+    document_id: number
+    filename: string
+    status: string
+    ready: boolean
+  } | null
+  target_roles: Array<{ id: number; title: string }>
+  grounding: { profile: boolean; resume: boolean; jd: boolean; evidence: boolean }
+  evidence_count: number
+  missing: string[]
+}
+
 export interface Question {
   id: number
   text: string

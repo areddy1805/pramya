@@ -4,12 +4,14 @@ import {
   useCreateInterview,
   useInterview,
   useInterviewAction,
+  useInterviewContext,
   useInterviews,
   useResolvedProfile,
   useRoles,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
 import { useSSE } from '../hooks/useSSE'
+import type { InterviewContext } from '../lib/types'
 import { VoiceClient, type VoiceState } from '../lib/voice'
 import { Button, Divider, EmptyState, ErrorState, Field, Pill, SectionHeading, Select, Spinner, StatusDot, Surface } from '../components/ui'
 const KINDS = [
@@ -22,6 +24,85 @@ const KINDS = [
   { value: 'system_design', label: 'System design (text)' },
   { value: 'coding_reasoning', label: 'Coding reasoning (verbal)' },
 ]
+
+function statusOf(doc: InterviewContext['resume']): { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' } {
+  if (!doc) return { label: 'Missing', tone: 'danger' }
+  if (doc.ready) return { label: 'Ready', tone: 'ok' }
+  return { label: doc.status, tone: 'warn' }
+}
+
+function InterviewContextPanel({ ctx, loading }: { ctx: InterviewContext | null; loading: boolean }) {
+  return (
+    <div className="mb-5 rounded-xl border border-line bg-surface/60 p-4 text-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-fg-3">Interview context</p>
+        {loading ? (
+          <span aria-hidden className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-track border-t-accent" />
+        ) : null}
+      </div>
+      {!ctx && !loading ? (
+        <p className="text-xs leading-relaxed text-fg-3">
+          Select a career profile to see what this interview will be grounded in.
+        </p>
+      ) : null}
+      {ctx ? (
+        <div className="space-y-3.5">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Profile</p>
+            <p className="font-medium text-fg">{ctx.profile?.name ?? '—'}</p>
+            {ctx.profile?.positioning ? <p className="text-xs text-fg-3">{ctx.profile.positioning}</p> : null}
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Resume</p>
+              <p className="truncate font-medium text-fg">{ctx.resume?.filename ?? 'No resume'}</p>
+            </div>
+            <Pill tone={statusOf(ctx.resume).tone}>{statusOf(ctx.resume).label}</Pill>
+          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Job description</p>
+              <p className="truncate font-medium text-fg">{ctx.jd?.filename ?? 'None — resume-only interview'}</p>
+            </div>
+            {ctx.jd ? (
+              <Pill tone={statusOf(ctx.jd).tone}>{statusOf(ctx.jd).label}</Pill>
+            ) : (
+              <Pill tone="neutral">optional</Pill>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Target roles</p>
+            {ctx.target_roles.length ? (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {ctx.target_roles.slice(0, 4).map((r) => (
+                  <Pill key={r.id} tone="neutral">{r.title}</Pill>
+                ))}
+                {ctx.target_roles.length > 4 ? <Pill tone="neutral">+{ctx.target_roles.length - 4} more</Pill> : null}
+              </div>
+            ) : (
+              <p className="text-xs text-fg-3">No analyzed roles yet</p>
+            )}
+          </div>
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-fg-3">Grounded from</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {(['profile', 'resume', 'jd', 'evidence'] as const).map((k) => (
+                <Pill key={k} tone={ctx.grounding[k] ? 'ok' : 'neutral'}>
+                  {k}
+                </Pill>
+              ))}
+            </div>
+          </div>
+          {ctx.missing.includes('resume') ? (
+            <div className="rounded-lg border border-line bg-warn-soft px-3 py-2 text-xs leading-relaxed text-warn">
+              This profile has no processed resume. Upload one in Profile &amp; Role before starting an interview.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 // Interviewer personas — mirror backend INTERVIEW_STYLES (coverage.py).
 const STYLES = [
@@ -88,6 +169,7 @@ export function InterviewPage() {
 
   const create = useCreateInterview()
   const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const ctx = useInterviewContext(DEFAULT_USER_ID, activeId)
   const sessions = useInterviews(DEFAULT_USER_ID, activeId)
   const roles = useRoles(DEFAULT_USER_ID, activeId)
   const session = useInterview(sessionId ?? 0, DEFAULT_USER_ID)
@@ -260,6 +342,7 @@ export function InterviewPage() {
 
   const status = session.data?.status
   const inSession = sessionId != null && status !== 'completed' && status !== 'cancelled'
+  const ctxReady = ctx.data?.grounding.resume ?? false
   const meta = STATE_META[status ?? 'created'] ?? STATE_META.created
   const answering = actions.answer.isPending
 
@@ -284,6 +367,7 @@ export function InterviewPage() {
         <div className="grid gap-6 lg:grid-cols-5">
           <Surface className="p-6 lg:col-span-2">
             <SectionHeading>New interview</SectionHeading>
+            <InterviewContextPanel ctx={ctx.data ?? null} loading={ctx.isLoading} />
             <div className="space-y-4">
               <Field label="Mode">
                 <Select value={mode} onChange={(e) => setMode(e.target.value as 'text' | 'voice')}>
@@ -327,11 +411,11 @@ export function InterviewPage() {
                 </div>
               </Field>
               {mode === 'voice' ? (
-                <Button size="lg" className="w-full" onClick={() => void startVoiceInterview()} disabled={create.isPending}>
+                <Button size="lg" className="w-full" onClick={() => void startVoiceInterview()} disabled={create.isPending || !ctxReady}>
                   {create.isPending ? 'Connecting…' : '🎙 Start Live Voice Interview'}
                 </Button>
               ) : (
-                <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending}>
+                <Button size="lg" className="w-full" onClick={() => void startInterview()} disabled={create.isPending || actions.begin.isPending || !ctxReady}>
                   {create.isPending ? 'Creating…' : 'Start typed interview'}
                 </Button>
               )}

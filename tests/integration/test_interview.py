@@ -18,12 +18,15 @@ from app.ai.contracts import ChatResponse, Usage
 from app.ai.policy import TaskPolicyTable
 from app.ai.router import InferenceRouter
 from app.domain.enums import (
+    DocumentKind,
+    DocumentStatus,
     InterviewKind,
     InterviewSessionStatus,
     InterviewTurnKind,
 )
 from app.domain.errors import InterviewStateError
 from app.interview.service import InterviewService
+from app.models.document import Document, DocumentChunk
 from app.repositories.interview import InterviewTurnRepository
 from app.services.user import CandidateService
 
@@ -107,10 +110,38 @@ class ChatRequestLike:
 
 @pytest.fixture
 async def interview_env(db_session: AsyncSession) -> dict[str, Any]:
-
-    user = await CandidateService(db_session).create_user(display_name="Alex")
+    svc = CandidateService(db_session)
+    user = await svc.create_user(display_name="Alex")
+    profile = await svc.create_profile(
+        user_id=user.id,
+        name="AI Engineer",
+        positioning="Applied AI engineering",
+        seniority_target="senior",
+    )
+    await svc.set_active_profile(user.id, profile.id)
+    # Grounding fixture: a processed profile-scoped resume (context integrity
+    # contract — sessions resolve the active profile + require a resume).
+    doc = Document(
+        user_id=user.id,
+        profile_id=profile.id,
+        kind=DocumentKind.RESUME,
+        filename="resume.md",
+        mime="text/markdown",
+        size=len("Alex Rivera\n\nBuilt the Atlas analytics platform."),
+        content_hash="hash-test-interview-resume",
+        status=DocumentStatus.PARSED,
+    )
+    db_session.add(doc)
+    await db_session.flush()
+    db_session.add(
+        DocumentChunk(
+            document_id=doc.id,
+            chunk_index=0,
+            content="Alex Rivera — built the Atlas analytics platform with response caching.",
+        )
+    )
     await db_session.commit()
-    return {"db": db_session, "user_id": user.id}
+    return {"db": db_session, "user_id": user.id, "profile_id": profile.id}
 
 
 async def _svc(env: dict[str, Any], contents: list[str]) -> tuple[InterviewService, QueueProvider]:
