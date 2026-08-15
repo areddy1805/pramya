@@ -78,6 +78,48 @@ wait_db() {
   fail "PostgreSQL did not become healthy within 60s. Run 'docker compose ps' / 'docker compose logs db'."
 }
 
+# Host-side DB reachability probe. wait_db above only proves the container
+# is healthy; a foreign process (e.g. Homebrew PostgreSQL started at login)
+# can still own the published host port, so the app/alembic would reach the
+# wrong server ("database X does not exist"). Probe the actual DATABASE_URL
+# from the host and fail with an actionable message instead of a traceback.
+db_url() {
+  grep -E '^DATABASE_URL=' "$ROOT/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\"' | tr -d "'"
+}
+
+db_probe() {
+  local url; url="$(db_url)"
+  [ -n "$url" ] || url="postgresql+asyncpg://pramya:pramya@localhost:5432/pramya"
+  ( cd "$ROOT/backend" && ./.venv/bin/python - "$url" <<'PY'
+import asyncio, sys
+from asyncpg import connect
+
+async def main() -> int:
+    url = sys.argv[1].replace("postgresql+asyncpg://", "postgresql://", 1)
+    try:
+        conn = await connect(url, timeout=5)
+    except Exception as exc:
+        print(f"host-side DB probe failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    await conn.close()
+    return 0
+
+sys.exit(asyncio.run(main()))
+PY
+  )
+}
+
+wait_db_host() {
+  local tries=20 i
+  for i in $(seq 1 "$tries"); do
+    db_probe && return 0
+    [ $((i % 4)) = 0 ] && echo "  waiting for host-side DB reachability... ($((i / 2))s)" >&2
+    sleep 0.5
+  done
+  fail "Host cannot reach the app database. Another PostgreSQL is likely on the published port "\
+"(e.g. Homebrew: 'brew services stop postgresql@16'), or DATABASE_URL in .env is wrong."
+}
+
 # ---------------------------------------------------------------------------
 # dependency + environment checks
 # ---------------------------------------------------------------------------
@@ -147,6 +189,7 @@ start() {
   fi
 
   echo "  [3/6] Applying migrations (alembic upgrade head)…"
+  wait_db_host
   ( cd "$ROOT/backend" && uv run alembic upgrade head ) \
     || fail "Migrations failed. Fix and re-run: make dev"
 
