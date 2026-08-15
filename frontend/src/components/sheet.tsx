@@ -23,8 +23,20 @@ export type Provenance = 'claimed' | 'observed' | 'demonstrated'
 
 // --- The sheet ---------------------------------------------------------------
 
-export function Sheet({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`sheet-grid border border-ink/30 bg-sheet text-ink ${className}`}>{children}</div>
+export function Sheet({
+  children,
+  className = '',
+  'aria-label': ariaLabel,
+}: {
+  children: ReactNode
+  className?: string
+  'aria-label'?: string
+}) {
+  return (
+    <div aria-label={ariaLabel} className={`sheet-grid border border-ink/30 bg-sheet text-ink ${className}`}>
+      {children}
+    </div>
+  )
 }
 
 // A bounded region of the sheet. tone controls the raking light:
@@ -229,6 +241,69 @@ export function VerdictStamp({
       </div>
       <p className="stencil mt-3 border-t border-ink/20 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
         conf {measured ? pct(confidence) : '—'} · cov {measured ? pct(coverage) : '—'} · gaps {measured ? gapCount : '—'}
+        <br />
+        drawn {date}
+      </p>
+    </div>
+  )
+}
+
+// --- Queue status stamp ------------------------------------------------------
+
+// The work-order status, stamped into the preparation sheet's title block.
+// Parallel to VerdictStamp but measures the ORDER, not the drawing: open
+// order count, estimated effort, and estimated readiness movement (the
+// deterministic sum of each order's expected_improvement — an estimate,
+// never a guarantee). Status labels are honest per Pramya semantics:
+// NOT ASSESSED / NO TARGET ROLE / QUEUE NOT GENERATED / NO OPEN ORDERS /
+// ORDER ISSUED. No issued order ever shows a numeral that could read as
+// a measured zero.
+export function QueueStamp({
+  openCount,
+  minutes,
+  gain,
+  date,
+  status,
+  statusTone,
+  loading = false,
+}: {
+  openCount: number | null
+  minutes: number | null
+  gain: number | null
+  date: string
+  status: string
+  statusTone: 'draft' | 'redline' | 'ink-2' | 'ink-3'
+  loading?: boolean
+}) {
+  const tone = {
+    draft: 'text-draft',
+    redline: 'text-redline',
+    'ink-2': 'text-ink-2',
+    'ink-3': 'text-ink-3',
+  }[statusTone]
+  return (
+    <div className="w-full border border-ink/30 bg-sheet-lit/45 px-5 py-3 sm:w-[19rem]">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Work order · queue status</p>
+        {loading ? null : <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${tone}`}>{status}</span>}
+      </div>
+      <div className="mt-2">
+        <p className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-2">Σ est. movement · full order</p>
+        <div className="mt-0.5 flex items-baseline gap-1.5">
+          {loading ? (
+            <Skeleton className="h-12 w-28" />
+          ) : (
+            <>
+              <span className={`stencil text-4xl leading-none sm:text-5xl ${gain != null ? 'text-draft' : 'text-ink-3'}`}>
+                {gain != null ? `+${gain.toFixed(1)}` : '—'}
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.08em] text-ink-2">if completed</span>
+            </>
+          )}
+        </div>
+      </div>
+      <p className="stencil mt-3 border-t border-ink/20 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+        {openCount != null ? `${openCount} open` : 'open —'} · {minutes != null ? `≈ ${minutes} min` : '≈ — min'}
         <br />
         drawn {date}
       </p>
