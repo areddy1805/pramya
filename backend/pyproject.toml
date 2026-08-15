@@ -1,6 +1,6 @@
 [project]
 name = "pramya-backend"
-version = "0.1.0"
+version = "1.0.0"
 description = "Pramya — evidence-driven interview preparation. Backend."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"

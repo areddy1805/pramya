@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Application
     app_env: str = "development"
     app_name: str = "pramya"
-    app_version: str = "0.1.0"
+    app_version: str = "1.0.0"
     app_host: str = "127.0.0.1"
     app_port: int = Field(default=8001, gt=0, lt=65536)
     api_prefix: str = "/api/v1"
