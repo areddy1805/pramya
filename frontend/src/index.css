@@ -43,6 +43,22 @@
   --accent-soft: rgba(37, 99, 235, 0.09);
   --accent-line: rgba(37, 99, 235, 0.28);
 
+  /* Drawing sheet — drafting world (light paper) */
+  --sheet: #eae7dc;
+  --sheet-lit: #f3f0e4;
+  --sheet-shadow: #dedbcd;
+  --sheet-grid: rgba(27, 39, 51, 0.07);
+  --sheet-grid-strong: rgba(27, 39, 51, 0.15);
+  --ink: #1b2733;
+  --ink-2: #46525f;
+  --ink-3: #77808c;
+  --draft: #2f5d8a;
+  --draft-2: #1f4266;
+  --draft-soft: rgba(47, 93, 138, 0.09);
+  --redline: #b23c22;
+  --redline-soft: rgba(178, 60, 34, 0.09);
+  --graphite: #8a8f98;
+
   /* Semantic states */
   --ok: #15803d;
   --ok-soft: rgba(21, 128, 61, 0.1);
@@ -95,6 +111,21 @@
   --accent-soft: rgba(110, 168, 255, 0.11);
   --accent-line: rgba(110, 168, 255, 0.3);
 
+  /* Drawing sheet — drafting world (dark blueprint) */
+  --sheet: #10151d;
+  --sheet-lit: #171e29;
+  --sheet-shadow: #0b0f16;
+  --sheet-grid: rgba(223, 231, 240, 0.05);
+  --sheet-grid-strong: rgba(223, 231, 240, 0.12);
+  --ink: #dfe7f0;
+  --ink-2: #93a0b0;
+  --ink-3: #5d6877;
+  --draft: #7fb0dd;
+  --draft-2: #a3c8ea;
+  --draft-soft: rgba(127, 176, 221, 0.12);
+  --redline: #e07a52;
+  --redline-soft: rgba(224, 122, 82, 0.12);
+
   --ok: #3ecf8e;
   --ok-soft: rgba(62, 207, 142, 0.11);
   --warn: #f0b44b;
@@ -136,6 +167,19 @@
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-sheet: var(--sheet);
+  --color-sheet-lit: var(--sheet-lit);
+  --color-sheet-shadow: var(--sheet-shadow);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-draft: var(--draft);
+  --color-draft-2: var(--draft-2);
+  --color-draft-soft: var(--draft-soft);
+  --color-redline: var(--redline);
+  --color-redline-soft: var(--redline-soft);
+  --color-graphite: var(--graphite);
 }
 
 html {
@@ -232,6 +276,27 @@ body::before {
 .tabular {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/* Stencil numerals — measurement voice: mono, tabular, firm weight */
+.stencil {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* One coherent drafting grid (24px cell; zone padding lives on the ruling) */
+.sheet-grid {
+  background-image:
+    linear-gradient(var(--sheet-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sheet-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Coverage hatching — drafting material fill; density communicates amount */
+.hatch {
+  background-image: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 4px);
 }
 
 /* Keyboard key */
