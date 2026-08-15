@@ -342,6 +342,42 @@ def test_tts_presentation_strips_question_header() -> None:
     assert "QUESTION" not in full
 
 
+def test_tts_strips_productization_metadata_category_source_source_ref() -> None:
+    """Regression: CATEGORY/SOURCE/SOURCE_REF keys (added by the
+    productization prompt) must be cut like the older metadata keys —
+    the interviewer must never speak them."""
+    model_output = (
+        "QUESTION: Walk me through the Atlas RAG platform request path.\n"
+        "CATEGORY: system_scaling\n"
+        "SOURCE: resume\n"
+        "SOURCE_REF: Atlas — RAG knowledge platform\n"
+        "DIFFICULTY: medium\n"
+        "TYPE: project_deep_dive\n"
+        "RATIONALE: probes grounding\n"
+        "TARGET: System Design\n"
+        "HINTS:\n"
+        "- Start with caching\n"
+        "- Consider the query path"
+    )
+    spoken = _stream_question(model_output)
+    full = " ".join(spoken)
+    assert "Walk me through the Atlas RAG platform request path." in full
+    for banned in (
+        "CATEGORY:",
+        "system_scaling",
+        "SOURCE:",
+        "SOURCE_REF:",
+        "Atlas — RAG knowledge platform",
+        "resume",
+        "DIFFICULTY:",
+        "RATIONALE:",
+        "TARGET:",
+        "HINTS:",
+        "caching",
+    ):
+        assert banned not in full, f"TTS would speak banned metadata: {banned!r} in {full!r}"
+
+
 def test_tts_presentation_multiline_question_keeps_text_only() -> None:
     spoken = _stream_question(
         "QUESTION: First part of the question.\n"

@@ -95,7 +95,19 @@ class TextSegmenter:
 __all__ = ["TextSegmenter"]
 
 
-_META_PREFIXES = ("TYPE:", "DIFFICULTY:", "RATIONALE:", "RATIONAL:", "TARGET:", "HINTS:")
+_META_PREFIXES = (
+    "TYPE:",
+    "DIFFICULTY:",
+    "RATIONALE:",
+    "RATIONAL:",
+    "TARGET:",
+    "HINTS:",
+    # Productization metadata emitted after the QUESTION section — must never
+    # reach TTS. Keep in sync with generation.QUESTION_META_PREFIXES.
+    "CATEGORY:",
+    "SOURCE:",
+    "SOURCE_REF:",
+)
 
 
 class QuestionStreamExtractor:
@@ -105,6 +117,9 @@ class QuestionStreamExtractor:
     The model streams the plain-text format::
 
         QUESTION: <spoken question, 1-3 sentences>
+        CATEGORY: <taxonomy category>
+        SOURCE: resume | jd | followup | ...
+        SOURCE_REF: <grounded entity>
         TYPE: ...
         DIFFICULTY: ...
         RATIONALE: ...
@@ -116,7 +131,8 @@ class QuestionStreamExtractor:
     metadata key line is WORKFLOW DATA (state/UI/persistence) and must
     never reach TTS. This extractor streams question-text tokens only —
     header stripped, metadata cut — so the segmenter/TTS never speak
-    "TYPE: technical" or a JSON serialization of the question.
+    "TYPE: technical", "CATEGORY: system_scaling", or a JSON
+    serialization of the question.
     """
 
     def __init__(self) -> None:

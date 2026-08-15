@@ -401,7 +401,8 @@ class VoiceEngine:
             segmenter = TextSegmenter()
             # Presentation boundary (P0): only the QUESTION: text section of
             # the model stream is speakable — never TYPE/DIFFICULTY/RATIONALE/
-            # TARGET/HINTS metadata, never JSON of the structured question.
+            # TARGET/HINTS/CATEGORY/SOURCE/SOURCE_REF metadata, never JSON of
+            # the structured question.
             extractor = QuestionStreamExtractor()
             t_qstart = time.monotonic()
             self._first_audio_at = None  # per-question watermark (was stale across turns)
