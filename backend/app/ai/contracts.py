@@ -11,6 +11,7 @@ per capability (ADR-004: generate / embed / rerank / transcribe / synthesize).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
@@ -60,6 +61,20 @@ class ChatResponse(BaseModel):
     thinking_content: str | None = None
 
 
+class ChatStreamChunk(BaseModel):
+    """One delta of a streaming generation (``stream()``).
+
+    ``delta`` is the raw text token produced so far (never validated — the
+    caller applies the same schema validation as non-streaming output).
+    ``finish_reason`` is set on the final chunk when the provider reports it.
+    """
+
+    delta: str = ""
+    model: str = ""
+    finish_reason: str | None = None
+    usage: Usage | None = None
+
+
 class EmbedRequest(BaseModel):
     """Input to ``embed()``. ``model`` overrides the provider default when set."""
 
@@ -93,11 +108,30 @@ class RerankResponse(BaseModel):
 
 @runtime_checkable
 class TextGenerationProvider(Protocol):
-    """Capability: generate text / structured JSON."""
+    """Capability: generate text / structured JSON.
+
+    Deliberately minimal so runtime protocol checks are stable. Streaming is
+    an OPTIONAL capability declared by StreamingTextGenerationProvider —
+    providers without it are handled by the router's single-chunk fallback.
+    """
 
     name: str
 
     async def generate(self, request: ChatRequest) -> ChatResponse: ...
+
+
+@runtime_checkable
+class StreamingTextGenerationProvider(TextGenerationProvider, Protocol):
+    """Optional capability: streaming generation (SSE deltas).
+
+    Implemented as an async generator: ``def stream(...) -> AsyncIterator[...]``.
+    The router falls back to generate() for providers that do not implement
+    this protocol.
+    """
+
+    def stream(self, request: ChatRequest) -> AsyncIterator[ChatStreamChunk]: ...
+
+    async def supports_stream(self) -> bool: ...
 
 
 @runtime_checkable

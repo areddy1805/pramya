@@ -42,15 +42,16 @@ def _router(provider: QueueProvider) -> InferenceRouter:
     return InferenceRouter(policy=TaskPolicyTable(), omlx=None, deepseek=provider)
 
 
-Q = json.dumps(
-    {
-        "text": "Describe a distributed system you built.",
-        "type": "project_deep_dive",
-        "difficulty": "medium",
-        "rationale": "Probes architecture",
-        "hint_levels": ["Think about CAP"],
-        "target_competency": "System Design",
-    }
+Q = (
+    "QUESTION: Describe a distributed system you built. What was the hardest tradeoff you faced?\n"
+    "TYPE: project_deep_dive\n"
+    "DIFFICULTY: medium\n"
+    "RATIONALE: Probes architecture\n"
+    "TARGET: System Design\n"
+    "HINTS:\n"
+    "- Think about CAP\n"
+    "- Consider consistency\n"
+    "- Sketch the design"
 )
 EVAL = json.dumps(
     {
@@ -63,6 +64,15 @@ EVAL = json.dumps(
         "follow_ups": [],
         "evidence": [{"claim": "Built a stream processor", "status": "observed", "strength": 0.8}],
         "evaluator_version": "pramya-eval-1.0",
+    }
+)
+REASONING = json.dumps(
+    {
+        "decision": "follow_up_deep",
+        "reason": "Answer contains a concrete tradeoff worth excavating",
+        "topic": "System Design",
+        "gaps_detected": [],
+        "coverage_tags": ["architecture"],
     }
 )
 HINT = json.dumps({"hint": "Think about consistency across nodes."})
@@ -115,14 +125,14 @@ async def test_question_flow_routes_and_generates() -> None:
         {**_base(), "action": "question"},
         config={"configurable": {"thread_id": "thread-1"}},
     )
-    assert state["question_text"] == "Describe a distributed system you built."
+    assert state["question_text"].startswith("Describe a distributed system you built.")
     assert state["question_type"] == "project_deep_dive"
     assert state["target_competency"] == "System Design"
     assert provider.calls == 1  # exactly one LLM call (question generation)
 
 
 async def test_answer_flow_evaluates_extracts_and_decides() -> None:
-    provider = QueueProvider([EVAL])
+    provider = QueueProvider([EVAL, REASONING])
     wf = build_interview_workflow(_router(provider))
 
     state = await wf.ainvoke(
@@ -137,8 +147,9 @@ async def test_answer_flow_evaluates_extracts_and_decides() -> None:
     assert state["evaluation_overall"] == 7.0
     assert state["extracted_evidence"]  # evidence extraction node ran
     assert state["next_action"] in ("follow_up", "next_question", "repeat", "finish")
-    assert provider.calls == 1  # exactly one LLM call (evaluation)
-
+    # Two LLM calls: evaluation + interviewer reasoning (follow-up routing).
+    assert provider.calls == 2
+    assert (state.get("interviewer_reasoning") or {}).get("decision") == "follow_up_deep"
 
 async def test_hint_flow_returns_hint() -> None:
     provider = QueueProvider([HINT])

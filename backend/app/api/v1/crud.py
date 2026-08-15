@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +15,7 @@ from app.ai.factory import build_inference_router
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.domain.enums import DocumentKind, EvidenceStatus
-from app.domain.errors import NotFoundError
+from app.domain.errors import NotFoundError, ValidationFailedError
 from app.knowledge.ingestion import IngestionService
 from app.knowledge.parsing import parse_document_with_timeout
 from app.repositories.document import DocumentChunkRepository
@@ -71,6 +71,7 @@ class DocumentOut(BaseModel):
 
     id: int
     user_id: int
+    profile_id: int | None = None
     kind: DocumentKind
     filename: str
     mime: str
@@ -79,6 +80,24 @@ class DocumentOut(BaseModel):
     status: str
     parsed_at: datetime | None = None
     created_at: datetime
+
+
+class DocumentUploadOut(BaseModel):
+    """Idempotent upload result: created or deduplicated."""
+
+    status: str  # "created" | "deduplicated"
+    created: bool
+    document_id: int
+    profile_id: int | None = None
+    processing_status: str
+    kind: DocumentKind
+    filename: str
+
+
+class DocumentUploadIn(BaseModel):
+    user_id: int
+    profile_id: int | None = None
+    kind: DocumentKind
 
 
 class EvidenceOut(BaseModel):
@@ -157,21 +176,27 @@ async def delete_candidate(user_id: int, session: SessionDep) -> None:
 async def list_documents(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = None,
     kind: DocumentKind | None = None,
 ) -> list[DocumentOut]:
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
-    docs = await svc.list_documents(user_id, kind=kind)
+    docs = await svc.list_documents(user_id, kind=kind, profile_id=profile_id)
     return [DocumentOut.model_validate(d) for d in docs]
 
 
-@router.post("/documents", response_model=DocumentOut, status_code=201)
+@router.post("/documents", response_model=DocumentUploadOut, status_code=201)
 async def upload_document(
     session: SessionDep,
+    response: Response,
     user_id: Annotated[int, Form()],
     kind: Annotated[DocumentKind, Form()],
     file: UploadFileDep,
-) -> DocumentOut:
+    profile_id: Annotated[int | None, Form()] = None,
+) -> DocumentUploadOut:
+    """Upload a document. Identical content within the same
+    (user, profile) is deduplicated: a 200 with status='deduplicated'
+    identifying the existing document, never a generic failure."""
     settings = get_settings()
     svc = DocumentService(
         session,
@@ -181,15 +206,44 @@ async def upload_document(
         parse_timeout_seconds=settings.document_parse_timeout_seconds,
     )
     data = await file.read()
-    doc, _parsed = await svc.upload(
-        user_id=user_id,
-        kind=kind,
-        filename=file.filename or "unnamed",
-        mime=file.content_type or "application/octet-stream",
-        data=data,
-    )
-    await session.commit()
-    return DocumentOut.model_validate(doc)
+    try:
+        doc, _parsed = await svc.upload(
+            user_id=user_id,
+            profile_id=profile_id,
+            kind=kind,
+            filename=file.filename or "unnamed",
+            mime=file.content_type or "application/octet-stream",
+            data=data,
+        )
+        await session.commit()
+        return DocumentUploadOut(
+            status="created",
+            created=True,
+            document_id=doc.id,
+            profile_id=doc.profile_id,
+            processing_status=str(doc.status),
+            kind=doc.kind,
+            filename=doc.filename,
+        )
+    except ValidationFailedError as exc:
+        details = exc.details or {}
+        existing_id = details.get("document_id")
+        if existing_id is not None:
+            # Idempotent dedup: return the existing document as a normal
+            # application state, not an unexplained failure. 200 (not 201:
+            # nothing was created).
+            response.status_code = 200
+            existing = await svc.get_document(user_id, int(existing_id), profile_id=profile_id)
+            return DocumentUploadOut(
+                status="deduplicated",
+                created=False,
+                document_id=existing.id,
+                profile_id=existing.profile_id,
+                processing_status=str(existing.status),
+                kind=existing.kind,
+                filename=existing.filename,
+            )
+        raise
 
 
 @router.get("/documents/{document_id}", response_model=DocumentOut)
@@ -197,10 +251,11 @@ async def get_document(
     session: SessionDep,
     document_id: int,
     user_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> DocumentOut:
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
-    doc = await svc.get_document(user_id, document_id)
+    doc = await svc.get_document(user_id, document_id, profile_id=profile_id)
     return DocumentOut.model_validate(doc)
 
 
@@ -209,10 +264,11 @@ async def delete_document(
     session: SessionDep,
     document_id: int,
     user_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> None:
     settings = get_settings()
     svc = DocumentService(session, max_size_mb=settings.upload_max_mb)
-    await svc.delete_document(user_id, document_id)
+    await svc.delete_document(user_id, document_id, profile_id=profile_id)
     await session.commit()
 
 
@@ -227,6 +283,7 @@ async def index_document(
     session: SessionDep,
     document_id: int,
     user_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> DocumentIndexOut:
     """Chunk + embed + persist a parsed document (idempotent re-index)."""
     settings = get_settings()
@@ -237,8 +294,8 @@ async def index_document(
         max_pages=settings.document_max_pages,
         parse_timeout_seconds=settings.document_parse_timeout_seconds,
     )
-    doc = await doc_svc.get_document(user_id, document_id)
-    data = await doc_svc.read_stored_bytes(user_id, document_id)
+    doc = await doc_svc.get_document(user_id, document_id, profile_id=profile_id)
+    data = await doc_svc.read_stored_bytes(user_id, document_id, profile_id=profile_id)
     parsed = await parse_document_with_timeout(
         data=data,
         kind=doc.kind,
@@ -288,11 +345,14 @@ async def index_document(
 async def list_evidence(
     session: SessionDep,
     user_id: int,
+    profile_id: int | None = None,
     competency_id: int | None = None,
     status: EvidenceStatus | None = None,
 ) -> list[EvidenceOut]:
     svc = EvidenceService(session)
-    items = await svc.list_evidence(user_id, competency_id=competency_id, status=status)
+    items = await svc.list_evidence(
+        user_id, competency_id=competency_id, status=status, profile_id=profile_id
+    )
     return [EvidenceOut.model_validate(i) for i in items]
 
 
@@ -302,10 +362,16 @@ async def patch_evidence(
     user_id: int,
     evidence_id: int,
     body: EvidencePatch,
+    profile_id: int | None = None,
 ) -> EvidenceOut:
     svc = EvidenceService(session)
     item = await svc.patch(
-        user_id, evidence_id, status=body.status, strength=body.strength, notes=body.notes
+        user_id,
+        evidence_id,
+        status=body.status,
+        strength=body.strength,
+        notes=body.notes,
+        profile_id=profile_id,
     )
     await session.commit()
     return EvidenceOut.model_validate(item)
@@ -343,6 +409,7 @@ class RoleDetailOut(RoleOut):
 
 class RoleAnalyzeIn(BaseModel):
     user_id: int
+    profile_id: int | None = None
     jd_text: str = Field(min_length=20, max_length=100_000)
     source_document_id: int | None = None
 
@@ -355,7 +422,12 @@ async def analyze_role(
     settings = get_settings()
     router = build_inference_router(settings)
     svc = RoleAnalysisService(session, router)
-    role = await svc.analyze(body.user_id, body.jd_text, source_document_id=body.source_document_id)
+    role = await svc.analyze(
+        body.user_id,
+        body.jd_text,
+        source_document_id=body.source_document_id,
+        profile_id=body.profile_id,
+    )
     competencies = await svc.roles.list_competencies(role.id)
     await session.commit()
     # Build manually: model_validate(role) would lazy-load the competencies
@@ -377,12 +449,15 @@ async def get_role(
     role_id: int,
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> RoleDetailOut:
     settings = get_settings()
     router = build_inference_router(settings)
     svc = RoleAnalysisService(session, router)
     role = await svc.roles.get_or_raise(role_id, name="role")
     if role.user_id != user_id:
+        raise NotFoundError("role not found")
+    if profile_id is not None and role.profile_id != profile_id:
         raise NotFoundError("role not found")
     competencies = await svc.roles.list_competencies(role.id)
     detail = RoleDetailOut(
@@ -401,11 +476,20 @@ async def get_role(
 async def list_roles(
     session: SessionDep,
     user_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> list[RoleOut]:
     settings = get_settings()
     router = build_inference_router(settings)
     svc = RoleAnalysisService(session, router)
-    roles = await svc.roles.list_for_user(user_id)
+    if profile_id is not None:
+        # Ownership check: the profile must belong to the user before its
+        # roles are readable (never trust a client-supplied profile_id).
+        profile = await svc.profiles.get_for_user(user_id, profile_id)
+        if profile is None:
+            raise NotFoundError("candidate profile not found")
+        roles = await svc.roles.list_for_profile(profile_id)
+    else:
+        roles = await svc.roles.list_for_user(user_id)
     return [RoleOut.model_validate(r) for r in roles]
 
 
@@ -422,11 +506,16 @@ async def extract_candidate(
     session: SessionDep,
     user_id: int,
     document_id: int = Query(...),
+    profile_id: int | None = None,
 ) -> ExtractionOut:
     settings = get_settings()
     router = build_inference_router(settings)
+    if profile_id is not None:
+        # Ownership check before attributing evidence to a profile.
+        svc = CandidateService(session)
+        await svc.require_profile(user_id, profile_id)
     runner = ResumeExtractionRunner(session, router, storage_dir=Path(settings.upload_storage_dir))
-    extraction, count = await runner.extract_document(user_id, document_id)
+    extraction, count = await runner.extract_document(user_id, document_id, profile_id=profile_id)
     await session.commit()
     return ExtractionOut(
         extraction=extraction.model_dump(),

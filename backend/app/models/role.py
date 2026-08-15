@@ -23,6 +23,10 @@ class Role(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Profile-scoped: a role (analyzed JD / target role) belongs to a profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     source_document_id: Mapped[int | None] = mapped_column(
         ForeignKey("document.id", ondelete="SET NULL"), nullable=True
     )

@@ -20,10 +20,13 @@ class EvidenceRepository(BaseRepository[Evidence]):
         *,
         competency_id: int | None = None,
         status: EvidenceStatus | None = None,
+        profile_id: int | None = None,
         limit: int = 200,
         offset: int = 0,
     ) -> Sequence[Evidence]:
         stmt = select(Evidence).where(Evidence.user_id == user_id)
+        if profile_id is not None:
+            stmt = stmt.where(Evidence.profile_id == profile_id)
         if competency_id is not None:
             stmt = stmt.where(Evidence.competency_id == competency_id)
         if status is not None:

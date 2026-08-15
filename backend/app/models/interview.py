@@ -155,6 +155,14 @@ class Question(Base, TimestampMixin):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     hint_levels: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Provenance (productization): taxonomy category + grounding source and
+    # the specific entity the question targets. The interviewer must never
+    # invent candidate experience — these columns make every question
+    # attributable to resume / JD / profile / evidence / follow-up / generic.
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_competency: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     answers: Mapped[list[Answer]] = relationship(
         back_populates="question", cascade="all, delete-orphan"

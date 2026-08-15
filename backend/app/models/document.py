@@ -29,6 +29,11 @@ class Document(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Profile-scoped: every document belongs to exactly one career profile
+    # (legacy rows backfilled; new uploads always carry profile_id).
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     kind: Mapped[DocumentKind] = mapped_column(
         String(32), nullable=False
     )  # validated as DocumentKind by domain/service layer

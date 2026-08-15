@@ -1,4 +1,5 @@
 .PHONY: up down logs ps \
+        dev dev-down dev-status dev-logs dev-verify dev-reset \
         test test-unit test-integration evals lint typecheck \
         dev-backend dev-frontend migrate models-pull demo-setup \
         backend-install frontend-install
@@ -47,6 +48,23 @@ typecheck:
 	cd frontend && pnpm exec tsc -b --noEmit
 
 # --- Dev -------------------------------------------------------------------
+
+dev: ; @bash scripts/dev up
+
+dev-down:
+	@bash scripts/dev down
+
+dev-status:
+	@bash scripts/dev status
+
+dev-logs:
+	@bash scripts/dev logs
+
+dev-verify:
+	@bash scripts/dev check
+
+dev-reset:
+	@bash scripts/dev reset
 
 dev-backend:
 	cd backend && uv run uvicorn app.main:app --reload --port 8001

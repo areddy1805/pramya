@@ -1,8 +1,9 @@
 # Langfuse OSS self-hosted observability stack (Phase E, ADR-008).
 # MIT-licensed, self-hosted. Langfuse Cloud/Enterprise are NOT V1 deps.
 #
-# Start with:  docker compose --profile langfuse up -d
-# (kept out of the default `up` so the 16GB dev Mac stays light).
+# Started by `make dev` (or: docker compose -f docker-compose.langfuse.yml up -d).
+# Own project name so it never collides with / orphans the main compose stack.
+name: pramya-langfuse
 #
 # Web UI:  http://localhost:3000   (default admin/admin@example.com)
 # API:     http://localhost:3000/api/public

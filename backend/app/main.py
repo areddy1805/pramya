@@ -25,6 +25,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.domain.errors import ErrorEnvelope, PramyaError
+from app.observability import flush_pending
 
 
 @asynccontextmanager
@@ -32,6 +33,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging()
     # Future: provider health checks, model lifecycle.
     yield
+    # Best-effort, bounded: never let a stuck telemetry exporter delay
+    # shutdown (broken/slow Langfuse ingestion must not block the app).
+    flush_pending()
     await engine.dispose()
 
 

@@ -65,15 +65,34 @@ class StubASR:
 class StubTTS:
     pcm: bytes = b"\x00\x00" * 96000  # 2 s @ 24 kHz
     sr: int = 24000
+    supports_stream: bool = False
     synthesizes: list[str] = field(default_factory=list)
     gate: asyncio.Event | None = None  # if set, synthesize blocks until released
     chunk_delay: float = 0.0  # per-chunk sleep (deterministic mid-stream interrupts)
+    calls: list[str] = field(default_factory=list)  # ordered: warmup/synthesize
 
     async def synthesize(self, text: str) -> tuple[bytes, int]:
         self.synthesizes.append(text)
+        self.calls.append(f"syn:{text}")
         if self.gate is not None:
             await self.gate.wait()
         return self.pcm, self.sr
+
+    async def synthesize_stream(self, text: str, *, streaming_interval: float = 1.0):
+        """Streaming surface: yields PCM in 200ms (9600-byte) frames."""
+        self.synthesizes.append(text)
+        self.calls.append(f"syn:{text}")
+        if self.gate is not None:
+            await self.gate.wait()
+        for i in range(0, len(self.pcm), 9600):
+            if self.gate is not None and not self.gate.is_set():
+                await self.gate.wait()
+            yield self.pcm[i : i + 9600]
+            if self.chunk_delay:
+                await asyncio.sleep(self.chunk_delay)
+
+    async def warmup(self) -> None:
+        self.calls.append("warmup")
 
 
 class StubTranscripts:
@@ -121,6 +140,7 @@ class StubInterview:
     def __init__(self) -> None:
         self.started = False
         self.next_question_text = "Tell me about a hard problem you solved."
+        self.next_question_stream_tokens = ["Tell me about a ", "hard problem ", "you solved."]
         self.question_seq = 0
         self.turn_seq = 0
         self.answer_texts: list[str] = []
@@ -148,6 +168,22 @@ class StubInterview:
         turn = type("T", (), {"id": self.turn_seq})()
         return q, turn
 
+    async def next_question_streaming(self, session_id: int, user_id: int):
+        """Streaming seam: tokens then the persisted question pair."""
+        self.question_seq += 1
+        self.turn_seq += 1
+        # Stream the question text in word-ish chunks so the segmenter sees a
+        # realistic token stream.
+        for tok in self.next_question_stream_tokens:
+            yield ("token", tok)
+        q = type(
+            "Q",
+            (),
+            {"id": self.question_seq, "text": self.next_question_text, "difficulty": "medium"},
+        )()
+        turn = type("T", (), {"id": self.turn_seq})()
+        yield ("question", (q, turn))
+
     async def submit_answer(
         self,
         session_id: int,
@@ -157,10 +193,22 @@ class StubInterview:
         answer_text: str,
         idempotency_key: str | None,
         mode: str,
+        await_evaluation: bool = True,
     ) -> object:
         self.answer_texts.append(answer_text)
         self.turn_seq += 1
         return type("A", (), {"id": 1})()
+
+    async def evaluate_answer(
+        self,
+        session_id: int,
+        user_id: int,
+        *,
+        question_id: int,
+        answer_text: str,
+        hints_used: int = 0,
+    ) -> object:
+        return type("E", (), {"overall": self.overall})()
 
     async def stop(self, session_id: int, user_id: int) -> object:
         return object()
@@ -293,6 +341,55 @@ async def test_engine_streams_question_then_listens_after_playback_complete() ->
     questions = [e for e in ws.json_out if e.get("type") == "question"]
     assert questions[0]["text"] == "Tell me about a hard problem you solved."
     assert "tts_start" in {e.get("type") for e in ws.json_out}
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_streaming_provider_relays_chunks_via_synthesize_stream() -> None:
+    """Provider-agnostic streaming hook: when the TTS exposes
+    ``supports_stream``, the engine relays per-chunk PCM as generated
+    (first audio before the segment exists in full) and never calls
+    ``synthesize`` for the segment."""
+
+    @dataclass
+    class StubStreamingTTS(StubTTS):
+        supports_stream: bool = True  # field re-declaration overrides base default
+        stream_calls: list[str] = field(default_factory=list)
+        synth_calls: list[str] = field(default_factory=list)
+
+        async def synthesize_stream(self, text: str, *, streaming_interval: float = 1.0):
+            self.stream_calls.append(text)
+            # 1920-byte frames (80 ms @ 24 kHz), as Pocket yields.
+            for i in range(0, len(self.pcm), 1920):
+                yield self.pcm[i : i + 1920]
+                await asyncio.sleep(0)
+
+        async def synthesize(self, text: str) -> tuple[bytes, int]:
+            self.synth_calls.append(text)
+            return self.pcm, self.sr
+
+    ws = StubWS()
+    tts = StubStreamingTTS()
+    interview = StubInterview()
+    engine = VoiceEngine(
+        interview=interview,  # type: ignore[arg-type]
+        asr=StubASR(),  # type: ignore[arg-type]
+        tts=tts,  # type: ignore[arg-type]
+        session_id=7,
+        user_id=1,
+        ws=ws,
+        silence_seconds=0.05,
+        speech_rms=10.0,
+        playback_timeout_seconds=0.5,
+        transcripts=StubTranscripts(),  # type: ignore[arg-type]
+    )
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "question", ms=5000)
+    assert await _wait_event(ws, "tts_stop", ms=5000)
+    assert tts.stream_calls, "streaming provider must be used when supports_stream"
+    assert tts.synth_calls == [], "full-utterance synthesize must not be used"
+    assert ws.bytes_out, "streamed frames must reach the client"
+    assert max(len(f) for f in ws.bytes_out) <= 1920, "raw streamed chunk sizes preserved"
     await _cancel_task(task)
 
 
@@ -672,6 +769,35 @@ async def test_barge_in_interrupt_discards_playback_residue() -> None:
 
 
 @pytest.mark.asyncio
+async def test_barge_in_default_off_does_not_interrupt_sustained_speech() -> None:
+    """Regression (live defect): voice-triggered barge-in MUST be OFF by
+    default. With it disabled, sustained loud mic energy during SPEAKING
+    (the interviewer's own TTS leaking through speakers) is discarded and
+    the question completes — it must never self-truncate mid-word."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    # engine defaults (barge_in_enabled=False, rms 900, ms 250) left intact
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Sustained loud mic frames while the interviewer is speaking (the
+    # gated stub holds the engine in THINKING pre-audio; same discard path).
+    for _ in range(20):
+        ws.push_bytes(b"\x7f\x7f" * 1600)
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.05)
+    # No interrupt: sustained speech is discarded, never self-triggers.
+    assert not await _wait_state_event(ws, "interrupted", ms=300)
+    assert engine._interruptions == 0
+    # The question completes: gate releases -> audio flows -> tts_stop.
+    tts.gate.set()
+    assert await _wait_event(ws, "tts_stop", ms=3000)
+    assert "speaking" in _states(ws), "audio must still have flowed to SPEAKING"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
 async def test_voice_barge_in_optin_detects_sustained_speech_during_tts() -> None:
     """Opt-in voice-triggered barge-in: sustained mic energy during SPEAKING
     cancels TTS and opens listening (explicit, threshold-gated detection)."""
@@ -728,7 +854,14 @@ async def test_long_run_multi_turn_endurance() -> None:
         await _open_listening(ws, engine, ms=2000)
         ws.push_bytes(b"\x00\x01" * 3200)
         ws.push_json({"type": "end_turn"})
-        if not await _wait_event(ws, "evaluation", ms=5000):
+        # R11: EVERY answer must produce its own deferred evaluation event
+        # (per-answer dedup, not a one-shot evaluation flag).
+        for _ in range(1000):
+            evals = [e for e in ws.json_out if e.get("type") == "evaluation"]
+            if len(evals) >= turn + 1:
+                break
+            await asyncio.sleep(0.005)
+        else:
             raise AssertionError(f"no evaluation on turn {turn}")
         # Let the next-question pipeline settle.
         for _ in range(200):
@@ -764,4 +897,107 @@ async def test_long_run_multi_turn_endurance() -> None:
     # Generations strictly increase per TTS stream (no reuse).
     gens = [e.get("generation") for e in ws.json_out if e.get("type") == "tts_start"]
     assert gens == sorted(gens) and len(gens) == len(set(gens)), "generation must be monotonic"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_tts_warmup_precedes_first_synthesis() -> None:
+    """R4 regression: the TTS model is warmed (awaited) BEFORE the first
+    question pipeline synthesizes, so the first real synthesis never queues
+    behind the warmup request on the serialized oMLX slot."""
+    ws = StubWS()
+    tts = StubTTS()
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "question", ms=5000)
+    # The worker synthesizes the first flushed segment right after the
+    # question event; poll until it has run.
+    for _ in range(400):
+        if any(c.startswith("syn:") for c in tts.calls):
+            break
+        await asyncio.sleep(0.005)
+    await _cancel_task(task)
+    assert tts.calls and tts.calls[0] == "warmup", f"expected warmup first, got {tts.calls}"
+    assert any(c.startswith("syn:") for c in tts.calls)
+    warmup_idx = tts.calls.index("warmup")
+    syn_idxs = [i for i, c in enumerate(tts.calls) if c.startswith("syn:")]
+    assert syn_idxs and warmup_idx < syn_idxs[0]
+
+
+@pytest.mark.asyncio
+async def test_stop_mid_tts_halts_all_audio_sends() -> None:
+    """P0: stopping the interview while the interviewer is mid-TTS must halt
+    the audio sender immediately — no further bytes reach the browser even
+    if synthesis had buffered more audio."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    # Let the producer enqueue a few frames, then stop mid-speech.
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "stop"})
+    assert await _wait_state(engine, ws, VoiceState.COMPLETED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    # Release the synthesis gate: any frames still in the pipeline must NOT
+    # be transmitted after the session is completed.
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after stop"
+    assert engine._generation >= 1  # generation invalidated
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_cancel_mid_tts_halts_all_audio_sends() -> None:
+    """P0: cancelling the interview mid-TTS halts the audio sender too."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "cancel"})
+    assert await _wait_state(engine, ws, VoiceState.CANCELLED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after cancel"
+    await _cancel_task(task)
+
+
+@pytest.mark.asyncio
+async def test_cancel_stops_tts_when_session_already_terminal() -> None:
+    """P0: the session can be cancelled via the HTTP/SSE path while the voice
+    WS is still live. The engine's _cancel must tolerate the already-terminal
+    session (InterviewStateError) and STILL stop the audio sender."""
+    ws = StubWS()
+    tts = StubTTS(gate=asyncio.Event())
+    engine = _engine(ws)
+    engine.tts = tts  # type: ignore[assignment]
+    engine.playback_timeout_seconds = 0.2
+    interview = engine.interview
+    original_cancel = interview.cancel
+
+    async def cancel_already_terminal(session_id: int, user_id: int) -> object:
+        from app.domain.errors import InterviewStateError
+
+        raise InterviewStateError("already terminal")
+
+    interview.cancel = cancel_already_terminal  # type: ignore[method-assign]
+    task = asyncio.create_task(engine.run(ws))
+    assert await _wait_event(ws, "tts_start", ms=5000)
+    await asyncio.sleep(0.05)
+    ws.push_json({"type": "cancel"})
+    assert await _wait_state(engine, ws, VoiceState.CANCELLED, ms=3000)
+    sent_before = len(ws.bytes_out)
+    tts.gate.set()
+    await asyncio.sleep(0.1)
+    assert len(ws.bytes_out) == sent_before, "audio sent after terminal cancel"
+    interview.cancel = original_cancel  # type: ignore[method-assign]
     await _cancel_task(task)

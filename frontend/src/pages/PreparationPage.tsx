@@ -4,41 +4,43 @@ import {
   usePreparation,
   useReadiness,
   useRegeneratePreparation,
+  useResolvedProfile,
   useRoles,
   DEFAULT_USER_ID,
 } from '../hooks/queries'
-import { Button, EmptyState, ErrorState, Meter, Pill, SectionHeading, Skeleton, Spinner, Stat, Surface } from '../components/ui'
+import { Button, EmptyState, ErrorState, Meter, Micro, SectionHeading, Skeleton, Spinner, Stat, Surface, Tag } from '../components/ui'
 
 export function PreparationPage() {
   const navigate = useNavigate()
-  const readiness = useReadiness(DEFAULT_USER_ID)
-  const compute = useComputeReadiness(DEFAULT_USER_ID)
-  const prep = usePreparation(DEFAULT_USER_ID)
-  const regenerate = useRegeneratePreparation(DEFAULT_USER_ID)
-  const roles = useRoles(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const readiness = useReadiness(DEFAULT_USER_ID, activeId)
+  const compute = useComputeReadiness(DEFAULT_USER_ID, activeId)
+  const prep = usePreparation(DEFAULT_USER_ID, activeId)
+  const regenerate = useRegeneratePreparation(DEFAULT_USER_ID, activeId)
+  const roles = useRoles(DEFAULT_USER_ID, activeId)
 
   const roleId = roles.data?.at(-1)?.id
   const busy = compute.isPending || regenerate.isPending
   const ready = readiness.data
   const queue = prep.data ?? []
-  const maxPriority = queue.reduce((m, i) => Math.max(m, i.priority), 0)
 
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Preparation map</h1>
-        <p className="mt-1 text-sm text-fg-2">Your competency model against the target role, and the practice queue it generates.</p>
+        <Micro>Preparation</Micro>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight">Preparation map</h1>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-fg-2">Your competency model against the target role, and the practice queue it generates.</p>
       </header>
 
       {compute.isError ? <ErrorState title="Readiness computation failed" body={compute.error instanceof Error ? compute.error.message : undefined} onRetry={() => void compute.mutateAsync(roleId)} /> : null}
 
       {/* Readiness summary */}
-      <Surface tone="accent" className="p-6">
+      <Surface className="p-6">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="min-w-0">
             <SectionHeading>Overall readiness</SectionHeading>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-semibold tracking-tight">{ready?.overall?.toFixed(1) ?? '—'}</span>
+              <span className={`tabular text-4xl font-semibold tracking-tight ${ready?.overall != null && ready.overall >= 7.5 ? 'text-ok' : ready?.overall != null && ready.overall >= 5 ? 'text-fg' : 'text-warn'}`}>{ready?.overall?.toFixed(1) ?? '—'}</span>
               <span className="text-sm text-fg-3">/ 10</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-8 gap-y-2">
@@ -66,15 +68,14 @@ export function PreparationPage() {
       {readiness.isLoading ? <Skeleton className="h-48" /> : null}
 
       {/* Competency model */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
         <Surface className="p-5">
           <SectionHeading>Competencies vs target</SectionHeading>
           {!ready?.per_competency?.length ? (
-            <EmptyState
-              icon="🧭"
-              title="No competency model yet"
-              body="Analyze a job description to build the model. Readiness is then computed from evidence and practice — not guessed."
-            />
+              <EmptyState
+                title="No competency model yet"
+                body="Analyze a job description to build the model. Readiness is then computed from evidence and practice — not guessed."
+              />
           ) : (
             <ul className="space-y-4">
               {ready.per_competency.map((comp) => {
@@ -84,7 +85,7 @@ export function PreparationPage() {
                     <div className="mb-1 flex items-center justify-between gap-3">
                       <span className="text-sm font-medium text-fg">
                         {comp.name}{' '}
-                        <Pill tone={comp.importance === 'required' ? 'warn' : 'neutral'}>{targetLevel}</Pill>
+                        <Tag>{targetLevel}</Tag>
                       </span>
                       <span className="text-xs text-fg-3">
                         level {comp.demonstrated_level}/5 · {comp.score.toFixed(1)}/10
@@ -101,35 +102,25 @@ export function PreparationPage() {
 
         {/* Practice queue */}
         <Surface className="p-5">
-          <SectionHeading aside={<Pill tone={queue.length ? 'accent' : 'neutral'}>{queue.length} open</Pill>}>Today's practice queue</SectionHeading>
+          <SectionHeading aside={<Tag>{queue.length} open</Tag>}>Today's practice queue</SectionHeading>
           {!queue.length ? (
             <EmptyState
-              icon="📋"
               title="Queue is empty"
               body="Refresh readiness with a target role, then regenerate the queue. It prioritizes the largest gaps with the weakest evidence."
             />
           ) : (
-            <ol className="space-y-2.5">
+            <ol className="space-y-2">
               {queue.map((item) => (
                 <li
                   key={item.id}
-                  className="flex items-center gap-4 rounded-lg border border-line bg-surface p-3.5"
-                  style={{ opacity: 0.55 + 0.45 * (item.priority / Math.max(1, maxPriority)) }}
+                  className="flex items-center gap-4 rounded-[var(--r-md)] border border-line bg-surface px-3.5 py-3"
                 >
-                  <div className="w-12 shrink-0 text-center">
-                    <p className="text-lg font-semibold tracking-tight text-fg">{item.priority}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-fg-3">priority</p>
-                  </div>
+                  <span className="tabular w-8 shrink-0 text-center text-lg font-semibold tracking-tight text-fg">{item.priority}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-fg">{item.competency_name ?? 'Practice'}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-fg-2">{item.reason}</p>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <Pill tone="accent">≈ {item.estimated_minutes ?? 15} min</Pill>
-                    {item.expected_improvement ? (
-                      <p className="mt-1 text-[11px] text-fg-3">+{Math.round(item.expected_improvement * 100)}% expected</p>
-                    ) : null}
-                  </div>
+                  <span className="shrink-0 text-xs text-fg-3">≈ {item.estimated_minutes ?? 15} min</span>
                 </li>
               ))}
             </ol>

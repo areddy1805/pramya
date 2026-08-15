@@ -28,6 +28,10 @@ class ReadinessSnapshot(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Profile-scoped: readiness snapshots belong to one career profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     role_id: Mapped[int | None] = mapped_column(
         ForeignKey("role.id", ondelete="SET NULL"), nullable=True
     )

@@ -15,17 +15,34 @@ class DocumentRepository(BaseRepository[Document]):
     model = Document
 
     async def list_for_user(
-        self, user_id: int, *, kind: DocumentKind | None = None
+        self,
+        user_id: int,
+        *,
+        kind: DocumentKind | None = None,
+        profile_id: int | None = None,
+        legacy_only: bool = False,
     ) -> Sequence[Document]:
         stmt = select(Document).where(Document.user_id == user_id)
+        if legacy_only:
+            # Explicit global/legacy rows only (profile_id IS NULL) — never
+            # other profiles' documents.
+            stmt = stmt.where(Document.profile_id.is_(None))
+        elif profile_id is not None:
+            stmt = stmt.where(Document.profile_id == profile_id)
         if kind is not None:
             stmt = stmt.where(Document.kind == kind)
         return (await self.session.scalars(stmt.order_by(Document.id))).all()
 
-    async def get_by_hash(self, user_id: int, content_hash: str) -> Document | None:
-        stmt = select(Document).where(
-            Document.user_id == user_id, Document.content_hash == content_hash
-        )
+    async def get_by_hash(
+        self, user_id: int, content_hash: str, *, profile_id: int | None = None
+    ) -> Document | None:
+        """Content-hash lookup. Dedup is scoped to (user, profile) so the
+        same file in a different career profile is a distinct document.
+        profile_id=None (legacy callers) scopes to the user only."""
+        stmt = select(Document).where(Document.user_id == user_id)
+        if profile_id is not None:
+            stmt = stmt.where(Document.profile_id == profile_id)
+        stmt = stmt.where(Document.content_hash == content_hash)
         return (await self.session.scalars(stmt)).first()
 
 

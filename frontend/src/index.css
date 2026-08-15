@@ -5,37 +5,43 @@
  *
  * Semantic tokens: components consume these, never raw colors.
  * Light values in :root; dark overrides under .dark (default).
+ *
+ * Material rules:
+ *  - Surfaces are FLAT: hairline borders, no default shadow. Depth comes
+ *    from hierarchy (text weight, density, size), not boxes.
+ *  - Shadows exist only where something floats (menus, popovers, modals).
+ *  - Radius is small and consistent. One accent. State via color + text.
  */
 
 :root {
   /* Canvas — ambient application background */
   --canvas: #f5f6f8;
-  --canvas-glow: radial-gradient(60% 45% at 30% 0%, rgba(37, 99, 235, 0.06), transparent 70%);
+  --canvas-glow: radial-gradient(52% 40% at 30% 0%, rgba(37, 99, 235, 0.05), transparent 70%);
 
-  /* Materials */
+  /* Materials — flat surfaces */
   --surface: #ffffff;
   --surface-2: #fafbfc;
+  --surface-3: #f2f4f7;
   --elevated: #ffffff;
   --floating: #ffffff;
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-strong: rgba(255, 255, 255, 0.86);
+  --glass-bg: rgba(255, 255, 255, 0.78);
 
   /* Lines */
   --line: #e3e6eb;
-  --hairline: #eef0f3;
-  --track: #edf0f3;
+  --hairline: #edf0f3;
+  --track: #e9edf1;
 
   /* Text */
-  --fg: #12161d;
-  --fg-2: #4a5564;
-  --fg-3: #8a93a2;
-  --fg-disabled: #b6bdc8;
+  --fg: #14181f;
+  --fg-2: #4b5563;
+  --fg-3: #8b94a3;
+  --fg-disabled: #b8bfc9;
 
   /* Accent — restrained illumination */
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.1);
-  --accent-line: rgba(37, 99, 235, 0.24);
+  --accent-soft: rgba(37, 99, 235, 0.09);
+  --accent-line: rgba(37, 99, 235, 0.28);
 
   /* Semantic states */
   --ok: #15803d;
@@ -43,62 +49,70 @@
   --warn: #b45309;
   --warn-soft: rgba(180, 83, 9, 0.1);
   --danger: #b91c1c;
-  --danger-soft: rgba(185, 28, 28, 0.09);
+  --danger-soft: rgba(185, 28, 28, 0.08);
 
-  /* Depth */
-  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.25);
-  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.04);
-  --shadow-2: 0 4px 12px rgba(16, 24, 40, 0.07), 0 2px 4px rgba(16, 24, 40, 0.04);
-  --shadow-3: 0 12px 32px rgba(16, 24, 40, 0.12), 0 4px 10px rgba(16, 24, 40, 0.06);
+  /* Depth — floats only */
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.22);
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-2: 0 6px 20px rgba(16, 24, 40, 0.1), 0 2px 6px rgba(16, 24, 40, 0.05);
+  --shadow-3: 0 16px 40px rgba(16, 24, 40, 0.14), 0 4px 12px rgba(16, 24, 40, 0.07);
+
+  /* Radii — small, consistent */
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 9px;
+  --r-xl: 12px;
 
   /* Motion */
   --ease: cubic-bezier(0.33, 1, 0.68, 1);
-  --dur-fast: 140ms;
-  --dur: 220ms;
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 130ms;
+  --dur: 200ms;
 }
 
 .dark {
-  --canvas: #0b0e14;
-  --canvas-glow: radial-gradient(55% 42% at 32% 0%, rgba(78, 116, 220, 0.14), transparent 70%);
+  --canvas: #0a0d13;
+  --canvas-glow: radial-gradient(50% 38% at 32% 0%, rgba(80, 118, 220, 0.11), transparent 70%);
 
-  --surface: rgba(17, 21, 29, 0.86);
-  --surface-2: rgba(13, 16, 23, 0.7);
-  --elevated: rgba(23, 28, 38, 0.92);
-  --floating: rgba(28, 34, 46, 0.96);
-  --glass-bg: rgba(13, 16, 23, 0.66);
-  --glass-bg-strong: rgba(17, 21, 29, 0.82);
+  --surface: rgba(16, 20, 28, 0.9);
+  --surface-2: rgba(12, 15, 22, 0.82);
+  --surface-3: rgba(24, 29, 39, 0.9);
+  --elevated: rgba(21, 26, 36, 0.94);
+  --floating: rgba(27, 33, 45, 0.97);
+  --glass-bg: rgba(12, 15, 22, 0.72);
 
-  --line: rgba(226, 232, 240, 0.1);
-  --hairline: rgba(226, 232, 240, 0.06);
-  --track: rgba(226, 232, 240, 0.09);
+  --line: rgba(224, 231, 240, 0.09);
+  --hairline: rgba(224, 231, 240, 0.05);
+  --track: rgba(224, 231, 240, 0.08);
 
-  --fg: #e9edf3;
-  --fg-2: #a3adbd;
-  --fg-3: #6d7787;
-  --fg-disabled: #4a5260;
+  --fg: #e8ecf3;
+  --fg-2: #a2acbc;
+  --fg-3: #687284;
+  --fg-disabled: #454e5c;
 
   --accent: #6ea8ff;
-  --accent-hover: #86b6ff;
-  --accent-soft: rgba(110, 168, 255, 0.12);
+  --accent-hover: #89b8ff;
+  --accent-soft: rgba(110, 168, 255, 0.11);
   --accent-line: rgba(110, 168, 255, 0.3);
 
   --ok: #3ecf8e;
-  --ok-soft: rgba(62, 207, 142, 0.12);
+  --ok-soft: rgba(62, 207, 142, 0.11);
   --warn: #f0b44b;
-  --warn-soft: rgba(240, 180, 75, 0.12);
+  --warn-soft: rgba(240, 180, 75, 0.11);
   --danger: #f07171;
-  --danger-soft: rgba(240, 113, 113, 0.12);
+  --danger-soft: rgba(240, 113, 113, 0.11);
 
-  --focus-ring: 0 0 0 3px rgba(110, 168, 255, 0.3);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.28);
-  --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-3: 0 16px 40px rgba(0, 0, 0, 0.5), 0 6px 14px rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 3px rgba(110, 168, 255, 0.28);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.32);
+  --shadow-3: 0 20px 48px rgba(0, 0, 0, 0.55), 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-elevated: var(--elevated);
   --color-floating: var(--floating);
   --color-line: var(--line);
@@ -114,6 +128,11 @@
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -131,6 +150,10 @@ body {
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
+::selection {
+  background: var(--accent-soft);
+}
+
 /* Atmospheric canvas: subtle radial illumination, nearly imperceptible */
 body::before {
   content: '';
@@ -145,7 +168,7 @@ body::before {
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 
 /* Reduced motion */
@@ -164,7 +187,7 @@ body::before {
 @keyframes pramya-rise {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -173,38 +196,80 @@ body::before {
 }
 
 .pramya-rise {
-  animation: pramya-rise 240ms var(--ease) both;
+  animation: pramya-rise 220ms var(--ease) both;
 }
 
-/* Glass material utilities — used selectively, never everywhere */
-.glass-1 {
+/* Dropdown / popover entrance */
+@keyframes pramya-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pramya-pop {
+  animation: pramya-pop 140ms var(--ease) both;
+}
+
+/* Glass — shell chrome only, never content cards */
+.glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  border: 1px solid var(--line);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
 }
 
-.glass-2 {
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-2);
-}
-
-/* Interview focus lock: dim surroundings during processing */
-.pramya-focus-lock::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: rgba(4, 6, 10, 0.4);
-  z-index: 20;
-  pointer-events: none;
-  transition: opacity var(--dur) var(--ease);
+/* Interview state dot — steady illumination, no pulse */
+.state-dot {
+  border-radius: 9999px;
+  box-shadow: 0 0 0 4px var(--dot-halo, transparent);
 }
 
 /* Number refinement: tabular figures for measurements */
 .tabular {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+
+/* Keyboard key */
+kbd.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  color: var(--fg-3);
+  background: var(--surface-2);
+}
+
+/* Thin scrollbars for long panels (transcript, logs) */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--track) transparent;
+}
+.thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--track);
+  border-radius: 3px;
+}
+
+/* Compact drop zone */
+.drop-zone {
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.drop-zone:hover,
+.drop-zone:focus-within {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }

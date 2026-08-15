@@ -28,6 +28,7 @@ def test_voice_state_complete_set() -> None:
     expected = {
         "idle",
         "starting",
+        "thinking",
         "listening",
         "processing",
         "speaking",

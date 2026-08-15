@@ -26,6 +26,10 @@ class Evidence(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Profile-scoped: evidence belongs to a career profile.
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     source_kind: Mapped[EvidenceSourceKind] = mapped_column(String(32), nullable=False)
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     claim: Mapped[str] = mapped_column(Text, nullable=False)

@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from typing import Any, cast
 
 from app.ai.contracts import (
     ChatMessage,
     ChatRequest,
     ChatResponse,
+    ChatStreamChunk,
     EmbeddingProvider,
     EmbedRequest,
     EmbedResponse,
@@ -145,6 +148,120 @@ class InferenceRouter:
             },
         )
 
+    # -- streaming text generation (V1.1) -----------------------------------
+
+    async def stream(
+        self,
+        task: TaskClass,
+        messages: list[ChatMessage],
+        *,
+        json_mode: bool = False,
+        thinking: bool | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[tuple[RouterDecision | None, str]]:
+        """Stream a generation; yields (decision, text_delta) per chunk.
+
+        Same policy resolution as ``generate()``. Providers without a real
+        stream implementation fall back to a single-chunk yield of the full
+        content (so fakes/legacy providers keep working). The first yield
+        carries the decision; later yields carry decision=None.
+        """
+        task_policy = self._policy.for_task(task)
+        chain = (task_policy.model, *task_policy.fallback_models)
+        attempts: list[dict[str, object]] = []
+
+        for model in chain:
+            spec = self._policy.model_spec(model)
+            if spec.capability != "generate":
+                raise ProviderConfigurationError(
+                    f"task {task.value} routes to non-generation model {model.value}"
+                )
+            provider = self._text_provider(spec.provider)
+            if provider is None:
+                attempts.append({"model": model.value, "status": "not_configured"})
+                continue
+            request = ChatRequest(
+                messages=messages,
+                json_mode=json_mode,
+                thinking=thinking if thinking is not None else spec.thinking,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            try:
+                started = time.monotonic()
+                full = ""
+                decision: RouterDecision | None = None
+                streamer = getattr(provider, "stream", None)
+                if not callable(streamer) or not await _supports_stream(provider):
+                    # Fallback: non-streaming provider -> single chunk.
+                    response = await provider.generate(request)
+                    full = response.content
+                    latency_ms = (time.monotonic() - started) * 1000
+                    decision = self._decision(
+                        task, task_policy, spec, model, request, latency_ms, full
+                    )
+                    yield decision, full
+                    return
+                async for chunk in cast("AsyncIterator[ChatStreamChunk]", streamer(request)):
+                    delta = chunk.delta if hasattr(chunk, "delta") else str(chunk)
+                    full += delta
+                    if decision is None:
+                        latency_ms = (time.monotonic() - started) * 1000
+                        decision = self._decision(
+                            task, task_policy, spec, model, request, latency_ms, full
+                        )
+                        yield decision, delta
+                    else:
+                        yield None, delta
+                if decision is None:
+                    decision = self._decision(task, task_policy, spec, model, request, 0.0, full)
+                    yield decision, ""
+                return
+            except ProviderConnectionError:
+                attempts.append({"model": model.value, "status": "unavailable"})
+                continue
+            except AIError:
+                raise  # auth/request errors are not fallback-eligible
+
+        raise ProviderConnectionError(
+            f"no available provider for task {task.value}",
+            details={
+                "task": task.value,
+                "primary": task_policy.model.value,
+                "fallbacks": [m.value for m in task_policy.fallback_models],
+                "attempts": attempts,
+            },
+        )
+
+    def _decision(
+        self,
+        task: TaskClass,
+        task_policy: Any,
+        spec: Any,
+        model: ModelId,
+        request: ChatRequest,
+        latency_ms: float,
+        full_text: str,
+    ) -> RouterDecision:
+        degraded = model != task_policy.model
+        decision = RouterDecision(
+            task=task,
+            provider=spec.provider.value,
+            model=model.value,
+            reason=self._reason(task_policy.model, model, degraded),
+            thinking=request.thinking,
+            degraded=degraded,
+            fallback_of=task_policy.model.value if degraded else None,
+        )
+        self._log_decision(
+            level="warning" if degraded else "info",
+            decision=decision,
+            latency_ms=latency_ms,
+            tokens=len(full_text),
+        )
+        return decision
+
     # -- embeddings ---------------------------------------------------------
 
     async def embed(self, texts: list[str]) -> EmbedResponse:
@@ -233,3 +350,16 @@ class InferenceRouter:
         }
         log = getattr(self._logger, level, self._logger.info)
         log("routing decision", extra={"extra_fields": fields})
+
+
+async def _supports_stream(provider: object) -> bool:
+    """True when the provider advertises real streaming."""
+    supports: Any = getattr(provider, "supports_stream", None)
+    if not callable(supports):
+        return True  # has stream attr and no explicit opt-out
+    try:
+        result = await cast("Any", supports)()
+        return bool(result)
+    except Exception:  # pragma: no cover - defensive
+        logging.getLogger("app.ai.router").debug("stream support probe failed", exc_info=True)
+        return True

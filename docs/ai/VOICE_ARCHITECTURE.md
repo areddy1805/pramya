@@ -11,6 +11,7 @@
 | H.2 turn finalization | ✅ | auto (RMS speech → silence watchdog, `voice_silence_seconds`) + manual (`end_turn` / Done speaking) |
 | H.3 answer loop | ✅ | end_turn → final ASR → `submit_answer` (DeepSeek) → evaluation event → next question → TTS |
 | H.4 model routing | ✅ | `voice_live_asr_model` (Parakeet), `voice_offline_asr_model` (Qwen3-ASR), `voice_tts_model`; live ASR ≠ offline ASR |
+| TTS provider (ADR-027) | ✅ | `TTS_PROVIDER=pocket` default (Kyutai pocket-tts CPU, ~30 ms first PCM, 8-9× RTF, E2E Q1 first-audio 1.62 s); `TTS_PROVIDER=qwen3` fallback; provider-agnostic engine via `TTSSynthesizer` + `supports_stream` |
 | H.5 concurrency tests | ✅ | hot-loop interrupt mid-TTS, generation bump, no stale chunks, auto+manual end_turn, pause/resume/stop |
 | H.6 playback lifecycle | ✅ | AudioContext created synchronously in click; playback gated on `state==='running'` |
 | H.7 generation IDs | ✅ | `generation` on tts_start/tts_stop; server skips stale generations; client drops stale chunks |
@@ -121,12 +122,31 @@ guessed).
 - Offline reprocessing of uploaded recordings / transcript correction; multilingual; NOT in live loop (spec §12); MLX path is offline/chunked only — not native streaming (native streaming requires vLLM backend).
 - Runtime: host-native MLX (mlx-audio 8-bit ~2.35GB / 4-bit ~1.5GB) or official `qwen_asr`; MLX path verified at Phase 7/8 (GGUF/transcribe.cpp fallback).
 
-## 6. TTS: Qwen3-TTS-0.6B
+## 6. TTS: Pocket TTS (default) / Qwen3-TTS (fallback)
 
-- mlx-audio `generate(stream=True, streaming_interval≈0.32)`; sentence segmentation from LLM token stream; audio chunks (PCM 24kHz) over WS.
-- ~250 ms jitter buffer before playback; cooperative cancellation (CancelScope-style) between chunks; stale-TTS flush + cancel target < 150 ms (hard correctness requirement, tested).
-- Interrupt: discard queued chunks + cancel generation task; client clears AudioWorklet buffer.
-- CustomVoice preset for consistent interviewer voice; TTFA measured and logged.
+- **Default provider (ADR-027)**: Kyutai Pocket TTS (pocket-tts 2.1.0, CPU
+  in-process, single fixed voice "alba", 24 kHz PCM16). ~30 ms warm first
+  PCM, 8-9× realtime, model+voice loaded once and reused; generation runs
+  in worker threads (event loop never blocked), serialized one-at-a-time.
+  Selected via `TTS_PROVIDER=pocket` (default).
+- **Fallback provider**: Qwen3-TTS-12Hz via oMLX `/v1/audio/speech`
+  (`TTS_PROVIDER=qwen3`), retained intact for fallback/benchmarking.
+- Provider seam: the engine consumes a duck-typed `TTSSynthesizer`
+  (`synthesize` / `synthesize_stream` / `warmup` + `supports_stream`);
+  selection is configuration-driven in `voice.py::_build_tts`; no
+  provider-specific logic in the engine.
+- Streaming: Pocket yields ~80 ms PCM chunks as generated and the engine
+  relays them immediately (first frame ~30-100 ms after synthesis starts);
+  measured in the real path: Q1 first audio 1.62 s (vs 7.35 s Qwen), 10-turn
+  median 3.34 s final→first-audio, no drift.
+- Cancellation: generation guard drops stale chunks (0 stale WS frames
+  measured); the in-flight sentence's decode tail burns ≤ ~1 s CPU then
+  exits; provider remains usable.
+- Interrupt: discard queued chunks + cancel generation task; client clears
+  AudioWorklet buffer; barge-in (opt-in) unchanged.
+- Voice identity: one deterministic interviewer voice per session
+  (V1.1/R2); Pocket maps it to the fixed "alba" speaker. TTFA measured and
+  logged via `voice_question_waterfall`.
 
 ## 7. WebSocket Protocol (v1)
 

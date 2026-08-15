@@ -1,9 +1,10 @@
-import { useProgress, useInterviews, DEFAULT_USER_ID } from '../hooks/queries'
+import { useProgress, useInterviews, useResolvedProfile, DEFAULT_USER_ID } from '../hooks/queries'
 import { EmptyState, Meter, Pill, SectionHeading, Skeleton, Stat, Surface } from '../components/ui'
 
 export function ProgressPage() {
-  const progress = useProgress(DEFAULT_USER_ID)
-  const sessions = useInterviews(DEFAULT_USER_ID)
+  const { activeId } = useResolvedProfile(DEFAULT_USER_ID)
+  const progress = useProgress(DEFAULT_USER_ID, activeId)
+  const sessions = useInterviews(DEFAULT_USER_ID, activeId)
 
   if (progress.isLoading) return <Skeleton className="h-64" />
 
@@ -18,7 +19,7 @@ export function ProgressPage() {
 
       {!progress.data?.total_evaluations ? (
         <EmptyState
-          icon="📈"
+         
           title="No evaluation history yet"
           body="Every practice answer produces an evaluation. Complete a session and your competency trends appear here."
         />
@@ -30,7 +31,7 @@ export function ProgressPage() {
             <Surface className="p-4"><Stat label="Average" value={progress.data.average_overall.toFixed(1)} sub="/ 10" /></Surface>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
             <Surface className="p-6">
               <SectionHeading>Competency trends</SectionHeading>
               <ul className="space-y-5">

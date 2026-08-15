@@ -34,6 +34,9 @@
 | ADR-021 | Knowledge Layer: deterministic ingestion + retrieval (LlamaIndex not required) | Superseded (framework realignment) | inline below |
 | ADR-022 | Interview Engine: deterministic service state machine (LangGraph not required) | Superseded (framework realignment) | inline below |
 | ADR-023 | Production text inference: DeepSeek only; local oMLX retained for audio + retrieval | Accepted | docs/architecture/ADR-023-deepseek-only-text-omlx-audio-retrieval.md |
+| ADR-025 | TTS provider: Qwen3-TTS (oMLX) for V1.1; Pocket TTS BENCHMARKED/CANDIDATE only | Superseded by ADR-027 (provider default) | docs/architecture/ADR-025-tts-provider-qwen3-v11.md |
+| ADR-027 | TTS provider: Kyutai Pocket TTS becomes the default (CPU, ~30 ms first PCM, 8-9× RTF); Qwen3 kept as `TTS_PROVIDER=qwen3` fallback | Accepted | docs/architecture/ADR-027-pocket-tts-default.md |
+| ADR-027 | Persistent multi-profile career workspace (profile-scoped documents/roles/evidence/analytics, idempotent dedup, active profile UX preference) | Accepted | docs/architecture/ADR-026-career-profile-workspace.md |
 
 ---
 

@@ -45,7 +45,7 @@ export function TranscriptPage() {
 
       {transcript.data && transcript.data.turns.length === 0 ? (
         <EmptyState
-          icon="🗒"
+         
           title="Nothing recorded yet"
           body="This session has no turns. Run an interview to build its record."
         />

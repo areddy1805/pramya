@@ -27,7 +27,8 @@ from app.interview.service import InterviewService
 from app.knowledge.retrieval import RetrievalService
 from app.voice.asr import ASRClient
 from app.voice.engine import VoiceEngine, VoiceWS
-from app.voice.tts import TTSClient
+from app.voice.profile import resolve_interviewer_voice
+from app.voice.tts import TTSClient, TTSSynthesizer
 
 _logger = get_logger("app.api.v1.voice")
 
@@ -85,12 +86,11 @@ def _engine(
         model=settings.voice_live_asr_model,  # Parakeet-TDT: live ASR (H.4)
         timeout_seconds=settings.omlx_timeout_seconds,
     )
-    tts = TTSClient(
-        base_url=settings.omlx_base_url,
-        api_key=settings.omlx_api_key,
-        model=settings.voice_tts_model,  # Qwen3-TTS (H.4)
-        timeout_seconds=settings.omlx_timeout_seconds,
-    )
+    # V1.1 (R2): ONE deterministic interviewer voice per session, resolved
+    # here (backend authoritative) and passed to both the engine (telemetry)
+    # and the TTS provider (provider voice mapping). Never random.
+    voice = resolve_interviewer_voice(settings)
+    tts = _build_tts(settings, voice)
     return VoiceEngine(
         interview=interview,
         asr=asr,
@@ -103,6 +103,37 @@ def _engine(
         audio_storage_dir=str(settings.audio_storage_path),
         store_audio=settings.voice_store_audio,
         retention_days=settings.voice_retention_days,
+        barge_in_enabled=settings.voice_barge_in_enabled,
+        barge_in_rms=settings.voice_barge_in_rms,
+        barge_in_ms=settings.voice_barge_in_ms,
+        tts_streaming_interval=settings.voice_tts_streaming_interval,
+        voice_profile=voice,
+    )
+
+
+def _build_tts(settings: object, voice: object) -> TTSSynthesizer:
+    """TTS provider factory: TTS_PROVIDER=qwen3 (default) | pocket.
+
+    Configuration-driven; the engine consumes the duck-typed
+    ``synthesize``/``synthesize_stream``/``warmup`` seam and never branches
+    on the concrete provider.
+    """
+    provider = getattr(settings, "tts_provider", "qwen3")
+    if provider == "pocket":
+        from app.voice.pocket import PocketTTSProvider
+
+        return PocketTTSProvider(
+            voice=getattr(settings, "pocket_tts_voice", "alba"),
+            quantize=getattr(settings, "pocket_tts_quantize", False),
+            chunk_samples=getattr(settings, "voice_chunk_samples", 4800),
+        )
+    return TTSClient(
+        base_url=settings.omlx_base_url,  # type: ignore[attr-defined]
+        api_key=settings.omlx_api_key,  # type: ignore[attr-defined]
+        model=settings.voice_tts_model,  # type: ignore[attr-defined]
+        voice=voice.provider_voice,  # type: ignore[attr-defined]
+        voice_id=voice.voice_id,  # type: ignore[attr-defined]
+        timeout_seconds=settings.omlx_timeout_seconds,  # type: ignore[attr-defined]
     )
 
 

@@ -55,7 +55,7 @@ export function StoriesPage() {
       <Surface className="p-6">
         <SectionHeading aside={<Pill>{stories.data?.length ?? 0} stories</Pill>}>Saved stories</SectionHeading>
         {!stories.data?.length ? (
-          <EmptyState icon="📚" title="Your story bank is empty" body="Add one STAR story above. During behavioral interviews, the interviewer can ground questions in what you've actually done." />
+          <EmptyState title="Your story bank is empty" body="Add one STAR story above. During behavioral interviews, the interviewer can ground questions in what you've actually done." />
         ) : (
           <ul className="space-y-3">
             {stories.data.map((story) => (

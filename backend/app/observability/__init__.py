@@ -19,6 +19,7 @@ error, fallback.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -147,11 +148,21 @@ class LangfuseObservability:
 
 
 def get_observability() -> Any:
-    """Return the process-wide observability singleton (degradation-safe)."""
+    """Return the process-wide observability singleton (degradation-safe).
+
+    LANGFUSE_ENABLED is the ONE authoritative switch: when false (default)
+    or keys are missing, telemetry uses NullObservability (structured logs
+    only) — no Langfuse client, no background workers, no network. Keys
+    alone never enable Langfuse.
+    """
     global _client_instance  # noqa: PLW0603
     if _client_instance is None:
         settings = get_settings()
-        if settings.langfuse_public_key and settings.langfuse_secret_key:
+        if (
+            settings.langfuse_enabled
+            and settings.langfuse_public_key
+            and settings.langfuse_secret_key
+        ):
             try:
                 _client_instance = LangfuseObservability(settings)
             except Exception:
@@ -170,7 +181,11 @@ def reset_observability() -> None:
 
 @asynccontextmanager
 async def trace_span(name: str, **metadata: Any) -> AsyncGenerator[SpanContext, None]:
-    """Async context manager: start + finish a span (degradation-safe)."""
+    """Async context manager: start + finish a span (degradation-safe).
+
+    Enqueue-only: the Langfuse SDK delivers asynchronously in its own
+    background batch processor; this never blocks the caller on network.
+    """
     obs = get_observability()
     span = obs.start(name, **metadata)
     error: str | None = None
@@ -181,15 +196,41 @@ async def trace_span(name: str, **metadata: Any) -> AsyncGenerator[SpanContext, 
         raise
     finally:
         obs.finish(span, error=error)
-        obs.flush()
 
 
 def record_event(name: str, **metadata: Any) -> None:
-    """Fire-and-forget telemetry event (voice metrics, interruptions, etc.)."""
+    """Fire-and-forget telemetry event (voice metrics, interruptions, etc.).
+
+    Always emitted to structured logs (guaranteed channel); forwarded to
+    Langfuse when configured and reachable. Never raises, never blocks:
+    enqueue-only (the Langfuse SDK delivers asynchronously in background).
+    """
     obs = get_observability()
     span = obs.start(name, **metadata)
     obs.finish(span)
-    obs.flush()
+    # Structured-log fallback: the log channel must show metrics even when
+    # Langfuse is down/unconfigured (R15 latency observability guarantee).
+    try:
+        fields = span.finish()
+        logger.info("telemetry", extra={"extra_fields": {"event": name, **fields}})
+    except Exception as exc:  # pragma: no cover - telemetry must never crash
+        logger.debug("telemetry log fallback failed: %s", exc)
+
+
+def flush_pending(timeout_s: float = 2.0) -> None:
+    """Best-effort synchronous flush of pending telemetry (shutdown only).
+
+    Bounded: a broken/slow Langfuse ingestion must never delay shutdown.
+    Deliberately NOT called per-event — the SDK's background batch
+    processor owns delivery during normal operation.
+    """
+    obs = get_observability()
+    try:
+        t = threading.Thread(target=obs.flush, daemon=True, name="langfuse-shutdown-flush")
+        t.start()
+        t.join(timeout=timeout_s)
+    except Exception:  # pragma: no cover - telemetry must never crash
+        logger.debug("langfuse shutdown flush failed", exc_info=True)
 
 
 __all__ = [
@@ -197,6 +238,7 @@ __all__ = [
     "reset_observability",
     "trace_span",
     "record_event",
+    "flush_pending",
     "SpanContext",
     "NullObservability",
 ]
