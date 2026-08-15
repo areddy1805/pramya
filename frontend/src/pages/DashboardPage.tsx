@@ -118,7 +118,7 @@ export function DashboardPage() {
           <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5 px-6 pb-5 pt-5">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">
                   Pramya · Readiness Overview
                 </p>
                 {targetRole ? (
@@ -191,7 +191,7 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="border-b border-ink/10">{ghostBand}</ul>
+                  <ul className="border-b border-ink/5">{ghostBand}</ul>
                   <div className="px-1 pb-2">
                     <DimensionLine style="claimed" />
                   </div>
@@ -249,7 +249,7 @@ export function DashboardPage() {
                       />
                     ))}
                   </ul>
-                  <div className="mt-3 border-t border-ink/15 pt-2.5">
+                  <div className="mt-3 border-t border-ink/10 pt-2.5">
                     <div className="stencil flex items-baseline justify-between text-[10px] uppercase tracking-[0.1em] text-ink-2">
                       <span>queue ≈ {queueMinutes} min</span>
                       {topPrep.expected_improvement != null ? (
@@ -287,7 +287,7 @@ export function DashboardPage() {
             >
               {competenceRows.length === 0 ? (
                 <>
-                  <ul className="border-b border-ink/10">{ghostBand}</ul>
+                  <ul className="border-b border-ink/5">{ghostBand}</ul>
                   <div className="px-1 pb-2">
                     <DimensionLine style="claimed" />
                   </div>
@@ -386,7 +386,7 @@ export function DashboardPage() {
           <footer className="border-t border-ink/25">
             <div className="grid gap-5 px-6 py-3.5 lg:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Revision · status</p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Revision · status</p>
                 <dl className="mt-2 space-y-1">
                   <div className="flex items-baseline justify-between gap-3 text-[11px]">
                     <dt className="text-ink-2">evaluations</dt>
@@ -405,7 +405,7 @@ export function DashboardPage() {
                 </dl>
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Recent change — fixed scale</p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Recent change — fixed scale</p>
                 {series.length === 0 ? (
                   <p className="mt-2 text-[11px] text-ink-2">Complete an interview to see movement.</p>
                 ) : (

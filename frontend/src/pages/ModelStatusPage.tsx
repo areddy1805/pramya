@@ -44,7 +44,7 @@ function StateCell({
   return (
     <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Runtime state</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Runtime state</p>
         <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${tone}`}>{state}</span>
       </div>
       <dl className="mt-2">
@@ -56,7 +56,7 @@ function StateCell({
           ['Local AI', localAi],
           ['Check cadence', 'auto · 30 s'],
         ].map(([label, value]) => (
-          <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+          <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
             <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
             <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === '—' ? 'text-ink-3' : value === 'unreachable' || value.includes('failed') ? 'text-redline' : value === 'enabled' || value === 'available' ? 'text-draft' : 'text-ink-2'}`}>
               {value}
@@ -84,7 +84,7 @@ function ServiceRow({
   detail: string
 }) {
   return (
-    <li className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 py-2 last:border-b-0">
+    <li className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 py-2 last:border-b-0">
       <StencilNum className="text-[11px] leading-none text-ink-3">{index}</StencilNum>
       <div className="min-w-0">
         <p className="truncate text-[13px] text-ink">{name}</p>
@@ -119,7 +119,7 @@ export function ModelStatusPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Runtime · Operations</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Runtime · Operations</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Runtime status</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Provider health, model registry, and the deterministic routing policy.
@@ -187,7 +187,7 @@ export function ModelStatusPage() {
         ) : data && data.models.length ? (
           <ol className="py-1">
             {data.models.map((m, i) => (
-              <li key={m.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 py-2 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_8rem_6rem_4.5rem]">
+              <li key={m.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 py-2 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_8rem_6rem_4.5rem]">
                 <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                 <div className="min-w-0">
                   <p className="truncate text-[12px] text-ink">{m.id}</p>
@@ -225,7 +225,7 @@ export function ModelStatusPage() {
         ) : data && data.policies.length ? (
           <ol className="py-1">
             {data.policies.map((p, i) => (
-              <li key={p.task} className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 border-b border-ink/10 py-1.5 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_14rem_minmax(0,1fr)]">
+              <li key={p.task} className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-3 border-b border-ink/5 py-1.5 last:border-b-0 md:grid-cols-[2rem_minmax(0,1fr)_14rem_minmax(0,1fr)]">
                 <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                 <div className="min-w-0">
                   <p className="truncate text-[12px] text-ink-2">{p.task}</p>

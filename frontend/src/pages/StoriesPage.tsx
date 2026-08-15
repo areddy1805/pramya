@@ -49,7 +49,7 @@ export function StoriesPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Stories · Library</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Stories · Library</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Story bank</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Your reusable evidence in STAR form — mapped to competencies, ready for behavioral interviews.
@@ -57,7 +57,7 @@ export function StoriesPage() {
         </div>
         <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Library state</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Library state</p>
             <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${data.length ? 'text-draft' : 'text-ink-3'}`}>
               {data.length ? 'On record' : 'Empty'}
             </span>
@@ -69,7 +69,7 @@ export function StoriesPage() {
               ['Mapped', data.length ? `${mapped} to a strength` : '—'],
               ['Usage', totalUsage ? `${totalUsage} total` : '—'],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
                 <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
                 <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === '—' ? 'text-ink-3' : 'text-ink-2'}`}>{value}</dd>
               </div>
@@ -141,7 +141,7 @@ export function StoriesPage() {
         >
           <ol>
             {data.map((story, i) => (
-              <li key={story.id} className="border-b border-ink/10 py-4 last:border-b-0">
+              <li key={story.id} className="border-b border-ink/5 py-4 last:border-b-0">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
                   <p className="flex items-baseline gap-2.5">
                     <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>

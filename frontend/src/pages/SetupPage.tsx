@@ -143,7 +143,7 @@ export function SetupPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Setup · Initiation</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Setup · Initiation</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Profile &amp; role</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Three inputs unlock everything else: who you are, what you've done, where you're going.
@@ -152,7 +152,7 @@ export function SetupPage() {
         </div>
         <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Initiation state</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Initiation state</p>
             <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${allDone ? 'text-draft' : 'text-ink-2'}`}>
               {allDone ? 'Ready' : 'In progress'}
             </span>
@@ -164,7 +164,7 @@ export function SetupPage() {
               ['Target role', steps[2].done ? 'Set' : 'Pending'],
               ['Active profile', active?.name ?? '—'],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
                 <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
                 <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === 'Pending' || value === '—' ? 'text-ink-3' : 'text-ink-2'}`}>{value}</dd>
               </div>
@@ -250,7 +250,7 @@ export function SetupPage() {
           Pramya parses your resume, indexes it into your knowledge base, and extracts the claims that seed your evidence ledger.
         </p>
         {resumeDoc ? (
-          <div className="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-3 border border-ink/20 px-3 py-2.5">
+          <div className="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-3 border border-ink/15 px-3 py-2.5">
             <StencilNum className="text-[11px] leading-none text-ink-3">01</StencilNum>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-ink">{resumeDoc.filename}</p>
@@ -297,7 +297,7 @@ export function SetupPage() {
           Paste a job description or upload one. Pramya builds the competency model — required vs preferred — that drives readiness and preparation.
         </p>
         {activeRole ? (
-          <div className="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)] items-baseline gap-x-3 border border-ink/20 px-3 py-2.5">
+          <div className="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)] items-baseline gap-x-3 border border-ink/15 px-3 py-2.5">
             <StencilNum className="text-[11px] leading-none text-ink-3">01</StencilNum>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-ink">

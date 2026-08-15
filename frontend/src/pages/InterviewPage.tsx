@@ -194,7 +194,7 @@ function FieldSelect({
 }) {
   return (
     <label className="block text-sm">
-      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">{label}</span>
+      <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">{label}</span>
       <select
         value={value}
         onChange={onChange}
@@ -224,7 +224,7 @@ function FieldSeg({
 }) {
   return (
     <div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">{label}</p>
+      <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">{label}</p>
       <div role="group" aria-label={ariaLabel} className="inline-flex h-9 border border-ink/30 p-0.5">
         {options.map((o) => (
           <button
@@ -365,14 +365,14 @@ function SessionCell({
   return (
     <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Session</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Session</p>
         <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${tone}`}>{label}</span>
       </div>
       <div className="mt-1.5 flex items-baseline gap-1.5">
         <span className={`stencil text-3xl leading-none ${elapsed ? 'text-ink' : 'text-ink-3'}`}>{elapsed ?? '--:--'}</span>
         <span className="text-[10px] uppercase tracking-[0.08em] text-ink-2">elapsed · {duration} min planned</span>
       </div>
-      <p className="stencil mt-2.5 border-t border-ink/20 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+      <p className="stencil mt-2.5 border-t border-ink/15 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
         {kindLabel} · {mode} mode
         <br />
         drawn {date}
@@ -397,17 +397,17 @@ function SessionSpec({
   const srcTone = resumeTone === 'ok' ? 'text-draft' : resumeTone === 'danger' ? 'text-redline' : 'text-ink-2'
   return (
     <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Session specification</p>
+      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Session specification</p>
       <dl className="mt-2">
-        <div className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+        <div className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
           <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">Target</dt>
           <dd className="stencil truncate text-[10px] uppercase tracking-[0.12em] text-ink">{profileName}</dd>
         </div>
-        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
           <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">Source</dt>
           <dd className={`stencil text-[10px] uppercase tracking-[0.12em] ${srcTone}`}>{resumeLabel}</dd>
         </div>
-        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+        <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
           <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">Positioning</dt>
           <dd className="stencil truncate text-[10px] uppercase tracking-[0.12em] text-ink">{positioning}</dd>
         </div>
@@ -430,10 +430,10 @@ function PreflightStep({
   children: React.ReactNode
 }) {
   return (
-    <section className="border-t border-ink/15 px-6">
+    <section className="border-t border-ink/10 px-6">
       <header className="flex items-baseline gap-3 pt-4">
         <StencilNum className="text-lg leading-none text-draft">{index}</StencilNum>
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">{title}</h2>
+        <h2 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">{title}</h2>
         {aside ? <span className="flex-1" /> : null}
         {aside ? <span className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{aside}</span> : null}
       </header>
@@ -697,7 +697,7 @@ export function InterviewPage() {
       {ended ? (
         /* ---------- Completion sheet ---------- */
         <div className="px-6 pb-10 pt-8 sm:px-10">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Practice · Session {status}</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Practice · Session {status}</p>
           <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto]">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-ink">
@@ -721,12 +721,12 @@ export function InterviewPage() {
             </div>
             <div className="w-full border border-ink/30 bg-sheet-lit/45 px-5 py-4 sm:w-72">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Session record</p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Session record</p>
                 <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${status === 'completed' ? 'text-draft' : 'text-ink-2'}`}>
                   {status === 'completed' ? 'complete' : 'ended'}
                 </span>
               </div>
-              <p className="stencil mt-3 border-t border-ink/20 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+              <p className="stencil mt-3 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
                 {kindLabel} · {styleLabel} · {sessionDuration} min
                 <br />
                 started {startedTime} · drawn {startedDate}
@@ -739,7 +739,7 @@ export function InterviewPage() {
         <>
           <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Practice · Pre-flight</p>
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Practice · Pre-flight</p>
               <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Prepare for an interview</h1>
               <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
                 Pramya asks you what you actually did, evaluates what you demonstrate, and adapts the next question to your answer.
@@ -786,7 +786,7 @@ export function InterviewPage() {
                 <div className="grid gap-x-8 gap-y-5 pt-2 sm:grid-cols-2">
                   <div className="min-w-0">
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Using</p>
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Using</p>
                       <DocStatusTag label="status" tone={statusOf(ctx.data.resume).tone} text={statusOf(ctx.data.resume).label} />
                     </div>
                     <p className="mt-1 truncate text-sm font-medium text-ink">{ctx.data.resume?.filename ?? 'No resume'}</p>
@@ -807,7 +807,7 @@ export function InterviewPage() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Against</p>
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Against</p>
                       {ctx.data.jd ? (
                         <DocStatusTag label="status" tone={statusOf(ctx.data.jd).tone} text={statusOf(ctx.data.jd).label} />
                       ) : (
@@ -916,7 +916,7 @@ export function InterviewPage() {
             ) : (
               <ol className="thin-scroll max-h-56 overflow-y-auto">
                 {sessions.data.slice(0, 10).map((s, i) => (
-                  <li key={s.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 py-1.5">
+                  <li key={s.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 py-1.5">
                     <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                     <div className="flex min-w-0 items-baseline gap-2">
                       <span className="truncate text-[12px] text-ink">{s.kind.replace(/_/g, ' ')}</span>
@@ -956,7 +956,7 @@ export function InterviewPage() {
           {/* Title block — quiet instrument strip */}
           <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Practice · Field sheet</p>
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Practice · Field sheet</p>
               <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">{kindLabel} interview</h1>
               <p className="mt-1 text-[13px] text-ink-2">
                 {activeProfile?.name ?? 'Profile'} · started {startedTime}
@@ -1092,8 +1092,8 @@ export function InterviewPage() {
 
           {/* Answer (typed mode) */}
           {mode === 'text' ? (
-            <div className="border-b border-ink/20 px-6 pb-5 pt-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Your answer</p>
+            <div className="border-b border-ink/15 px-6 pb-5 pt-4">
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Your answer</p>
               <textarea
                 ref={answerRef}
                 aria-label="Your answer"
@@ -1145,7 +1145,7 @@ export function InterviewPage() {
                     return (
                       <li
                         key={i}
-                        className={`grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-ink/10 py-2.5 ${
+                        className={`grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-ink/5 py-2.5 ${
                           ghost ? 'border-l-2 border-dashed border-draft/60 pl-2.5' : 'border-l-2 border-transparent pl-2.5'
                         }`}
                       >
@@ -1194,7 +1194,7 @@ export function InterviewPage() {
                   <p className="mt-1.5 text-[13px] leading-relaxed text-ink">{lastHint}</p>
                 </div>
               ) : null}
-              <p className="stencil mt-4 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.1em] text-ink-2">
+              <p className="stencil mt-4 border-t border-ink/10 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.1em] text-ink-2">
                 captured · {candidateTurns} answers · {interviewerTurns} questions
                 {mode === 'voice' ? <br /> : null}
                 {mode === 'voice' ? `mic ${voiceState === 'listening' ? 'open' : 'armed'}` : null}

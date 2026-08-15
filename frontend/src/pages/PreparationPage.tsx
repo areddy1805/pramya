@@ -173,7 +173,7 @@ export function PreparationPage() {
           <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-5 px-6 pb-5 pt-5">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">
                   Pramya · Preparation · Work Order
                 </p>
                 {targetRole ? (
@@ -317,14 +317,14 @@ export function PreparationPage() {
               <div className="lg:col-span-5">
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">est. effort</p>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">est. effort</p>
                     <p className="stencil mt-1 text-2xl leading-none text-ink">
                       {top.estimated_minutes ?? 15}
                       <span className="text-sm text-ink-2"> min</span>
                     </p>
                   </div>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">est. gain</p>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">est. gain</p>
                     <p className="stencil mt-1 text-2xl leading-none text-draft">
                       {top.expected_improvement != null ? `+${top.expected_improvement.toFixed(2)}` : '—'}
                     </p>
@@ -430,7 +430,7 @@ export function PreparationPage() {
                   )
                 })}
               </ul>
-              <div className="mt-2.5 border-t border-ink/15 pt-2.5">
+              <div className="mt-2.5 border-t border-ink/10 pt-2.5">
                 <div className="stencil flex items-baseline justify-between gap-3 text-[10px] uppercase tracking-[0.1em] text-ink-2">
                   <span>queue ≈ {estMinutes ?? '—'} min</span>
                   <span className="text-draft">gain ≈ +{estGain != null ? estGain.toFixed(1) : '—'}</span>
@@ -521,7 +521,7 @@ export function PreparationPage() {
         <footer className="border-t border-ink/25">
           <div className="grid gap-x-6 gap-y-4 px-6 py-3.5 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto]">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Revision · queue totals</p>
+              <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Revision · queue totals</p>
               <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
                 <div className="flex items-baseline justify-between gap-3 text-[11px]">
                   <dt className="text-ink-2">orders</dt>

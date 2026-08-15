@@ -86,7 +86,7 @@ export function EvidencePage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Evidence · Ledger</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Evidence · Ledger</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Evidence ledger</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Everything the system knows about you, and how it knows it — claims, observations, and demonstrated signals.
@@ -94,14 +94,14 @@ export function EvidencePage() {
         </div>
         <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Ledger state</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Ledger state</p>
             <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${total ? 'text-draft' : 'text-ink-3'}`}>
               {total ? 'Recorded' : 'Not assessed'}
             </span>
           </div>
           <dl className="mt-2">
             {ORDER.map((k, i) => (
-              <div key={k} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+              <div key={k} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
                 <dt className={`stencil text-[10px] uppercase tracking-[0.12em] ${i === 0 ? 'text-ink-3' : 'text-ink-3'}`}>{STATUS_STENCIL[k].label}</dt>
                 <dd className={`stencil text-[10px] uppercase tracking-[0.12em] ${
                   total ? (k === 'claimed' && totals[i] > 0 ? 'text-redline' : STATUS_STENCIL[k].tone) : 'text-ink-3'
@@ -111,7 +111,7 @@ export function EvidencePage() {
               </div>
             ))}
           </dl>
-          <p className="stencil mt-2.5 border-t border-ink/20 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+          <p className="stencil mt-2.5 border-t border-ink/15 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
             cov {cov != null ? `${Math.round(cov * 100)}%` : '—'} · conf {conf != null ? `${Math.round(conf * 100)}%` : '—'}
           </p>
         </div>
@@ -157,7 +157,7 @@ export function EvidencePage() {
             title="Evidence register"
             aside={<span className="stencil text-[10px] uppercase tracking-[0.14em] text-ink-2">select a record for detail</span>}
           >
-            <div className={ROW_GRID + ' stencil grid items-center gap-x-3 border-b border-ink/20 px-3 pb-2 pt-1 text-[10px] uppercase leading-none tracking-[0.12em] text-ink-2'}>
+            <div className={ROW_GRID + ' stencil grid items-center gap-x-3 border-b border-ink/15 px-3 pb-2 pt-1 text-[10px] uppercase leading-none tracking-[0.12em] text-ink-2'}>
               <span>Item</span>
               <span className="hidden md:block">State</span>
               <span>Claim / source</span>
@@ -177,7 +177,7 @@ export function EvidencePage() {
                       aria-current={isSel ? 'true' : undefined}
                       aria-label={`Record ${pad2(i + 1)} — ${meta.label}: ${item.claim.slice(0, 80)}`}
                       onClick={() => setSelectedId(item.id)}
-                      className={`group grid w-full ${ROW_GRID} items-center gap-x-3 border-b border-ink/10 px-3 py-2 text-left transition-colors hover:bg-draft-soft/30 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] ${
+                      className={`group grid w-full ${ROW_GRID} items-center gap-x-3 border-b border-ink/5 px-3 py-2 text-left transition-colors hover:bg-draft-soft/30 focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] ${
                         isSel ? 'bg-sheet-lit/60' : ''
                       }`}
                     >
@@ -276,32 +276,32 @@ export function EvidencePage() {
             </div>
             <div className="min-w-0 lg:col-span-5">
               <dl className="stencil text-[10px] uppercase tracking-[0.1em]">
-                <div className="flex items-baseline justify-between gap-4 border-t border-ink/15 pt-1.5">
+                <div className="flex items-baseline justify-between gap-4 border-t border-ink/10 pt-1.5">
                   <dt className="text-ink-3">Source</dt>
                   <dd className="truncate text-ink-2">
                     {SOURCE_LABEL[selected.source_kind] ?? selected.source_kind} · {selected.source_ref ?? '—'}
                   </dd>
                 </div>
-                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/15 pt-1.5">
+                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/10 pt-1.5">
                   <dt className="text-ink-3">Competency</dt>
                   <dd className="text-ink-2">{selected.competency_id ?? '—'}</dd>
                 </div>
-                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/15 pt-1.5">
+                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/10 pt-1.5">
                   <dt className="text-ink-3">Strength</dt>
                   <dd className="text-ink-2">{selected.strength != null ? `${selected.strength.toFixed(2)} / 1.00` : '—'}</dd>
                 </div>
-                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/15 pt-1.5">
+                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/10 pt-1.5">
                   <dt className="text-ink-3">Recorded</dt>
                   <dd className="text-ink-2">{fmtDate(selected.created_at)}</dd>
                 </div>
-                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/15 pt-1.5">
+                <div className="mt-1.5 flex items-baseline justify-between gap-4 border-t border-ink/10 pt-1.5">
                   <dt className="text-ink-3">Notes</dt>
                   <dd className="text-ink-2">{selected.notes ?? '—'}</dd>
                 </div>
               </dl>
               {selected.status !== 'demonstrated' ? (
-                <div className="mt-3 border-t border-ink/15 pt-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Correction · manual override</p>
+                <div className="mt-3 border-t border-ink/10 pt-2.5">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Correction · manual override</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(['demonstrated', 'observed', 'claimed', 'inferred'] as const).map((target) => (
                       <button

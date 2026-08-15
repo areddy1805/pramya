@@ -74,7 +74,7 @@ function DimRow({ label, value }: { label: string; value: number }) {
   const tone = scoreTone(value)
   const pct = Math.max(0, Math.min(1, value / 10)) * 100
   return (
-    <li className="grid grid-cols-[7.5rem_minmax(0,1fr)_2.25rem] items-center gap-x-4 border-b border-ink/10 py-2 sm:grid-cols-[10rem_minmax(0,1fr)_2.25rem]">
+    <li className="grid grid-cols-[7.5rem_minmax(0,1fr)_2.25rem] items-center gap-x-4 border-b border-ink/5 py-2 sm:grid-cols-[10rem_minmax(0,1fr)_2.25rem]">
       <span className="truncate text-[12px] text-ink-2">{label}</span>
       <span aria-hidden className="relative h-2.5 overflow-hidden border border-ink/30 bg-transparent">
         <span className={`absolute inset-y-0 left-0 hatch ${tone.bar}`} style={{ width: `${pct}%` }} />
@@ -105,7 +105,7 @@ export function ReportPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Interview · Report</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Interview · Report</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">What to improve</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             The assessed record of this session — dimensions, per-question feedback, and the coach's notes.
@@ -113,7 +113,7 @@ export function ReportPage() {
         </div>
         <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Assessment state</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Assessment state</p>
             <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${overall != null ? 'text-draft' : 'text-ink-3'}`}>
               {overall != null ? 'Assessed' : 'No score'}
             </span>
@@ -126,7 +126,7 @@ export function ReportPage() {
               ['Dimensions', dims.length ? `${dims.length} measured` : '—'],
               ['Questions', questions?.length != null ? `${questions.length} evaluated` : '—'],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
                 <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
                 <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === '—' ? 'text-ink-3' : 'text-ink-2'}`}>{value}</dd>
               </div>
@@ -213,7 +213,7 @@ export function ReportPage() {
                       <p className="stencil text-[10px] uppercase tracking-[0.12em] text-draft">Strongest</p>
                       <ol className="mt-1.5">
                         {strengths.map((s, i) => (
-                          <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/10 py-1.5">
+                          <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/5 py-1.5">
                             <StencilNum className="text-[10px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                             <span className="text-[13px] leading-relaxed text-ink">{String(s)}</span>
                           </li>
@@ -226,7 +226,7 @@ export function ReportPage() {
                       <p className="stencil text-[10px] uppercase tracking-[0.12em] text-redline">Weakest</p>
                       <ol className="mt-1.5">
                         {weaknesses.map((s, i) => (
-                          <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/10 py-1.5">
+                          <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/5 py-1.5">
                             <StencilNum className="text-[10px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                             <span className="text-[13px] leading-relaxed text-ink">{String(s)}</span>
                           </li>
@@ -238,7 +238,7 @@ export function ReportPage() {
               ) : null}
 
               {dims.length > 0 ? (
-                <div className="mt-5 border-t border-ink/15 pt-3">
+                <div className="mt-5 border-t border-ink/10 pt-3">
                   <p className="stencil pb-2 text-[10px] uppercase tracking-[0.12em] text-ink-2">Dimensions · fixed 0–10 scale</p>
                   <ol>
                     {dims.map((k) => (
@@ -249,11 +249,11 @@ export function ReportPage() {
               ) : null}
 
               {gaps && gaps.length > 0 ? (
-                <div className="mt-5 border-t border-ink/15 pt-3">
+                <div className="mt-5 border-t border-ink/10 pt-3">
                   <p className="stencil text-[10px] uppercase tracking-[0.12em] text-redline">Priority gaps — prepare these next</p>
                   <ol className="mt-1.5">
                     {gaps.map((g, i) => (
-                      <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/10 py-1.5">
+                      <li key={i} className="flex items-baseline gap-2.5 border-b border-ink/5 py-1.5">
                         <StencilNum className="text-[10px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                         <span className="text-[13px] leading-relaxed text-ink">{String(g)}</span>
                       </li>
@@ -274,7 +274,7 @@ export function ReportPage() {
                 {questions.map((row, qi) => {
                   const tone = scoreTone(row.overall)
                   return (
-                    <li key={row.question_id ?? String(row.question)} className="border-b border-ink/10 py-4 last:border-b-0">
+                    <li key={row.question_id ?? String(row.question)} className="border-b border-ink/5 py-4 last:border-b-0">
                       <div className="flex items-start justify-between gap-4">
                         <p className="min-w-0 text-[13px] font-semibold leading-relaxed text-ink">
                           <StencilNum className="mr-2 text-[11px] leading-none text-ink-3">Q{pad2(qi + 1)}</StencilNum>

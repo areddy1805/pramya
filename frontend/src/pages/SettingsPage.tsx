@@ -42,7 +42,7 @@ function pad2(n: number): string {
 // Spec row: SETTING · CURRENT VALUE (read-only configuration facts).
 function SpecRow({ label, value, tone = 'text-ink' }: { label: string; value: React.ReactNode; tone?: string }) {
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-4 border-t border-ink/15 py-2 first:border-t-0 first:pt-0 sm:grid-cols-[10rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-4 border-t border-ink/10 py-2 first:border-t-0 first:pt-0 sm:grid-cols-[10rem_minmax(0,1fr)]">
       <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
       <dd className={`min-w-0 text-[13px] leading-relaxed ${tone}`}>{value}</dd>
     </div>
@@ -99,13 +99,13 @@ export function SettingsPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Settings · Configuration</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Settings · Configuration</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Settings</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">Application status and analysis tools.</p>
         </div>
         <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Configuration state</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Configuration state</p>
             <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${health.data?.status === 'ok' ? 'text-draft' : 'text-redline'}`}>
               {health.data?.status === 'ok' ? 'Operational' : 'Unknown'}
             </span>
@@ -119,7 +119,7 @@ export function SettingsPage() {
               ['Theme', themeLabel],
               ['Persistence', 'Instant — applies immediately'],
             ].map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+              <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
                 <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
                 <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === '—' ? 'text-ink-3' : 'text-ink-2'}`}>{value}</dd>
               </div>
@@ -185,7 +185,7 @@ export function SettingsPage() {
             />
           </dl>
         )}
-        <p className="mt-3 border-t border-ink/15 pt-2.5 text-[12px] leading-relaxed text-ink-3">
+        <p className="mt-3 border-t border-ink/10 pt-2.5 text-[12px] leading-relaxed text-ink-3">
           Candidate data stays on your machine. Runtime and model health live under <span className="font-medium text-ink-2">Runtime</span>.
         </p>
       </SheetSection>
@@ -214,7 +214,7 @@ export function SettingsPage() {
             {analyzing ? <Spinner label="Analyzing transcript…" subtle /> : null}
           </div>
           {result ? (
-            <div className="mt-4 border-t border-ink/15 pt-3">
+            <div className="mt-4 border-t border-ink/10 pt-3">
               <p className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-2">
                 {result.questions.length} questions · {result.answers.length} answers
                 {result.follow_ups.length ? ` · ${result.follow_ups.length} follow-ups` : ''}
@@ -224,7 +224,7 @@ export function SettingsPage() {
                   <p className="stencil text-[10px] uppercase tracking-[0.12em] text-redline">Weaknesses</p>
                   <ol className="mt-1">
                     {result.weaknesses.map((w, i) => (
-                      <li key={i} className="flex items-baseline gap-2 border-b border-ink/10 py-1.5">
+                      <li key={i} className="flex items-baseline gap-2 border-b border-ink/5 py-1.5">
                         <StencilNum className="text-[10px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                         <span className="text-[12px] leading-relaxed text-ink">{w}</span>
                       </li>
@@ -237,7 +237,7 @@ export function SettingsPage() {
                   <p className="stencil text-[10px] uppercase tracking-[0.12em] text-draft">Strengths</p>
                   <ol className="mt-1">
                     {result.strengths.map((s, i) => (
-                      <li key={i} className="flex items-baseline gap-2 border-b border-ink/10 py-1.5">
+                      <li key={i} className="flex items-baseline gap-2 border-b border-ink/5 py-1.5">
                         <StencilNum className="text-[10px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                         <span className="text-[12px] leading-relaxed text-ink">{s}</span>
                       </li>
@@ -266,7 +266,7 @@ export function SettingsPage() {
             {demoBusy ? <Spinner label="Loading demo data…" subtle /> : null}
           </div>
           {demo ? (
-            <dl className="mt-4 border-t border-ink/15 pt-2">
+            <dl className="mt-4 border-t border-ink/10 pt-2">
               <SpecRow label="Roles" value={`${demo.roles.length} (${demo.roles.map((r) => r.key).join(', ')})`} />
               <SpecRow label="Chunks indexed" value={demo.roles.reduce((n, r) => n + r.chunks, 0).toString()} />
               <SpecRow label="Evidence" value={demo.roles.reduce((n, r) => n + r.evidence_count, 0).toString()} />

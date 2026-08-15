@@ -62,8 +62,8 @@ export function SheetSection({
   return (
     <section className={`relative flex flex-col border-ink/20 ${tones} ${className}`}>
       <header className="flex items-baseline justify-between gap-3 px-6 pb-2.5 pt-4">
-        <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">{title}</h2>
-        {aside ? <div className="shrink-0 text-ink-2">{aside}</div> : null}
+        <h2 className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">{title}</h2>
+        {aside ? <div className="shrink-0 text-ink-3">{aside}</div> : null}
       </header>
       <div className="min-w-0 flex-1 px-6 pb-5">{children}</div>
     </section>
@@ -155,7 +155,7 @@ export function CoverageHatch({ value, showLabel = true }: { value: number; show
       <span aria-hidden className="relative h-3 w-16 overflow-hidden border border-ink/30 bg-transparent">
         <span className="absolute inset-y-0 left-0 hatch text-draft" style={{ width: `${pct}%` }} />
       </span>
-      {showLabel ? <span className="tabular text-[10px] text-ink-2">{pct}% cov</span> : null}
+      {showLabel ? <span className="tabular text-[10px] text-ink-3">{pct}% cov</span> : null}
     </span>
   )
 }
@@ -239,7 +239,7 @@ export function VerdictStamp({
           </>
         )}
       </div>
-      <p className="stencil mt-3 border-t border-ink/20 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+      <p className="stencil mt-3 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-3">
         conf {measured ? pct(confidence) : '—'} · cov {measured ? pct(coverage) : '—'} · gaps {measured ? gapCount : '—'}
         <br />
         drawn {date}
@@ -302,7 +302,7 @@ export function QueueStamp({
           )}
         </div>
       </div>
-      <p className="stencil mt-3 border-t border-ink/20 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+      <p className="stencil mt-3 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-3">
         {openCount != null ? `${openCount} open` : 'open —'} · {minutes != null ? `≈ ${minutes} min` : '≈ — min'}
         <br />
         drawn {date}
@@ -351,7 +351,7 @@ export function RedlineCallout({
       : 'border-t border-dotted border-redline/60'
   const ink = severe ? 'text-redline' : mid ? 'text-redline/80' : 'text-redline/60'
   const ring = severe
-    ? 'border-redline bg-redline text-sheet'
+    ? 'border-redline bg-redline/10 text-redline'
     : mid
       ? 'border-redline/80 text-redline'
       : 'border-redline/60 text-redline/70'
@@ -382,7 +382,7 @@ export function RedlineCallout({
 // Key explaining the redline severity encoding (shown when gaps exist).
 export function RedlineSeverityKey() {
   return (
-    <p className="stencil mt-3 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.1em] text-ink-2">
+    <p className="stencil mt-3 border-t border-ink/15 pt-2.5 text-[10px] uppercase leading-relaxed tracking-[0.1em] text-ink-3">
       leader · solid Δ≥3 · dashed 2–2.9 · dotted &lt;2
     </p>
   )

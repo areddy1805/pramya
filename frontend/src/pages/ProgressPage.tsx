@@ -38,7 +38,7 @@ function PositionCell({ summary }: { summary: { evals: number; sessions: number;
   return (
     <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Current position</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Current position</p>
         {measured ? (
           <span className={`stencil text-[10px] uppercase tracking-[0.16em] ${toneOf(summary.average as number)}`}>
             {summary.delta != null && summary.delta >= 0 ? 'Rising' : 'Recorded'}
@@ -53,7 +53,7 @@ function PositionCell({ summary }: { summary: { evals: number; sessions: number;
         </span>
         <span className="text-xs text-ink-2">/ 10</span>
       </div>
-      <p className="stencil mt-2.5 border-t border-ink/20 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
+      <p className="stencil mt-2.5 border-t border-ink/15 pt-2 text-[10px] uppercase leading-relaxed tracking-[0.08em] text-ink-2">
         movement {summary.delta != null ? (summary.delta >= 0 ? `Δ +${summary.delta.toFixed(1)}` : `Δ ${summary.delta.toFixed(1)}`) : '—'} ·{' '}
         {summary.evals} evaluations · {summary.sessions} sessions
         <br />
@@ -183,7 +183,7 @@ function ChangeLedger({ points }: { points: ProgressPoint[] }) {
   if (!points.length) return null
   return (
     <>
-      <div className={`stencil grid items-center gap-x-3 border-b border-ink/20 px-3 pb-2 pt-1 text-[10px] uppercase leading-none tracking-[0.12em] text-ink-2 ${CHANGE_GRID}`}>
+      <div className={`stencil grid items-center gap-x-3 border-b border-ink/15 px-3 pb-2 pt-1 text-[10px] uppercase leading-none tracking-[0.12em] text-ink-2 ${CHANGE_GRID}`}>
         <span>Item</span>
         <span>Competency</span>
         <span className="hidden md:block">Date</span>
@@ -196,7 +196,7 @@ function ChangeLedger({ points }: { points: ProgressPoint[] }) {
           const d = prev != null ? p.overall - prev : null
           return (
             <li key={p.evaluation_id}>
-              <div className={`grid w-full items-center gap-x-3 border-b border-ink/10 px-3 py-2 ${CHANGE_GRID}`}>
+              <div className={`grid w-full items-center gap-x-3 border-b border-ink/5 px-3 py-2 ${CHANGE_GRID}`}>
                 <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                 <div className="min-w-0">
                   <p className="truncate text-[13px] text-ink">{p.competency_name || 'interview'}</p>
@@ -229,7 +229,7 @@ export function ProgressPage() {
       <Sheet aria-label="Progress record">
         <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Progress · Record</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Progress · Record</p>
             <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Progress</h1>
             <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
               Movement measured only from completed evaluations — nothing is estimated or padded.
@@ -275,7 +275,7 @@ export function ProgressPage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Progress · Record</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Progress · Record</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Progress</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Movement measured only from completed evaluations — nothing is estimated or padded.
@@ -342,7 +342,7 @@ export function ProgressPage() {
           ) : (
             <ol className="thin-scroll max-h-[22rem] overflow-y-auto">
               {sessions.data.map((s, i) => (
-                <li key={s.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 py-2">
+                <li key={s.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 py-2">
                   <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                   <div className="min-w-0">
                     <p className="truncate text-[13px] text-ink">{s.kind.replace(/_/g, ' ')}</p>

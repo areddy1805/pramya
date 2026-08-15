@@ -67,7 +67,7 @@ function DossierCell({
   return (
     <div className="w-full border border-ink/30 bg-sheet-lit/45 px-4 py-3 sm:w-[17rem]">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Dossier state</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Dossier state</p>
         <span className="stencil text-[10px] uppercase tracking-[0.16em] text-draft">On record</span>
       </div>
       <dl className="mt-2">
@@ -78,7 +78,7 @@ function DossierCell({
           ['Resume', resumeStatus],
           ['JD', jdStatus],
         ].map(([label, value]) => (
-          <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/15 pt-1.5">
+          <div key={label} className="flex items-baseline justify-between gap-3 border-t border-ink/10 pt-1.5">
             <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
             <dd className={`stencil truncate text-[10px] uppercase tracking-[0.12em] ${value === '—' || value.includes('missing') ? 'text-ink-3' : value.includes('ready') || value.includes('parsed') ? 'text-draft' : 'text-ink-2'}`}>
               {value}
@@ -94,7 +94,7 @@ function DossierCell({
 
 function SpecRow({ label, value, edit, children }: { label: string; value?: string | null; edit?: boolean; children?: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-4 border-t border-ink/15 py-2.5 first:border-t-0 first:pt-0 sm:grid-cols-[10rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] items-baseline gap-x-4 border-t border-ink/10 py-2.5 first:border-t-0 first:pt-0 sm:grid-cols-[10rem_minmax(0,1fr)]">
       <dt className="stencil text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</dt>
       <dd className="min-w-0 text-[13px] leading-relaxed text-ink">
         {edit ? children : (value?.trim() ? value : <span className="text-ink-3">—</span>)}
@@ -187,7 +187,7 @@ function DocRow({
   actions: React.ReactNode
 }) {
   return (
-    <li className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 px-1 py-2 last:border-b-0 ${current ? 'bg-draft-soft/30' : ''}`}>
+    <li className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 px-1 py-2 last:border-b-0 ${current ? 'bg-draft-soft/30' : ''}`}>
       <StencilNum className="text-[11px] leading-none text-ink-3">{index}</StencilNum>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -391,7 +391,7 @@ export function ProfilePage() {
       {/* Title block */}
       <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-b border-ink/25 px-6 pb-4 pt-5">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Pramya · Profile · Dossier</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Pramya · Profile · Dossier</p>
           <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-ink">Career profiles</h1>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-2">
             Each profile is an independent workspace — its own resume, target roles, JDs, and evidence. Nothing leaks between them.
@@ -460,16 +460,16 @@ export function ProfilePage() {
             {editing ? (
               <div className="mt-4 border border-ink/25 bg-sheet-lit/30 px-4 py-3">
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Revision · identity fields</p>
+                  <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Revision · identity fields</p>
                   {dirty ? <span className="stencil text-[10px] uppercase tracking-[0.16em] text-redline">Unsaved changes</span> : null}
                 </div>
                 <div className="mt-3 grid gap-x-8 gap-y-4 sm:grid-cols-2">
                   <label className="block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Name</span>
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Name</span>
                     <input className={`h-9 ${FIELD_CLS}`} placeholder={loadedProfile.name} value={name} onChange={(e) => setName(e.target.value)} />
                   </label>
                   <label className="block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Seniority target</span>
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Seniority target</span>
                     <select className={`h-9 ${FIELD_CLS}`} value={seniority} onChange={(e) => setSeniority(e.target.value)}>
                       <option value="">—</option>
                       {SENIORITY.map((s) => (
@@ -480,11 +480,11 @@ export function ProfilePage() {
                     </select>
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Headline</span>
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Headline</span>
                     <input className={`h-9 ${FIELD_CLS}`} placeholder={loadedProfile.headline ?? 'Senior Backend Engineer'} value={headline} onChange={(e) => setHeadline(e.target.value)} />
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-2">Positioning</span>
+                    <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-ink-2/70">Positioning</span>
                     <textarea
                       className={`min-h-20 resize-y py-2 ${FIELD_CLS}`}
                       placeholder={loadedProfile.positioning ?? 'What makes you the right fit for this path?'}
@@ -493,7 +493,7 @@ export function ProfilePage() {
                     />
                   </label>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-ink/15 pt-3">
+                <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-ink/10 pt-3">
                   <Button variant="ghost" size="sm" onClick={() => { setEditing(false); setName(''); setPositioning(''); setHeadline(''); setSeniority('') }}>
                     Cancel
                   </Button>
@@ -509,7 +509,7 @@ export function ProfilePage() {
                 </div>
               </div>
             ) : (
-              <div className="mt-4 flex items-center justify-end border-t border-ink/15 pt-3">
+              <div className="mt-4 flex items-center justify-end border-t border-ink/10 pt-3">
                 <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
                   Edit identity
                 </Button>
@@ -530,7 +530,7 @@ export function ProfilePage() {
               ) : (
                 <ol>
                   {roles.data?.map((r, i) => (
-                    <li key={r.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/10 py-2 last:border-b-0">
+                    <li key={r.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 border-b border-ink/5 py-2 last:border-b-0">
                       <StencilNum className="text-[11px] leading-none text-ink-3">{pad2(i + 1)}</StencilNum>
                       <div className="min-w-0">
                         <p className="truncate text-[13px] text-ink">
