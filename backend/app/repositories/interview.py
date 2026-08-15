@@ -26,7 +26,13 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
         return (await self.session.scalars(stmt)).first()
 
     async def list_for_user(
-        self, user_id: int, *, limit: int = 50, offset: int = 0, profile_id: int | None = None
+        self,
+        user_id: int,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        profile_id: int | None = None,
+        statuses: list[str] | None = None,
     ) -> Sequence[InterviewSession]:
         stmt = (
             select(InterviewSession)
@@ -37,7 +43,19 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
         )
         if profile_id is not None:
             stmt = stmt.where(InterviewSession.candidate_profile_id == profile_id)
+        if statuses:
+            stmt = stmt.where(InterviewSession.status.in_(statuses))
         return (await self.session.scalars(stmt)).all()
+
+    async def count_for_user(
+        self, user_id: int, *, profile_id: int | None = None, statuses: list[str] | None = None
+    ) -> int:
+        stmt = select(func.count(InterviewSession.id)).where(InterviewSession.user_id == user_id)
+        if profile_id is not None:
+            stmt = stmt.where(InterviewSession.candidate_profile_id == profile_id)
+        if statuses:
+            stmt = stmt.where(InterviewSession.status.in_(statuses))
+        return int((await self.session.scalars(stmt)).one())
 
 
 class InterviewTurnRepository(BaseRepository[InterviewTurn]):
