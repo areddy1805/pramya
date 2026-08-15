@@ -62,6 +62,16 @@ Locked direction: engineering drafting / blueprint ("The Drawing Sheet",
   Evidence, Progress) + secondary nav (Profile, History, Settings, Runtime).
   Active route: ink text + 1px accent underline. Mobile: horizontal scroll
   row under the header.
+- **More ▾** (secondary records menu, in the shell): the discoverability
+  mechanism for the five non-primary routes — Setup, Report, Transcript,
+  Debrief, Stories. One disclosure button in the same nav vocabulary; opens
+  a sheet-styled menu (border ink/30, floating shadow, stencil route hints).
+  Report/Transcript need a session id, so they resolve to the most recent
+  real session (Report → latest completed); when no session exists they
+  render disabled with an honest note. Keyboard: Tab/Enter opens, arrows
+  cycle items, Escape closes + refocuses, click-away closes. When a
+  secondary route is active the More control shows the same active
+  treatment as a primary item without changing the primary hierarchy.
 - Main: `mx-auto max-w-6xl px-4 py-6 sm:px-6`.
 - Every surface renders as one `Sheet` (`sheet-grid` background, hairline
   `border-ink/30`), full width of the main column.
@@ -268,6 +278,9 @@ Secondary (same grammar, subordinate records):
 | Debrief | /debriefs | post-interview findings |
 | Stories | /stories | evidence story library |
 
+Reachable from the **More ▾** menu in the shell (see §3); direct URL
+navigation is always preserved.
+
 Consistency rule: pages share grammar, not cloned layouts. A report is a
 document, a debrief is a findings ledger, the practice screen is a field
 sheet — each keeps its own hierarchy inside the same instrument family.
@@ -288,6 +301,35 @@ sheet — each keeps its own hierarchy inside the same instrument family.
   surface genuinely requires them)
 
 ## 19. Validation
+
+Before any UI change: `npx tsc -b`, `npm run build`, `npx oxlint`, then
+per-surface DOM probes at 1440 and 375 (overflowX = 0, focus visibility,
+status semantics, reduced motion, no console errors) and dark+light
+screenshots. Frozen pages must be smoke-checked after any shared
+primitive/token change.
+
+## 20. Density refinement (2026-08-15, commit be87af6)
+
+The final visual pass reduced perceived busyness across all 14 routes
+without changing structure or identity. It is part of the canon:
+
+- **Grid is substrate.** `--sheet-grid` alpha: light 0.035, dark 0.04
+  (strong variant 0.07 / 0.075, currently unused). The ruling requires
+  intentional attention to notice; text and data dominate. Never remove the
+  grid and never raise its contrast back.
+- **Three-tier rule hierarchy.** /25 = primary boundaries (title block,
+  revision strip); /10 = secondary (scope strips, state-cell rows,
+  sub-blocks); /5 = tertiary ledger row separators. Two adjacent rules
+  communicating the same boundary: keep only the stronger.
+- **Micro-labels are annotations.** Section titles / page eyebrows:
+  `font-medium`, `tracking-[0.12em]`, `text-ink-2/70`; asides and stamp
+  notes at `text-ink-3`. `.stencil` weight is 500, not 600.
+- **Emphasis budget.** Verdict numerals, work order, primary actions keep
+  full weight; everything around them recedes. Never reintroduce
+  equal-weight label/value chains.
+- **Redline quieting.** Circled markers: severe = outlined
+  (`border-redline bg-redline/10 text-redline`), never a solid red fill;
+  leader-line severity encoding unchanged.
 
 Before any UI change: `npx tsc -b`, `npm run build`, `npx oxlint`, then
 per-surface DOM probes at 1440 and 375 (overflowX = 0, focus visibility,

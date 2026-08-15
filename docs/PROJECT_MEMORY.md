@@ -7,10 +7,11 @@
 
 ## Current State
 
-- Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE** (2026-08-15).
-- **PRODUCT.md** (repo root) = durable product-context anchor for the UI redesign (identity, domain model, principles, surface inventory, non-goals, open questions). DESIGN.md intentionally does not exist yet; no visual decisions made.
-- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative; §35 tracker includes Interview Productization row.
-- Last verified commit: `59073fa` (frontend productization) — worktree clean.
+- Project status: **All V1 phases COMPLETE through Phase 12; Interview Productization (ADR-028) COMPLETE; Frontend UI freeze (ADR-029) COMPLETE** (2026-08-15).
+- **PRODUCT.md** (repo root) = durable product-context anchor for the UI redesign (identity, domain model, principles, surface inventory, non-goals, open questions).
+- **DESIGN.md** (repo root) = the permanent frontend design contract (Drawing Sheet canon, frozen, ADR-029) — code is source of truth; update the doc to match code, never the reverse.
+- Master plan: `docs/MASTER_IMPLEMENTATION_PLAN.md` — authoritative; §35 tracker includes Interview Productization + Frontend UI freeze rows.
+- Last verified commit: `be87af6` (density pass) — worktree clean.
 - Migration head: 0005 (question provenance + interview_feedback). `alembic check` must stay clean after any model change.
 - Local `.env` exists (copied from `.env.example`, gitignored).
 - DB: docker compose `db` (pgvector/pgvector:pg17) running locally; `alembic upgrade head` applied; `alembic check` clean.
@@ -194,3 +195,51 @@ NEXT (resume point): restart backend on 8001, run frontend/scripts/voice_e2e_5tu
 - E2E note: the frontend still hardcodes DEFAULT_USER_ID=1 (no auth
   system in dev); profile E2E drives user 1's real workspace and never
   deletes user 1 data.
+
+## Frontend Drawing Sheet canon — FINAL FREEZE (2026-08-15, ADR-029)
+
+The entire frontend (14 routes) is frozen in the Drawing Sheet visual
+language. `DESIGN.md` (repo root) is the permanent design contract; ADR-029
+records the decision. All nine primary surfaces + five secondary surfaces
+read as one engineered instrument — never redesign them; only fix genuine
+shared-primitive bugs with the smallest correction.
+
+- **Commit chain (surface canon):** f948214 dashboard v1 → f6061eb
+  dashboard instrument → 3773d3f preparation → e3c3d9b interview field
+  sheet → 595db0b evidence ledger → bbb8a86 progress → 3c27fea profile
+  dossier → ae5169b + a9ce802 history audit + server paging → a985e35
+  settings → 88bf5e6 runtime → 90bd43c secondary surfaces (setup, report,
+  transcript, debrief, stories) + DESIGN.md → c41690b More ▾ navigation →
+  be87af6 density pass.
+- **Navigation:** primary nav (Overview/Preparation/Practice/Evidence/
+  Progress) + secondary (Profile/History/Settings/Runtime) + `More ▾`
+  menu exposing Setup, Report, Transcript, Debrief, Stories. Report and
+  Transcript resolve the most recent real session (Report → latest
+  completed) and render disabled with an honest note when none exists.
+  More menu: absolute on desktop, fixed within viewport on mobile
+  (overflow-x-auto ancestor would clip absolute), keyboard complete
+  (Enter/arrows/Escape/click-away), aria-expanded/aria-controls.
+- **Density canon (be87af6):** grid alpha light 0.035 / dark 0.04;
+  three-tier rules /25 primary · /10 secondary · /5 tertiary rows;
+  micro-labels font-medium 0.12em ink-2/70; `.stencil` weight 500;
+  redline markers outlined (`bg-redline/10`) not filled. DESIGN.md §20.
+- **VALIDATION GOTCHA:** the app's theme is controlled by localStorage
+  `pramya-theme`; with no key set it renders DARK regardless of
+  prefers-color-scheme. Playwright light screenshots are only genuine if
+  `addInitScript(() => localStorage.setItem('pramya-theme','light'))`
+  runs before goto. Without it dark/light screenshots are byte-identical.
+- **Impeccable detector:** clean on all 14 rendered surfaces; the single
+  advisory (`codex-grid-background` on `.sheet-grid`) is intentional canon
+  and rejected. `detect.mjs --json <url>` needs a live vite dev server.
+- **Secondary-page contracts:** Report = GET /interviews/{id}/report
+  (scorecard.dimensions at 7.5/5 thresholds, verdict 8/6.5/5/3);
+  Transcript = GET /interviews/{id}/transcript (turns, eval 7/4);
+  Debrief = POST /debriefs + /debriefs/analyze; Stories = GET/POST
+  /stories. Fixture route interception is the deterministic way to test
+  populated states; report 152/172 return empty and 171 returns
+  validation_failed ('no evaluations to report') — real sessions with no
+  evaluations have no report.
+- **Frontend validation suite used at freeze:** tsc -b + npm run build +
+  oxlint; 14-route probe at 1440 and 375 (sheet present, grid present,
+  overflowX = 0, no console errors); keyboard focus ring via real Tab;
+  reduced-motion transitions ≈ 1e-05s; More menu 46-check nav probe.
