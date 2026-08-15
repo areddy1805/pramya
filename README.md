@@ -25,6 +25,7 @@ voice), and a report loop that remembers what you actually demonstrated.**
 - [Current status](#current-status)
 - [What Pramya is](#what-pramya-is)
 - [Screenshots](#screenshots)
+- [Product demo](#product-demo)
 - [Capability matrix](#capability-matrix)
 - [Architecture](#architecture)
 - [Profile workspace](#profile-workspace)
@@ -118,18 +119,43 @@ session from the candidate's own material (see
 
 ## Screenshots
 
-Real screenshots from the running application (dark flagship theme).
+Real captures of the frozen v1.0.0 UI (ADR-029 **Drawing Sheet**, dark
+"drafting field" theme, 1440×900 viewport). The full-resolution images are
+committed under `assets/screenshots/`.
 
-| | | |
-|---|---|---|
-| <img src="assets/screenshots/dashboard.png" width="380" alt="Dashboard" /> | <img src="assets/screenshots/setup.png" width="380" alt="Candidate setup" /> | <img src="assets/screenshots/preparation.png" width="380" alt="Preparation" /> |
-| <img src="assets/screenshots/interview.png" width="380" alt="Interview workspace" /> | <img src="assets/screenshots/evidence.png" width="380" alt="Evidence ledger" /> | <img src="assets/screenshots/progress.png" width="380" alt="Progress" /> |
-| <img src="assets/screenshots/stories.png" width="380" alt="Story bank" /> | <img src="assets/screenshots/history.png" width="380" alt="History" /> | <img src="assets/screenshots/debriefs.png" width="380" alt="Debriefs" /> |
-| <img src="assets/screenshots/settings.png" width="380" alt="Settings" /> | <img src="assets/screenshots/runtime.png" width="380" alt="Runtime status" /> | <img src="assets/screenshots/transcript.png" width="380" alt="Interview record" /> |
-| <img src="assets/screenshots/voice.png" width="380" alt="Live voice interview" /> | <img src="assets/screenshots/report.png" width="380" alt="Interview report" /> | |
+<details>
+<summary>View Pramya v1.0 screenshots</summary>
 
-The UI is frozen in the **Drawing Sheet** visual language (ADR-029) — see
-`DESIGN.md` for the design contract.
+<table>
+  <tr>
+    <td align="center"><a href="assets/screenshots/dashboard.png"><img src="assets/screenshots/dashboard.png" width="300" alt="Pramya v1.0 Dashboard workspace"></a></td>
+    <td align="center"><a href="assets/screenshots/profile.png"><img src="assets/screenshots/profile.png" width="300" alt="Pramya v1.0 Career profiles workspace"></a></td>
+    <td align="center"><a href="assets/screenshots/preparation.png"><img src="assets/screenshots/preparation.png" width="300" alt="Pramya v1.0 Readiness and preparation orders"></a></td>
+    <td align="center"><a href="assets/screenshots/interview.png"><img src="assets/screenshots/interview.png" width="300" alt="Pramya v1.0 Live voice interview setup"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="assets/screenshots/report.png"><img src="assets/screenshots/report.png" width="300" alt="Pramya v1.0 Interview report with scorecard"></a></td>
+    <td align="center"><a href="assets/screenshots/evidence.png"><img src="assets/screenshots/evidence.png" width="300" alt="Pramya v1.0 Evidence ledger"></a></td>
+    <td align="center"><a href="assets/screenshots/progress.png"><img src="assets/screenshots/progress.png" width="300" alt="Pramya v1.0 Progress tracking"></a></td>
+    <td align="center"><a href="assets/screenshots/history.png"><img src="assets/screenshots/history.png" width="300" alt="Pramya v1.0 Interview history"></a></td>
+  </tr>
+</table>
+
+</details>
+
+## Product demo
+
+<details>
+<summary>Watch the Pramya v1.0 walkthrough</summary>
+
+> **VIDEO / GIF DEMO — COMING SOON**
+>
+> A short end-to-end walkthrough will be published here. It will show:
+>
+> Profile selection → resume/JD grounding → interview → live voice
+> interaction → follow-ups → evaluation → report → preparation memory.
+
+</details>
 
 ---
 
